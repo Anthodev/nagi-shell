@@ -1,0 +1,12 @@
+.qmlls.ini
+
+.claude/
+.mcp.json
+
+docs/
+
+AGENTS.md
+SPECIFICATIONS.md
+DESIGN_SYSTEM.md
+
+graft/
