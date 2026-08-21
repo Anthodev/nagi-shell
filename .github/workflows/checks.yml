@@ -15,10 +15,11 @@
 # Scope boundary:
 #   A successful run covers formatting, native normalization, D-Bus owner
 #   lifecycle, the QML adapter boundary, coordinator determinism, and the real
-#   PanelWindow state scenario under a software-rendered headless wlroots
-#   compositor. Success here does NOT replace the real KDE/KWin verification
-#   matrix tracked in issue #35 (multi-display, hardware rendering, and final
-#   cross-state checks still require a real desktop session).
+#   PanelWindow state scenario and the UI-primitive gallery, under a
+#   software-rendered headless wlroots compositor. Success here does NOT
+#   replace the real KDE/KWin verification matrix tracked in issue #35
+#   (multi-display, hardware rendering, and final cross-state checks still
+#   require a real desktop session).
 name: Repository checks
 
 on:
@@ -71,7 +72,7 @@ jobs:
         run: make check-nondisplay
 
   surface-state:
-    name: Surface-state checks (headless Wayland)
+    name: Surface checks (headless Wayland)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
@@ -96,7 +97,7 @@ jobs:
       - name: Verify repository requirements
         run: make requirements
 
-      - name: Run surface-state checks under a headless compositor
+      - name: Run surface and UI-primitive checks under a headless compositor
         run: |
           logdir=/tmp/nagi-diagnostics
           rm -rf "$logdir"
@@ -107,7 +108,7 @@ jobs:
           # client exit status, so the inner shell records the make status itself.
           set +e
           timeout --kill-after=10s 300 \
-            cage -- sh -c 'make test-surface-state >"$1" 2>&1; printf "%s\n" "$?" >"$2"' \
+            cage -- sh -c 'make test-surface-state >"$1" 2>&1 && make test-ui-primitives >>"$1" 2>&1; printf "%s\n" "$?" >"$2"' \
             sh "$logdir/quickshell.log" "$status_file" \
             2>"$logdir/compositor.log"
           wrapper_status=$?
@@ -125,7 +126,7 @@ jobs:
 
           test_status="$(cat "$status_file")"
           if [ "$test_status" -ne 0 ] || [ "$wrapper_status" -ne 0 ]; then
-            printf 'Surface-state checks failed (test status %s, wrapper status %s).\n' "$test_status" "$wrapper_status" >&2
+            printf 'Surface checks failed (test status %s, wrapper status %s).\n' "$test_status" "$wrapper_status" >&2
             exit 1
           fi
 

@@ -17,6 +17,7 @@ OWNER_TEST := $(BUILD_DIR)/kwin-owner-lifecycle-test
 OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
+UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
@@ -29,7 +30,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -40,6 +41,7 @@ help:
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
+		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
 		'make launch          Run this checkout in the foreground' \
 		'make diagnose        Run with authoritative verbose diagnostics' \
 		'make instances       List this checkout instance as JSON' \
@@ -109,8 +111,14 @@ test-coordinator: check-quickshell | $(BUILD_DIR)
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
+
+test-ui-primitives: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
+	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 check-quickshell:
 	@set -eu; \
@@ -174,7 +182,7 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state
+check: check-nondisplay test-surface-state test-ui-primitives
 
 check-nondisplay: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator
 
