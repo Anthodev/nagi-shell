@@ -1,0 +1,139 @@
+# Repository-defined checks for pull requests targeting develop and pushes to develop.
+#
+# Every job calls repository-owned Make targets; the Makefile remains the only
+# definition of what the checks do. The jobs never weaken, skip, or special-case
+# product tests for CI.
+#
+# Environment contract:
+#   - Pinned Fedora 44 container aligned with the supported local toolchain.
+#   - Quickshell installed from the stable errornointernet/quickshell COPR;
+#     `make requirements` fails before any test when the version is below the
+#     repository minimum.
+#   - No secret, privileged runner, GPU, real KDE session, or external service
+#     state is required.
+#
+# Scope boundary:
+#   A successful run covers formatting, native normalization, D-Bus owner
+#   lifecycle, the QML adapter boundary, coordinator determinism, and the real
+#   PanelWindow state scenario under a software-rendered headless wlroots
+#   compositor. Success here does NOT replace the real KDE/KWin verification
+#   matrix tracked in issue #35 (multi-display, hardware rendering, and final
+#   cross-state checks still require a real desktop session).
+name: Repository checks
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+# Superseded pull-request runs are cancelled; pushes to develop are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  LANG: C.UTF-8
+
+jobs:
+  nondisplay:
+    name: Display-independent checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: fedora:44
+    env:
+      XDG_RUNTIME_DIR: /tmp/xdg
+      # Windowless QML tests run on Qt's headless platform; the surface-state job
+      # below intentionally does not set this and connects to a real compositor.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Install the Fedora 44 toolchain
+        uses: ./.github/actions/install-toolchain
+
+      - name: Prepare the runtime directory
+        run: mkdir -p "$XDG_RUNTIME_DIR"
+
+      - name: Verify repository requirements
+        run: make requirements
+
+      - name: Run display-independent checks
+        run: make check-nondisplay
+
+  surface-state:
+    name: Surface-state checks (headless Wayland)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: fedora:44
+    env:
+      XDG_RUNTIME_DIR: /tmp/xdg
+      WLR_BACKENDS: headless
+      WLR_LIBINPUT_NO_DEVICES: '1'
+      WLR_RENDERER: pixman
+      # Force Qt Quick CPU rasterization so the scenario needs no GPU or GL stack.
+      QT_QUICK_BACKEND: software
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Install the Fedora 44 toolchain
+        uses: ./.github/actions/install-toolchain
+
+      - name: Prepare the runtime directory
+        run: mkdir -p "$XDG_RUNTIME_DIR"
+
+      - name: Verify repository requirements
+        run: make requirements
+
+      - name: Run surface-state checks under a headless compositor
+        run: |
+          logdir=/tmp/nagi-diagnostics
+          rm -rf "$logdir"
+          mkdir -p "$logdir"
+          status_file="$logdir/test-status"
+
+          # cage exits when its client exits but does not reliably propagate the
+          # client exit status, so the inner shell records the make status itself.
+          set +e
+          timeout --kill-after=10s 300 \
+            cage -- sh -c 'make test-surface-state >"$1" 2>&1; printf "%s\n" "$?" >"$2"' \
+            sh "$logdir/quickshell.log" "$status_file" \
+            2>"$logdir/compositor.log"
+          wrapper_status=$?
+          set -e
+
+          # Diagnostics stay bounded so a failing run cannot flood artifact storage.
+          for log in quickshell compositor; do
+            tail -n 400 "$logdir/$log.log" >"$logdir/$log-bounded.log" 2>/dev/null || true
+          done
+
+          if [ ! -f "$status_file" ]; then
+            printf 'The headless compositor exited before the tests reported a status (wrapper status %s).\n' "$wrapper_status" >&2
+            exit 1
+          fi
+
+          test_status="$(cat "$status_file")"
+          if [ "$test_status" -ne 0 ] || [ "$wrapper_status" -ne 0 ]; then
+            printf 'Surface-state checks failed (test status %s, wrapper status %s).\n' "$test_status" "$wrapper_status" >&2
+            exit 1
+          fi
+
+      - name: Upload bounded diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surface-state-diagnostics
+          path: /tmp/nagi-diagnostics/*-bounded.log
+          retention-days: 7
+          if-no-files-found: ignore

@@ -29,7 +29,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -49,6 +49,7 @@ help:
 		'make format          Format the QML configuration' \
 		'make format-check    Verify committed QML formatting' \
 		'make lint-advisory   Run non-authoritative qmllint diagnostics' \
+		'make check-nondisplay  Run checks that need no display server' \
 		'make check           Run repository-defined non-visual checks'
 
 requirements:
@@ -173,7 +174,9 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state
+check: check-nondisplay test-surface-state
+
+check-nondisplay: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator
 
 clean:
 	rm -rf $(BUILD_DIR)
