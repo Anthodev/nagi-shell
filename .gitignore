@@ -1,4 +1,5 @@
 .qmlls.ini
+build/
 
 .claude/
 .mcp.json
