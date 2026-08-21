@@ -1,0 +1,39 @@
+name: 'Install Fedora 44 toolchain'
+description: >-
+  Installs the pinned Fedora 44 CI toolchain: native build dependencies,
+  Qt/QML tools, and Quickshell from the stable errornointernet/quickshell COPR.
+runs:
+  using: composite
+  steps:
+    - name: 'Install base toolchain packages'
+      shell: bash
+      run: >-
+        dnf -y --setopt=install_weak_deps=False install
+        dnf-plugins-core
+        git
+        make
+        gcc-c++
+        pkgconf-pkg-config
+        qt6-qtbase-devel
+        qt6-qtdeclarative-devel
+        dbus-daemon
+        dejavu-sans-fonts
+        diffutils
+        cage
+
+    - name: 'Enable the stable Quickshell COPR'
+      shell: bash
+      run: dnf -y copr enable errornointernet/quickshell
+
+    - name: 'Install Quickshell from the stable channel'
+      shell: bash
+      run: |
+        dnf -y --setopt=install_weak_deps=False install quickshell
+        rpm -q quickshell
+
+    - name: 'Report installed tool versions'
+      shell: bash
+      run: |
+        for tool in qmlformat-qt6 qmllint-qt6 qtpaths6 dbus-run-session cage; do
+          command -v "$tool"
+        done
