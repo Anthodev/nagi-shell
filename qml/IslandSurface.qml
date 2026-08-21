@@ -12,9 +12,9 @@ PanelWindow {
     readonly property real ownerRevision: coordinator.revision
     readonly property int focusTarget: coordinator.focusTarget
     readonly property real focusRequestSerial: coordinator.focusRequestSerial
-    readonly property int edgeInset: 8
-    readonly property int preferredHeight: 36
-    readonly property int preferredWidth: 120
+    readonly property int edgeInset: Theme.spacing.sm
+    readonly property int preferredHeight: Theme.size.islandIdleHeight
+    readonly property int preferredWidth: Theme.size.islandIdleWidth
 
     function acknowledgePresentation(generation, epoch, contentRevision) {
         if (generation <= 0 || hostSurfaceGeneration !== generation) {
@@ -64,12 +64,7 @@ PanelWindow {
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
     margins.top: edgeInset
 
-    Rectangle {
+    IslandPanel {
         anchors.fill: parent
-        color: "#f5080d16"
-        radius: height / 2
-
-        border.color: "#263448"
-        border.width: 1
     }
 }
