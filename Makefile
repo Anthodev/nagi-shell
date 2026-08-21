@@ -17,6 +17,7 @@ OWNER_TEST := $(BUILD_DIR)/kwin-owner-lifecycle-test
 OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
+MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
@@ -31,7 +32,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-weather test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-weather test-media test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -43,6 +44,7 @@ help:
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
 		'make test-weather    Test compact clock and weather adapter state' \
+		'make test-media      Test the MPRIS media adapter state' \
 		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
 		'make launch          Run this checkout in the foreground' \
 		'make diagnose        Run with authoritative verbose diagnostics' \
@@ -115,6 +117,12 @@ test-weather: check-quickshell | $(BUILD_DIR)
 	cp tests/weather/shell.qml $(WEATHER_TEST_DIR)/shell.qml
 	cp qml/WeatherAdapter.qml qml/CompactClock.qml $(WEATHER_TEST_DIR)/qml/
 	$(QS) -p $(WEATHER_TEST_DIR) --no-duplicate
+
+test-media: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(MEDIA_TEST_DIR)/qml
+	cp tests/media/shell.qml $(MEDIA_TEST_DIR)/shell.qml
+	cp qml/MediaAdapter.qml $(MEDIA_TEST_DIR)/qml/
+	$(QS) -p $(MEDIA_TEST_DIR) --no-duplicate
 
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
@@ -192,7 +200,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator test-weather
-
+check-nondisplay: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator test-weather test-media
 clean:
 	rm -rf $(BUILD_DIR)

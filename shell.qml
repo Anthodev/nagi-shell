@@ -19,6 +19,10 @@ ShellRoot {
         id: weather
     }
 
+    MediaAdapter {
+        id: media
+    }
+
     IslandSurfaceHost {
         coordinator: islandState
     }
