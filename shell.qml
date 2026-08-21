@@ -7,5 +7,11 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-kwin-virtual-desktops")
     }
 
-    IslandSurfaceHost {}
+    IslandStateCoordinator {
+        id: islandState
+    }
+
+    IslandSurfaceHost {
+        coordinator: islandState
+    }
 }
