@@ -3,6 +3,7 @@ SHELL := /bin/sh
 QS ?= qs
 QMLFORMAT ?= qmlformat-qt6
 QMLLINT ?= qmllint-qt6
+QML_SOURCES := shell.qml $(wildcard qml/*.qml)
 
 QUICKSHELL_MIN_VERSION := 0.3.0
 QUICKSHELL_CHANNEL := stable
@@ -79,16 +80,19 @@ stop:
 	done
 
 format:
-	$(QMLFORMAT) -i shell.qml
+	$(QMLFORMAT) -i $(QML_SOURCES)
 
 format-check:
-	@$(QMLFORMAT) shell.qml | cmp -s shell.qml - || { \
-		printf 'shell.qml is not formatted; run `make format`.\n' >&2; \
-		exit 1; \
-	}
+	@set -eu; \
+	for source in $(QML_SOURCES); do \
+		$(QMLFORMAT) "$$source" | cmp -s "$$source" - || { \
+			printf '%s is not formatted; run `make format`.\n' "$$source" >&2; \
+			exit 1; \
+		}; \
+	done
 
 lint-advisory:
-	@$(QMLLINT) shell.qml || { \
+	@$(QMLLINT) $(QML_SOURCES) || { \
 		printf 'qmllint is advisory because it cannot resolve a valid Quickshell PanelWindow; use runtime diagnostics as the clean gate.\n' >&2; \
 		exit 0; \
 	}

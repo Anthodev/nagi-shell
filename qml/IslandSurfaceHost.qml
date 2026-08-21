@@ -1,0 +1,137 @@
+pragma ComponentBehavior: Bound
+
+import Quickshell
+import QtQuick
+
+Scope {
+    id: host
+
+    readonly property int surfaceGeneration: ownership.surfaceGeneration
+    readonly property var surfaceToken: ownership.surfaceToken
+
+    QtObject {
+        id: ownership
+
+        // QsWindow can report provisional screens while the layer-shell surface settles.
+        readonly property int surfaceSettleDelay: 50
+        property var liveSurface: null
+        property var ownerScreen: null
+        property var pendingSurface: null
+        property bool replacementPending: false
+        property var replacementScreen: null
+        property int surfaceGeneration: 0
+        property var surfaceToken: null
+
+        function completeSurfaceReplacement() {
+            surfaceLoader.active = true;
+        }
+
+        function isConnected(screen) {
+            for (let index = 0; index < Quickshell.screens.length; index += 1) {
+                if (Quickshell.screens[index] === screen) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        function queueSurfaceRegistration(surface) {
+            const targetScreen = replacementScreen;
+            replacementScreen = null;
+
+            if (targetScreen !== null && isConnected(targetScreen)) {
+                surface.screen = targetScreen;
+            }
+
+            liveSurface = surface;
+            pendingSurface = surface;
+            surfaceSettleTimer.restart();
+        }
+
+        function reconcileOwner() {
+            if (ownerScreen === null || isConnected(ownerScreen)) {
+                return;
+            }
+
+            const rehomedScreen = liveSurface === null ? null : liveSurface.screen;
+            if (rehomedScreen !== null && isConnected(rehomedScreen)) {
+                replacementScreen = rehomedScreen;
+                replaceSurface();
+            }
+        }
+
+        function replaceSurface() {
+            if (replacementPending) {
+                return;
+            }
+
+            replacementPending = true;
+            surfaceToken = null;
+            surfaceLoader.active = false;
+            Qt.callLater(completeSurfaceReplacement);
+        }
+
+        function settleSurfaceRegistration() {
+            if (pendingSurface === null) {
+                return;
+            }
+
+            ownerScreen = pendingSurface.screen;
+            pendingSurface = null;
+            surfaceGeneration += 1;
+            surfaceToken = {};
+            replacementPending = false;
+        }
+
+        function unregisterSurface(surface) {
+            if (liveSurface !== surface) {
+                return;
+            }
+
+            if (pendingSurface === surface) {
+                pendingSurface = null;
+                surfaceSettleTimer.stop();
+            }
+
+            liveSurface = null;
+            surfaceToken = null;
+            ownerScreen = null;
+        }
+    }
+
+    Timer {
+        id: surfaceSettleTimer
+
+        interval: ownership.surfaceSettleDelay
+        onTriggered: ownership.settleSurfaceRegistration()
+    }
+
+    Connections {
+        target: Quickshell
+
+        function onScreensChanged() {
+            ownership.reconcileOwner();
+        }
+    }
+
+    LazyLoader {
+        id: surfaceLoader
+
+        active: true
+
+        IslandSurface {
+            id: island
+
+            Component.onCompleted: ownership.queueSurfaceRegistration(island)
+            Component.onDestruction: ownership.unregisterSurface(island)
+            onScreenChanged: {
+                if (ownership.pendingSurface === island) {
+                    surfaceSettleTimer.restart();
+                } else {
+                    ownership.reconcileOwner();
+                }
+            }
+        }
+    }
+}
