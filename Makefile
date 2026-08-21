@@ -15,6 +15,8 @@ HELPER_TEST := $(BUILD_DIR)/kwin-virtual-desktops-test
 HELPER_MOC := $(BUILD_DIR)/main.moc
 OWNER_TEST := $(BUILD_DIR)/kwin-owner-lifecycle-test
 OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
+COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
+SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
@@ -27,7 +29,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -36,6 +38,8 @@ help:
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-adapter    Test the QML adapter boundary' \
+		'make test-coordinator  Test island ownership and restoration' \
+		'make test-surface-state  Exercise coordinator in the actual island surface' \
 		'make launch          Run this checkout in the foreground' \
 		'make diagnose        Run with authoritative verbose diagnostics' \
 		'make instances       List this checkout instance as JSON' \
@@ -94,6 +98,18 @@ test-adapter: check-quickshell | $(BUILD_DIR)
 	cp tests/adapter/shell.qml $(BUILD_DIR)/adapter-test/shell.qml
 	cp qml/KWinVirtualDesktopAdapter.qml $(BUILD_DIR)/adapter-test/qml/KWinVirtualDesktopAdapter.qml
 	$(QS) -p $(BUILD_DIR)/adapter-test --no-duplicate
+
+test-coordinator: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(COORDINATOR_TEST_DIR)/qml
+	cp tests/coordinator/shell.qml $(COORDINATOR_TEST_DIR)/shell.qml
+	cp qml/IslandStateCoordinator.qml $(COORDINATOR_TEST_DIR)/qml/IslandStateCoordinator.qml
+	$(QS) -p $(COORDINATOR_TEST_DIR) --no-duplicate
+
+test-surface-state: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
+	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
+	cp qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 check-quickshell:
 	@set -eu; \
@@ -157,7 +173,7 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-quickshell format-check test-native test-owner-lifecycle test-adapter
+check: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator test-surface-state
 
 clean:
 	rm -rf $(BUILD_DIR)

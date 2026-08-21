@@ -6,6 +6,8 @@ import QtQuick
 Scope {
     id: host
 
+    required property var coordinator
+
     readonly property int surfaceGeneration: ownership.surfaceGeneration
     readonly property var surfaceToken: ownership.surfaceToken
 
@@ -67,6 +69,9 @@ Scope {
             }
 
             replacementPending = true;
+            if (surfaceToken !== null) {
+                host.coordinator.detachSurface(surfaceToken, surfaceGeneration);
+            }
             surfaceToken = null;
             surfaceLoader.active = false;
             Qt.callLater(completeSurfaceReplacement);
@@ -82,6 +87,7 @@ Scope {
             surfaceGeneration += 1;
             surfaceToken = {};
             replacementPending = false;
+            host.coordinator.attachSurface(surfaceToken, surfaceGeneration);
         }
 
         function unregisterSurface(surface) {
@@ -95,6 +101,9 @@ Scope {
             }
 
             liveSurface = null;
+            if (surfaceToken !== null) {
+                host.coordinator.detachSurface(surfaceToken, surfaceGeneration);
+            }
             surfaceToken = null;
             ownerScreen = null;
         }
@@ -122,6 +131,9 @@ Scope {
 
         IslandSurface {
             id: island
+
+            coordinator: host.coordinator
+            hostSurfaceGeneration: host.surfaceGeneration
 
             Component.onCompleted: ownership.queueSurfaceRegistration(island)
             Component.onDestruction: ownership.unregisterSurface(island)
