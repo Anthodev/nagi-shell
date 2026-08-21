@@ -15,4 +15,3 @@ ShellRoot {
         coordinator: islandState
     }
 }
-

@@ -36,7 +36,7 @@ ShellRoot {
         retryAttempts = 0;
 
         if (step === 0) {
-            require(coordinator.ownerName === "nope", "actual surface acknowledges Idle");
+            require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
             require(coordinator.openLauncher(null), "shortcut opens Launcher from Idle");
         } else if (step === 1) {
             require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,

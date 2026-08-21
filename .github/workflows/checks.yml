@@ -1,4 +1,5 @@
 # Repository-defined checks for pull requests targeting develop and pushes to develop.
+# Verification probe: this line is removed by the next commit.
 #
 # Every job calls repository-owned Make targets; the Makefile remains the only
 # definition of what the checks do. The jobs never weaken, skip, or special-case
