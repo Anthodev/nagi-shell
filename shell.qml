@@ -23,7 +23,16 @@ ShellRoot {
         id: media
     }
 
+    ReducedMotion {
+        id: motion
+    }
+
     IslandSurfaceHost {
         coordinator: islandState
+        virtualDesktops: virtualDesktops
+        clock: clock
+        weather: weather
+        media: media
+        reducedMotion: motion.active
     }
 }

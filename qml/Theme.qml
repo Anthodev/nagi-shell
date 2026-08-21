@@ -76,8 +76,12 @@ Singleton {
     }
 
     readonly property QtObject size: QtObject {
+        // Minimum compact idle width; the live island width follows visible content.
         readonly property int islandIdleWidth: 120
         readonly property int islandIdleHeight: 36
+        // Compact idle caps keep one long label from stretching the pill.
+        readonly property int islandIdleWorkspaceMaximumWidth: 96
+        readonly property int islandIdleMediaMaximumWidth: 220
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38
