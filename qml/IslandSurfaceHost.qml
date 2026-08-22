@@ -8,6 +8,13 @@ Scope {
 
     required property var coordinator
 
+    // Normalized idle data sources relayed to the island surface.
+    property var virtualDesktops: null
+    property var clock: null
+    property var weather: null
+    property var media: null
+    property bool reducedMotion: false
+
     readonly property int surfaceGeneration: ownership.surfaceGeneration
     readonly property var surfaceToken: ownership.surfaceToken
 
@@ -134,6 +141,11 @@ Scope {
 
             coordinator: host.coordinator
             hostSurfaceGeneration: host.surfaceGeneration
+            virtualDesktops: host.virtualDesktops
+            clock: host.clock
+            weather: host.weather
+            media: host.media
+            reducedMotion: host.reducedMotion
 
             Component.onCompleted: ownership.queueSurfaceRegistration(island)
             Component.onDestruction: ownership.unregisterSurface(island)
