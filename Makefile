@@ -18,6 +18,12 @@ OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
 AUDIO_HELPER := $(BUILD_DIR)/nagi-pipewire-audio
 AUDIO_PROTOCOL_TEST := $(BUILD_DIR)/pipewire-audio-protocol-test
 AUDIO_VOLUME_TEST := $(BUILD_DIR)/pipewire-audio-volume-test
+CONNECTIVITY_HELPER := $(BUILD_DIR)/nagi-connectivity
+CONNECTIVITY_MOC := $(BUILD_DIR)/connectivity/main.moc
+CONNECTIVITY_DBUS_TEST := $(BUILD_DIR)/connectivity-dbus-test
+CONNECTIVITY_DBUS_TEST_MOC := $(BUILD_DIR)/connectivity_dbus_test.moc
+CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
+CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
 MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
@@ -44,17 +50,19 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain helper audio-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain helper audio-helper connectivity-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
 		'make requirements    Show and verify runtime/build dependencies' \
 		'make helper          Build the KWin virtual desktop helper' \
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
+		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
+		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
@@ -63,6 +71,8 @@ help:
 		'make test-audio      Test the PipeWire audio adapter state' \
 		'make test-audio-live Probe the live PipeWire graph without changing it' \
 		'make test-audio-live-write  Change and restore live default audio state' \
+		'make test-connectivity  Test Wi-Fi and Bluetooth adapter state' \
+		'make test-connectivity-live-write  Change and restore live radios' \
 		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
 		'make test-idle       Test idle island composition and collapse' \
 		'make launch          Run this checkout in the foreground' \
@@ -105,6 +115,13 @@ $(HELPER_MOC): src/kwin-virtual-desktops/main.cpp | $(BUILD_DIR)
 $(OWNER_TEST_MOC): tests/kwin_owner_lifecycle_test.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
 
+$(CONNECTIVITY_MOC): src/connectivity/main.cpp | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(MOC) $< -o $@
+
+$(CONNECTIVITY_DBUS_TEST_MOC): tests/connectivity_dbus_test.cpp | $(BUILD_DIR)
+	$(MOC) $< -o $@
+
 $(HELPER): $(HELPER_SOURCES) $(HELPER_HEADERS) $(HELPER_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) -Isrc/kwin-virtual-desktops $(HELPER_SOURCES) -o $@ $(LDFLAGS) $(QT_LIBS)
 
@@ -123,9 +140,17 @@ $(AUDIO_PROTOCOL_TEST): tests/pipewire_audio_protocol_test.cpp src/pipewire-audi
 $(AUDIO_VOLUME_TEST): tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp src/pipewire-audio/volume.h | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) -Isrc/pipewire-audio tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp -o $@ $(LDFLAGS)
 
+$(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(CONNECTIVITY_MOC)) src/connectivity/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(CONNECTIVITY_DBUS_TEST): tests/connectivity_dbus_test.cpp $(CONNECTIVITY_DBUS_TEST_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/connectivity_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 helper: check-helper-toolchain $(HELPER)
 
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
+
+connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
 
 test-native: check-helper-toolchain $(HELPER_TEST)
 	$(HELPER_TEST)
@@ -139,6 +164,10 @@ test-audio-volume: $(AUDIO_VOLUME_TEST)
 test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(OWNER_TEST) $(abspath $(HELPER))
+
+test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTIVITY_DBUS_TEST)
+	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
+	$(DBUS_RUN_SESSION) -- $(CONNECTIVITY_DBUS_TEST) $(abspath $(CONNECTIVITY_HELPER))
 
 test-adapter: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/adapter-test/qml
@@ -182,6 +211,18 @@ test-audio-live-write: check-quickshell audio-helper | $(BUILD_DIR)
 	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml $(AUDIO_LIVE_WRITE_TEST_DIR)/qml/
 	NAGI_AUDIO_HELPER='$(abspath $(AUDIO_HELPER))' $(QS) -p $(AUDIO_LIVE_WRITE_TEST_DIR) --no-duplicate
 
+test-connectivity: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(CONNECTIVITY_TEST_DIR)/qml
+	cp tests/connectivity/shell.qml $(CONNECTIVITY_TEST_DIR)/shell.qml
+	cp qml/ConnectivityAdapter.qml qml/ConnectivityBridge.qml $(CONNECTIVITY_TEST_DIR)/qml/
+	$(QS) -p $(CONNECTIVITY_TEST_DIR) --no-duplicate
+
+test-connectivity-live-write: check-quickshell connectivity-helper | $(BUILD_DIR)
+	mkdir -p $(CONNECTIVITY_LIVE_WRITE_TEST_DIR)/qml
+	cp tests/connectivity/live-write.qml $(CONNECTIVITY_LIVE_WRITE_TEST_DIR)/shell.qml
+	cp qml/ConnectivityAdapter.qml qml/ConnectivityBridge.qml $(CONNECTIVITY_LIVE_WRITE_TEST_DIR)/qml/
+	NAGI_CONNECTIVITY_HELPER='$(abspath $(CONNECTIVITY_HELPER))' $(QS) -p $(CONNECTIVITY_LIVE_WRITE_TEST_DIR) --no-duplicate
+
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
@@ -214,10 +255,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper
+launch: check-quickshell prepare helper audio-helper connectivity-helper
 	$(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper
 	$(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -264,6 +305,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-adapter test-coordinator test-weather test-media test-audio test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
 clean:
 	rm -rf $(BUILD_DIR)

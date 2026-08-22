@@ -27,6 +27,10 @@ ShellRoot {
         id: audio
         bridgePath: Quickshell.shellPath("build/nagi-pipewire-audio")
     }
+    ConnectivityAdapter {
+        id: connectivity
+        helperPath: Quickshell.shellPath("build/nagi-connectivity")
+    }
 
     ReducedMotion {
         id: motion
