@@ -13,6 +13,7 @@ Scope {
     property var clock: null
     property var weather: null
     property var media: null
+    property var sessionService: null
     property bool reducedMotion: false
     property Component dashboardMediaContent: null
     property Component dashboardClockContent: null
@@ -40,6 +41,8 @@ Scope {
                                              && ownership.liveSurface.dashboardFocused
     readonly property int loadedDashboardRegionCount: ownership.liveSurface === null ? 0 :
                                                                                        ownership.liveSurface.loadedDashboardRegionCount
+    readonly property bool sessionFocused: ownership.liveSurface !== null
+                                           && ownership.liveSurface.sessionFocused
     readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
                                                                                       ownership.liveSurface.geometryAnimationDuration
 
@@ -178,6 +181,7 @@ Scope {
             clock: host.clock
             weather: host.weather
             media: host.media
+            sessionService: host.sessionService
             reducedMotion: host.reducedMotion
             dashboardMediaContent: host.dashboardMediaContent
             dashboardClockContent: host.dashboardClockContent

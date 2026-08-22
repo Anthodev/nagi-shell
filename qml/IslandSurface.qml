@@ -14,6 +14,7 @@ PanelWindow {
     property var weather: null
     property var media: null
     property bool reducedMotion: false
+    property var sessionService: null
 
     // Downstream dashboard features provide real visual components through
     // these slots. Null content is removed instead of replaced by inert UI.
@@ -30,20 +31,26 @@ PanelWindow {
     readonly property int focusTarget: coordinator.focusTarget
     readonly property real focusRequestSerial: coordinator.focusRequestSerial
     readonly property bool expanded: ownerKind === coordinator.ownerExpanded
+    readonly property bool session: ownerKind === coordinator.ownerSession
+    readonly property bool largeContent: expanded || session
     readonly property int edgeInset: Theme.spacing.sm
-    readonly property int preferredWidth: expanded ? Theme.size.islandExpandedWidth : Math.max(
-                                                         Theme.size.islandIdleWidth,
-                                                         idleContentWidth)
-    readonly property int preferredHeight: expanded ? Theme.size.islandExpandedHeight :
-                                                      Theme.size.islandIdleHeight
+    readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth : Math.max(
+                                                             Theme.size.islandIdleWidth,
+                                                             idleContentWidth)
+    readonly property int preferredHeight: largeContent ? Theme.size.islandExpandedHeight :
+                                                          Theme.size.islandIdleHeight
     readonly property int idleContentWidth: idleContent.visible ? idleContent.implicitWidth :
                                                                   Theme.size.islandIdleWidth
     readonly property int geometryAnimationDuration: reducedMotion ? 0 : Theme.motion.durationSlow
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
+    readonly property bool sessionFocused: sessionLoader.item !== null
+                                           && sessionLoader.item.activeFocus
 
     property real focusedOwnerEpoch: 0
     property real appliedFocusRequestSerial: 0
+    property int sessionRequestId: 0
+    property real sessionRequestOwnerEpoch: 0
 
     function acknowledgePresentation(generation, epoch, contentRevision) {
         if (generation <= 0 || hostSurfaceGeneration !== generation || ownerEpoch !== epoch
@@ -53,7 +60,9 @@ PanelWindow {
 
         const idleVisible = ownerKind === coordinator.ownerIdle && idleContent.visible;
         const dashboardVisible = ownerKind === coordinator.ownerExpanded && expandedContent.visible;
-        if (!idleVisible && !dashboardVisible) {
+        const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
+              !== null && sessionLoader.item.visible;
+        if (!idleVisible && !dashboardVisible && !sessionVisible) {
             return;
         }
 
@@ -73,20 +82,39 @@ PanelWindow {
         return explicitAccepted && hoverAccepted;
     }
 
-    function queueDashboardFocus() {
+    function trackSessionRequest(requestId, epoch) {
+        if (!session || epoch !== ownerEpoch || requestId <= 0 || sessionRequestId !== 0) {
+            return;
+        }
+        sessionRequestId = requestId;
+        sessionRequestOwnerEpoch = epoch;
+    }
+
+    function queueOwnerFocus() {
         const generation = hostSurfaceGeneration;
         const epoch = ownerEpoch;
         const serial = focusRequestSerial;
         Qt.callLater(function () {
             if (generation !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch
-                    || serial !== surface.focusRequestSerial || surface.focusTarget
-                    !== surface.coordinator.focusExpandedDashboard || !surface.expanded) {
+                    || serial !== surface.focusRequestSerial) {
+                return;
+            }
+
+            let target = null;
+            if (surface.focusTarget === surface.coordinator.focusExpandedDashboard
+                    && surface.expanded) {
+                target = expandedContent;
+            } else if (surface.focusTarget === surface.coordinator.focusSessionActions
+                       && surface.session && sessionLoader.item !== null) {
+                target = sessionLoader.item;
+            }
+            if (target === null) {
                 return;
             }
 
             surface.focusedOwnerEpoch = epoch;
             surface.appliedFocusRequestSerial = serial;
-            expandedContent.focusInitialControl();
+            target.focusInitialControl();
         });
     }
 
@@ -127,7 +155,13 @@ PanelWindow {
         target: surface.coordinator
 
         function onFocusRequestSerialChanged() {
-            surface.queueDashboardFocus();
+            surface.queueOwnerFocus();
+        }
+
+        function onPresentationVisibleChanged() {
+            if (surface.coordinator.presentationVisible) {
+                Qt.callLater(surface.queueOwnerFocus);
+            }
         }
 
         function onOwnerEpochChanged() {
@@ -140,13 +174,31 @@ PanelWindow {
         }
     }
 
+    Connections {
+        target: surface.sessionService
+        ignoreUnknownSignals: true
+
+        function onOperationFinished(requestId, action, outcome) {
+            if (requestId !== surface.sessionRequestId) {
+                return;
+            }
+            const epoch = surface.sessionRequestOwnerEpoch;
+            surface.sessionRequestId = 0;
+            surface.sessionRequestOwnerEpoch = 0;
+            if (outcome === "accepted") {
+                surface.coordinator.completeInteractive(epoch);
+            }
+        }
+    }
+
     // Leave screen unassigned at creation so Qt selects the startup primary/default output.
     anchors.top: true
     color: "transparent"
     exclusiveZone: 0
-    focusable: expanded && focusedOwnerEpoch === ownerEpoch && focusTarget
-               === coordinator.focusExpandedDashboard && appliedFocusRequestSerial
-               === focusRequestSerial
+    focusable: focusedOwnerEpoch === ownerEpoch && appliedFocusRequestSerial === focusRequestSerial
+               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (session
+                                                                                        && focusTarget
+                                                                                        === coordinator.focusSessionActions))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
 
@@ -170,7 +222,7 @@ PanelWindow {
         id: islandPanel
 
         anchors.fill: parent
-        radius: surface.expanded ? Theme.radius.xl : Theme.radius.pill
+        radius: surface.largeContent ? Theme.radius.xl : Theme.radius.pill
 
         Behavior on radius {
             NumberAnimation {
@@ -204,6 +256,29 @@ PanelWindow {
         notificationsContent: surface.dashboardNotificationsContent
         navigationContent: surface.dashboardNavigationContent
         onCloseRequested: surface.cancelDashboard()
+    }
+
+    Loader {
+        id: sessionLoader
+
+        anchors.fill: parent
+        active: surface.session && surface.sessionService !== null
+        visible: active
+
+        sourceComponent: Component {
+            SessionView {
+                ownerEpoch: surface.ownerEpoch
+                service: surface.sessionService
+                onActionDispatched: (requestId, epoch) => surface.trackSessionRequest(requestId,
+                                                                                      epoch)
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
     }
 
     HoverHandler {

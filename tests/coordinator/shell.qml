@@ -26,8 +26,7 @@ ShellRoot {
         require(request(), owner + " freshness request enters");
         require(coordinator.ownerName === owner, owner + " owns before freshness boundary");
         nowMs += freshness - 1;
-        require(coordinator.setHover(generation, false), owner
-                + " pre-boundary dispatch succeeds");
+        require(coordinator.setHover(generation, false), owner + " pre-boundary dispatch succeeds");
         require(coordinator.ownerName === owner, owner + " remains fresh before boundary");
         nowMs += 1;
         require(coordinator.setHover(generation, false), owner
@@ -93,12 +92,10 @@ ShellRoot {
 
     function verifyExpandedIntents() {
         attachFreshSurface();
-        require(!coordinator.setHover(generation + 1, true),
-                "stale hover generation is rejected");
+        require(!coordinator.setHover(generation + 1, true), "stale hover generation is rejected");
         require(coordinator.setHover(generation, true), "current hover expands the baseline");
-        require(coordinator.ownerName === "expanded"
-                && coordinator.focusTarget === coordinator.focusNone,
-                "hover expansion never requests keyboard focus");
+        require(coordinator.ownerName === "expanded" && coordinator.focusTarget
+                === coordinator.focusNone, "hover expansion never requests keyboard focus");
         const hoverFocusSerial = coordinator.focusRequestSerial;
         require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
                                                coordinator.revision),
@@ -108,9 +105,9 @@ ShellRoot {
 
         require(coordinator.setExplicitExpanded(generation, true),
                 "deliberate intent joins the expanded baseline");
-        require(coordinator.ownerName === "expanded"
-                && coordinator.focusTarget === coordinator.focusExpandedDashboard
-                && coordinator.focusRequestSerial === hoverFocusSerial + 1,
+        require(coordinator.ownerName === "expanded" && coordinator.focusTarget
+                === coordinator.focusExpandedDashboard && coordinator.focusRequestSerial
+                === hoverFocusSerial + 1,
                 "visible deliberate expansion receives dashboard focus intent");
         require(coordinator.setExplicitExpanded(generation, false),
                 "deliberate intent can clear independently");
@@ -123,8 +120,8 @@ ShellRoot {
         const deliberateFocusSerial = coordinator.focusRequestSerial;
         require(coordinator.setExplicitExpanded(generation, true),
                 "keyboard expansion enters from Idle");
-        require(coordinator.focusRequestSerial === deliberateFocusSerial
-                && coordinator.focusTarget === coordinator.focusExpandedDashboard,
+        require(coordinator.focusRequestSerial === deliberateFocusSerial && coordinator.focusTarget
+                === coordinator.focusExpandedDashboard,
                 "focus waits for the deliberate dashboard presentation");
         require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
                                                coordinator.revision),
@@ -165,16 +162,21 @@ ShellRoot {
         require(coordinator.openLauncher(token), "local launcher intent is accepted");
         require(coordinator.ownerName === "launcher", "launcher preempts expanded");
         require(coordinator.openSession(token), "session intent is accepted");
+        const suspendedSessionEpoch = coordinator.ownerEpoch;
         require(coordinator.ownerName === "session", "session preempts launcher");
         require(coordinator.syncPolkitModal(true, true, 1), "Polkit snapshot is accepted");
         require(coordinator.ownerName === "polkitModal", "Modal preempts session");
         require(coordinator.restorationDepth <= coordinator.maximumRestorationDepth,
                 "restoration chain remains bounded");
-
+        require(coordinator.completeInteractive(suspendedSessionEpoch),
+                "matching completion invalidates a Modal-suspended session");
+        require(coordinator.ownerName === "polkitModal",
+                "suspended completion cannot close the current Modal");
+        require(!coordinator.completeInteractive(suspendedSessionEpoch),
+                "repeated suspended completion is stale");
         require(coordinator.syncPolkitModal(false, false, 0), "Polkit cleanup is accepted");
-        require(coordinator.ownerName === "session", "Modal restores the highest predecessor");
-        require(coordinator.completeInteractive(coordinator.ownerEpoch), "session completes");
-        require(coordinator.ownerName === "launcher", "session restores launcher");
+        require(coordinator.ownerName === "launcher",
+                "Modal cleanup skips the completed session and restores its predecessor");
         require(coordinator.cancelInteractive(coordinator.ownerEpoch), "launcher cancels");
         require(coordinator.ownerName === "expanded", "launcher restores expanded");
 
@@ -198,6 +200,28 @@ ShellRoot {
         require(coordinator.cancelInteractive(launcherEpoch), "Escape cancels current launcher");
         require(coordinator.ownerName === "expanded", "Escape restores the predecessor");
 
+        require(coordinator.openSession(token), "visible dashboard session intent opens");
+        const sessionEpoch = coordinator.ownerEpoch;
+        require(coordinator.acknowledgeVisible(generation, sessionEpoch, coordinator.revision),
+                "matching session presentation is acknowledged");
+        require(coordinator.focusTarget === coordinator.focusSessionActions,
+                "visible session interaction requests action-grid focus");
+        const sessionRevisionBeforeModal = coordinator.revision;
+        require(coordinator.syncPolkitModal(true, true, 2),
+                "Modal can suspend the active session task");
+        require(coordinator.syncPolkitModal(false, false, 0),
+                "Modal cleanup restores an unfinished session task");
+        require(coordinator.ownerName === "session" && coordinator.ownerEpoch === sessionEpoch
+                && coordinator.revision > sessionRevisionBeforeModal,
+                "restoration preserves the session task epoch with a fresh presentation revision");
+        require(coordinator.acknowledgeVisible(generation, sessionEpoch, coordinator.revision),
+                "restored session presentation is acknowledged");
+        require(!coordinator.cancelInteractive(sessionEpoch - 1),
+                "stale session cancellation is rejected");
+        require(coordinator.cancelInteractive(sessionEpoch),
+                "current session cancellation is accepted");
+        require(coordinator.ownerName === "expanded",
+                "session cancellation atomically restores its predecessor");
         require(coordinator.openLauncher(null), "shortcut launcher intent opens");
         require(coordinator.ownerName === "launcher",
                 "global and local origins share launcher behavior");
@@ -306,8 +330,7 @@ ShellRoot {
                                                coordinator.revision),
                 "notification hold starts after visibility");
         nowMs += 500;
-        require(coordinator.setHover(generation, true),
-                "Expanded preempts visible notification");
+        require(coordinator.setHover(generation, true), "Expanded preempts visible notification");
         require(coordinator.ownerName === "expanded", "Expanded owns during preemption");
         require(coordinator.setHover(generation, false), "Expanded releases notification");
         require(coordinator.ownerName === "notification", "fresh predecessor is restored");
@@ -320,8 +343,7 @@ ShellRoot {
         require(coordinator.ownerName === "notification",
                 "restored notification keeps only its remaining hold");
         nowMs += 1;
-        require(coordinator.setHover(generation, false),
-                "remaining hold boundary is processed");
+        require(coordinator.setHover(generation, false), "remaining hold boundary is processed");
         require(coordinator.ownerName === "idle",
                 "remaining hold does not restart from full duration");
 

@@ -10,6 +10,7 @@ ShellRoot {
     property int mountedRegionCount: 0
     property int hoverExpandedEpoch: 0
     property int focusSerialBeforeRestore: 0
+    property real sessionEpoch: 0
     property var initialSurfaceToken: null
     property int initialSurfaceGeneration: 0
     readonly property int maximumRetryAttempts: 500
@@ -51,19 +52,17 @@ ShellRoot {
             require(coordinator.setHover(host.surfaceGeneration, true),
                     "pointer hover intent expands locally");
         } else if (step === 1) {
-            if (!awaitState(coordinator.ownerName === "expanded"
-                            && coordinator.presentationVisible
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.loadedDashboardRegionCount === 6,
                             "hover dashboard did not become visible within five seconds")) {
                 return;
             }
             require(coordinator.focusTarget === coordinator.focusNone && !host.surfaceFocusable,
                     "hover expansion never steals keyboard focus");
-            require(host.surfaceToken === initialSurfaceToken
-                    && host.surfaceGeneration === initialSurfaceGeneration,
-                    "expansion preserves the one live surface");
-            require(host.surfaceWidth <= Theme.size.islandExpandedWidth
-                    && host.surfaceHeight <= Theme.size.islandExpandedHeight,
+            require(host.surfaceToken === initialSurfaceToken && host.surfaceGeneration
+                    === initialSurfaceGeneration, "expansion preserves the one live surface");
+            require(host.surfaceWidth <= Theme.size.islandExpandedWidth && host.surfaceHeight
+                    <= Theme.size.islandExpandedHeight,
                     "expanded geometry stays within its logical bounds");
             hoverExpandedEpoch = coordinator.ownerEpoch;
             require(coordinator.setExplicitExpanded(host.surfaceGeneration, true),
@@ -80,9 +79,8 @@ ShellRoot {
             require(coordinator.openLauncher(host.surfaceToken),
                     "higher-priority interaction interrupts Expanded");
         } else if (step === 3) {
-            if (!awaitState(coordinator.ownerName === "launcher"
-                            && !coordinator.presentationVisible
-                            && !host.surfaceFocusable
+            if (!awaitState(coordinator.ownerName === "launcher" &&
+                            !coordinator.presentationVisible && !host.surfaceFocusable
                             && host.loadedDashboardRegionCount === 0,
                             "interruption did not hide obsolete dashboard content")) {
                 return;
@@ -93,9 +91,9 @@ ShellRoot {
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
         } else if (step === 4) {
-            if (!awaitState(coordinator.ownerName === "expanded"
-                            && coordinator.presentationVisible && host.surfaceFocusable
-                            && host.dashboardFocused && host.loadedDashboardRegionCount === 6,
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.surfaceFocusable && host.dashboardFocused
+                            && host.loadedDashboardRegionCount === 6,
                             "dashboard did not restore visibly with focus")) {
                 return;
             }
@@ -103,8 +101,8 @@ ShellRoot {
                     "restored deliberate dashboard receives one fresh focus request");
             require(host.cancelDashboard(), "keyboard cancellation closes the dashboard");
         } else if (step === 5) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
-                            && !host.surfaceFocusable,
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible &&
+                            !host.surfaceFocusable,
                             "dashboard cancellation did not restore Idle")) {
                 return;
             }
@@ -114,10 +112,10 @@ ShellRoot {
             require(host.requestDeliberateExpansion(),
                     "host exposes deliberate keyboard expansion");
         } else if (step === 6) {
-            if (!awaitState(coordinator.ownerName === "expanded"
-                            && coordinator.presentationVisible && host.surfaceFocusable
-                            && host.surfacePreferredWidth > Theme.size.islandIdleWidth
-                            && host.surfacePreferredHeight > Theme.size.islandIdleHeight,
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.surfaceFocusable && host.surfacePreferredWidth
+                            > Theme.size.islandIdleWidth && host.surfacePreferredHeight
+                            > Theme.size.islandIdleHeight,
                             "reduced-motion dashboard did not become usable")) {
                 return;
             }
@@ -129,11 +127,51 @@ ShellRoot {
                             "reduced-motion collapse did not restore Idle")) {
                 return;
             }
-            require(mountedRegionCount >= 12,
-                    "all six real region components remount after interruption");
+            require(host.requestDeliberateExpansion(),
+                    "session entry can originate from a deliberate dashboard");
+        } else if (step === 8) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible,
+                            "dashboard did not reopen for session entry")) {
+                return;
+            }
+            require(coordinator.openSession(host.surfaceToken),
+                    "visible dashboard session entry is admitted");
+            sessionEpoch = coordinator.ownerEpoch;
+        } else if (step === 9) {
+            if (!awaitState(coordinator.ownerName === "session" && coordinator.presentationVisible
+                            && host.surfaceFocusable && host.sessionFocused,
+                            "session focus state: owner=" + coordinator.ownerName + " visible="
+                            + coordinator.presentationVisible + " focusable="
+                            + host.surfaceFocusable + " focused=" + host.sessionFocused
+                            + " target=" + coordinator.focusTarget + " serial="
+                            + coordinator.focusRequestSerial)) {
+                return;
+            }
+            require(coordinator.focusTarget === coordinator.focusSessionActions,
+                    "session presentation receives the action-grid focus target");
+            require(host.surfaceToken === initialSurfaceToken,
+                    "session interaction preserves the one live surface");
+            require(!coordinator.cancelInteractive(sessionEpoch - 1),
+                    "stale session cancellation cannot close the current owner");
+            require(coordinator.cancelInteractive(sessionEpoch),
+                    "session cancellation accepts the current owner epoch");
+        } else if (step === 10) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.dashboardFocused,
+                            "session cancellation did not restore the deliberate dashboard")) {
+                return;
+            }
+            require(host.cancelDashboard(), "restored dashboard remains cancellable");
+        } else if (step === 11) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
+                            "final dashboard cancellation did not restore Idle")) {
+                return;
+            }
+            require(mountedRegionCount >= 18,
+                    "all six real region components remount across both interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
-            console.warn("actual island dashboard surface tests passed");
+            console.warn("actual island dashboard and session surface tests passed");
             Qt.exit(0);
             return;
         }
@@ -178,6 +216,22 @@ ShellRoot {
         TestRegion {}
     }
 
+    QtObject {
+        id: fakeSessionService
+
+        readonly property bool backendReady: true
+        readonly property bool pending: false
+        readonly property string pendingAction: "none"
+        readonly property string failure: "none"
+
+        signal operationFinished(int requestId, string action, string outcome)
+
+        function clearFailure() {
+        }
+        function requestAction(action) {
+            return 0;
+        }
+    }
     IslandStateCoordinator {
         id: coordinator
     }
@@ -192,6 +246,7 @@ ShellRoot {
         dashboardAudioContent: audioRegion
         dashboardNotificationsContent: notificationsRegion
         dashboardNavigationContent: navigationRegion
+        sessionService: fakeSessionService
     }
 
     Timer {
