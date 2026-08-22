@@ -16,6 +16,12 @@ PanelWindow {
     property bool reducedMotion: false
     property var sessionService: null
     property var notificationService: null
+    // Each source resolves only its own normalized payload for an exact opaque
+    // token, source generation, and backend-confirmed revision.
+    property var workspaceTransientSource: null
+    property var brightnessTransientSource: null
+    property var volumeTransientSource: null
+    property var notificationTransientSource: null
 
     // Downstream dashboard features provide real visual components through
     // these slots. Null content is removed instead of replaced by inert UI.
@@ -34,15 +40,34 @@ PanelWindow {
     readonly property bool expanded: ownerKind === coordinator.ownerExpanded
     readonly property bool session: ownerKind === coordinator.ownerSession
     readonly property bool history: ownerKind === coordinator.ownerHistory
+    readonly property bool transientOwner: ownerKind === coordinator.ownerWorkspace || ownerKind
+                                           === coordinator.ownerBrightness || ownerKind
+                                           === coordinator.ownerVolume || ownerKind
+                                           === coordinator.ownerNotification
+    readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
     readonly property bool largeContent: expanded || history || session
     readonly property int edgeInset: Theme.spacing.sm
-    readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth : Math.max(
-                                                             Theme.size.islandIdleWidth,
-                                                             idleContentWidth)
+    readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth :
+                                                         transientOwner ? (notificationTransient
+                                                                           ? Theme.size.islandTransientNotificationWidth :
+                                                                             Theme.size.islandTransientCompactWidth) :
+                                                                          Math.max(Theme.size.islandIdleWidth,
+                                                                                   idleContentWidth)
     readonly property int preferredHeight: largeContent ? Theme.size.islandExpandedHeight :
-                                                          Theme.size.islandIdleHeight
+                                                          transientOwner ? (notificationTransient
+                                                                            ? Theme.size.islandTransientNotificationHeight :
+                                                                              Theme.size.islandTransientCompactHeight) :
+                                                                           Theme.size.islandIdleHeight
     readonly property int idleContentWidth: idleContent.visible ? idleContent.implicitWidth :
                                                                   Theme.size.islandIdleWidth
+    readonly property bool transientCommitted: transientLoader.item !== null
+                                               && transientLoader.item.committed
+    readonly property bool transientEntryAnimationRunning: transientLoader.item !== null
+                                                           && transientLoader.item.entryAnimationRunning
+    readonly property string transientPrimaryText: transientLoader.item === null ? "" :
+                                                                                   transientLoader.item.primaryText
+    readonly property string transientDetailText: transientLoader.item === null ? "" :
+                                                                                  transientLoader.item.detailText
     readonly property int geometryAnimationDuration: reducedMotion ? 0 : Theme.motion.durationSlow
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
@@ -61,6 +86,40 @@ PanelWindow {
     property int sessionRequestId: 0
     property real sessionRequestOwnerEpoch: 0
 
+    function sourceForTransient(kind) {
+        if (kind === coordinator.ownerWorkspace) {
+            return workspaceTransientSource;
+        }
+        if (kind === coordinator.ownerBrightness) {
+            return brightnessTransientSource;
+        }
+        if (kind === coordinator.ownerVolume) {
+            return volumeTransientSource;
+        }
+        if (kind === coordinator.ownerNotification) {
+            return notificationTransientSource;
+        }
+        return null;
+    }
+
+    function resolveTransientPresentation() {
+        if (!transientOwner) {
+            return null;
+        }
+        const source = sourceForTransient(ownerKind);
+        if (source === null || source === undefined || typeof source.resolveTransient
+                !== "function") {
+            return null;
+        }
+        const resolved = source.resolveTransient(coordinator.ownerSourceToken,
+                                                 coordinator.ownerSourceGeneration,
+                                                 coordinator.ownerSourceRevision);
+        return resolved !== null && typeof resolved === "object" && !Array.isArray(resolved)
+                ? resolved : null;
+    }
+
+    readonly property var transientPresentation: resolveTransientPresentation()
+
     function acknowledgePresentation(generation, epoch, contentRevision) {
         if (generation <= 0 || hostSurfaceGeneration !== generation || ownerEpoch !== epoch
                 || ownerRevision !== contentRevision) {
@@ -73,7 +132,10 @@ PanelWindow {
               !== null && historyLoader.item.visible;
         const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
               !== null && sessionLoader.item.visible;
-        if (!idleVisible && !dashboardVisible && !historyVisible && !sessionVisible) {
+        const transientVisible = transientOwner && transientLoader.item !== null
+              && transientLoader.item.visible && transientLoader.item.committed;
+        if (!idleVisible && !dashboardVisible && !historyVisible && !sessionVisible &&
+                !transientVisible) {
             return;
         }
 
@@ -237,7 +299,8 @@ PanelWindow {
         id: islandPanel
 
         anchors.fill: parent
-        radius: surface.largeContent ? Theme.radius.xl : Theme.radius.pill
+        radius: surface.notificationTransient ? Theme.radius.lg : surface.largeContent
+                                                ? Theme.radius.xl : Theme.radius.pill
 
         Behavior on radius {
             NumberAnimation {
@@ -245,6 +308,30 @@ PanelWindow {
                 easing.type: Theme.motion.easingEmphasized
             }
         }
+    }
+
+    Loader {
+        id: transientLoader
+
+        anchors.fill: parent
+        active: surface.transientOwner && surface.transientPresentation !== null
+        visible: active
+
+        sourceComponent: Component {
+            TransientView {
+                active: transientLoader.visible
+                kind: surface.coordinator.ownerName
+                ownerEpoch: surface.ownerEpoch
+                ownerRevision: surface.ownerRevision
+                presentation: surface.transientPresentation
+                reducedMotion: surface.reducedMotion
+                surfaceGeneration: surface.hostSurfaceGeneration
+                onVisiblyCommitted: (generation, epoch, contentRevision)
+                                    => surface.acknowledgePresentation(generation, epoch,
+                                                                       contentRevision)
+            }
+        }
+        onLoaded: item.beginEntry()
     }
 
     IdleIsland {

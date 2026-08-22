@@ -144,19 +144,20 @@ ShellRoot {
 
     function run() {
         attachFreshSurface();
-        require(coordinator.requestWorkspace("workspace", token), "workspace request is accepted");
+        require(coordinator.requestWorkspace("workspace", 1, 1, token),
+                "workspace request is accepted");
         require(coordinator.ownerName === "workspace", "workspace owns idle");
-        require(coordinator.requestBrightness("brightness", token),
+        require(coordinator.requestBrightness("brightness", 1, 1, token),
                 "brightness request is accepted");
         require(coordinator.ownerName === "brightness",
                 "higher transient preempts lower transient");
-        require(coordinator.requestWorkspace("other-workspace", token),
+        require(coordinator.requestWorkspace("other-workspace", 1, 1, token),
                 "lower transient enters mailbox");
         require(coordinator.ownerName === "brightness",
                 "lower transient cannot replace higher transient");
         require(coordinator.setHover(generation, true), "expanded baseline is accepted");
         require(coordinator.ownerName === "expanded", "expanded preempts transients");
-        require(coordinator.requestNotification("notification", token),
+        require(coordinator.requestNotification("notification", 1, 1, token),
                 "notification is held while expanded");
         require(coordinator.ownerName === "expanded", "transient cannot replace expanded");
         require(coordinator.openLauncher(token), "local launcher intent is accepted");
@@ -263,7 +264,7 @@ ShellRoot {
         require(!coordinator.openSession(token), "session is rejected during Modal");
         require(coordinator.ownerName === "polkitModal" && coordinator.focusRequestSerial
                 === modalFocus, "lower requests cannot steal Modal ownership or focus");
-        require(coordinator.requestNotification("held", null),
+        require(coordinator.requestNotification("held", 1, 1, null),
                 "fresh notification is held during Modal");
         require(coordinator.pendingTransientCount === 1,
                 "held transient occupies one bounded slot");
@@ -294,7 +295,7 @@ ShellRoot {
         require(coordinator.ownerName === "idle", "reattached Modal restores new baseline only");
 
         attachFreshSurface();
-        require(coordinator.requestNotification("timeout", token), "notification enters");
+        require(coordinator.requestNotification("timeout", 1, 1, token), "notification enters");
         const notificationEpoch = coordinator.ownerEpoch;
         require(coordinator.acknowledgeVisible(generation, notificationEpoch, coordinator.revision),
                 "notification presentation is acknowledged");
@@ -307,15 +308,28 @@ ShellRoot {
         require(!coordinator.acknowledgeVisible(generation, notificationEpoch, 1),
                 "stale visible acknowledgement is ignored");
 
-        require(coordinator.requestVolume("visible-coalescing", token),
+        require(coordinator.requestVolume("visible-coalescing", 1, 1, token),
                 "visible value event enters");
         const coalescedEpoch = coordinator.ownerEpoch;
         const supersededRevision = coordinator.revision;
-        require(coordinator.requestVolume("visible-coalescing", token),
+        require(coordinator.requestVolume("visible-coalescing", 1, 2, token),
                 "superseding value event coalesces in place");
         require(coordinator.ownerEpoch === coalescedEpoch && coordinator.revision
                 === supersededRevision + 1,
                 "coalescing preserves owner and advances content revision");
+        require(coordinator.ownerSourceGeneration === 1 && coordinator.ownerSourceRevision === 2,
+                "coalescing exposes the exact latest source version");
+        require(!coordinator.requestVolume("visible-coalescing", 1, 2, token),
+                "duplicate source revision cannot restart the visible hold");
+        require(!coordinator.requestVolume("visible-coalescing", 1, 1, token),
+                "older source revision is rejected");
+        require(coordinator.requestVolume("visible-coalescing", 2, 1, token),
+                "a new source generation receives an independent pending slot");
+        require(coordinator.pendingTransientCount === 1,
+                "generation-scoped coalescing does not merge distinct sources");
+        require(coordinator.invalidateTransient("visible-coalescing", 2)
+                && coordinator.pendingTransientCount === 0,
+                "source invalidation removes matching pending work");
         require(!coordinator.acknowledgeVisible(generation, coalescedEpoch, supersededRevision),
                 "superseded presentation acknowledgement is rejected");
         require(coordinator.acknowledgeVisible(generation, coalescedEpoch, coordinator.revision),
@@ -324,31 +338,42 @@ ShellRoot {
         require(coordinator.setHover(generation, false), "coalesced hold boundary is processed");
         require(coordinator.ownerName === "idle", "coalesced value releases once");
 
-        require(!coordinator.requestNotification("x".repeat(129), token),
+        require(!coordinator.requestNotification("x".repeat(129), 1, 1, token),
                 "oversized source token is rejected");
-        require(!coordinator.requestNotification({}, token), "object source token is rejected");
+        require(!coordinator.requestNotification({}, 1, 1, token),
+                "object source token is rejected");
+        require(!coordinator.requestNotification("bounded-version",
+                                                 coordinator.maximumSourceVersion + 1, 1, token),
+                "oversized source generation is rejected");
+        require(!coordinator.requestNotification("bounded-version", 1,
+                                                 coordinator.maximumSourceVersion + 1, token),
+                "oversized source revision is rejected");
+        require(!coordinator.invalidateTransient("bounded-version",
+                                                 coordinator.maximumSourceVersion + 1),
+                "oversized invalidation generation is rejected");
 
-        exerciseVisibleHold(() => coordinator.requestVolume("volume-hold", token), "volume", 1800);
-        exerciseVisibleHold(() => coordinator.requestBrightness("brightness-hold", token),
+        exerciseVisibleHold(() => coordinator.requestVolume("volume-hold", 1, 1, token), "volume",
+        1800);
+        exerciseVisibleHold(() => coordinator.requestBrightness("brightness-hold", 1, 1, token),
         "brightness", 1800);
-        exerciseVisibleHold(() => coordinator.requestWorkspace("workspace-hold", token), "workspace",
-        1200);
+        exerciseVisibleHold(() => coordinator.requestWorkspace("workspace-hold", 1, 1, token),
+        "workspace", 1200);
 
-        require(coordinator.requestWorkspace("freshness", token),
+        require(coordinator.requestWorkspace("freshness", 1, 1, token),
                 "workspace enters without acknowledgement");
         nowMs += 2000;
         require(coordinator.setHover(generation, false), "freshness boundary is processed");
         require(coordinator.ownerName === "idle",
                 "freshness expires even before visibility acknowledgement");
 
-        exerciseFreshness(() => coordinator.requestBrightness("brightness-freshness", token),
+        exerciseFreshness(() => coordinator.requestBrightness("brightness-freshness", 1, 1, token),
         "brightness", 3000);
-        exerciseFreshness(() => coordinator.requestVolume("volume-freshness", token), "volume",
+        exerciseFreshness(() => coordinator.requestVolume("volume-freshness", 1, 1, token), "volume",
         3000);
-        exerciseFreshness(() => coordinator.requestNotification("notification-freshness", token),
-        "notification", 6000);
+        exerciseFreshness(() => coordinator.requestNotification("notification-freshness", 1, 1,
+                                                                token), "notification", 6000);
 
-        require(coordinator.requestNotification("remaining-hold", token),
+        require(coordinator.requestNotification("remaining-hold", 1, 1, token),
                 "notification enters for hold resumption");
         require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
                                                coordinator.revision),
@@ -370,20 +395,39 @@ ShellRoot {
         require(coordinator.setHover(generation, false), "remaining hold boundary is processed");
         require(coordinator.ownerName === "idle",
                 "remaining hold does not restart from full duration");
+        require(coordinator.requestVolume("invalidation", 7, 1, token),
+                "value source enters for invalidation");
+        require(coordinator.requestNotification("invalidation-notification", 8, 1, token),
+                "higher transient suspends the value source");
+        require(coordinator.ownerName === "notification" && coordinator.restorationDepth === 1,
+                "strict transient preemption captures one predecessor");
+        require(!coordinator.invalidateTransient("invalidation", 6),
+                "stale source generation cannot remove a live predecessor");
+        require(coordinator.invalidateTransient("invalidation-notification", 8),
+                "current source invalidation is accepted");
+        require(coordinator.ownerName === "volume" && coordinator.ownerSourceGeneration === 7,
+                "current invalidation atomically restores the relevant predecessor");
+        require(coordinator.invalidateTransient("invalidation", 7) && coordinator.ownerName
+                === "idle", "restored source invalidation removes it without stale content");
 
         require(coordinator.syncPolkitModal(true, true, 20), "Modal opens for mailbox test");
+        require(coordinator.requestWorkspace("pending-invalidation", 9, 1, null),
+                "Modal admits a pending source for invalidation");
+        require(coordinator.invalidateTransient("pending-invalidation", 9)
+                && coordinator.pendingTransientCount === 0,
+                "source invalidation removes matching Modal-held work");
         for (let index = 1; index <= 8; index += 1) {
-            require(coordinator.requestNotification("notification-" + index, null),
+            require(coordinator.requestNotification("notification-" + index, 1, 1, null),
                     "mailbox accepts bounded notification " + index);
         }
         require(coordinator.pendingTransientCount === 8, "mailbox reaches its fixed capacity");
-        require(coordinator.requestNotification("notification-4", null),
+        require(coordinator.requestNotification("notification-4", 1, 2, null),
                 "coalesced update is accepted");
         require(coordinator.pendingTransientCount === 8, "coalescing retains admission slot");
-        require(!coordinator.requestWorkspace("overflow-low", null),
+        require(!coordinator.requestWorkspace("overflow-low", 1, 1, null),
                 "lower-rank overflow is rejected");
         require(coordinator.pendingTransientCount === 8, "rejected overflow does not grow mailbox");
-        require(coordinator.requestNotification("notification-9", null),
+        require(coordinator.requestNotification("notification-9", 1, 1, null),
                 "equal-rank overflow evicts oldest lowest-rank slot");
         require(coordinator.pendingTransientCount === 8, "accepted overflow remains bounded");
         require(coordinator.syncPolkitModal(false, false, 0), "mailbox Modal releases");

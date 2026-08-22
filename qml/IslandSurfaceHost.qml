@@ -15,6 +15,10 @@ Scope {
     property var media: null
     property var sessionService: null
     property var notificationService: null
+    property var workspaceTransientSource: null
+    property var brightnessTransientSource: null
+    property var volumeTransientSource: null
+    property var notificationTransientSource: null
     property bool reducedMotion: false
     property Component dashboardMediaContent: null
     property Component dashboardClockContent: null
@@ -52,6 +56,14 @@ Scope {
                                                      && ownership.liveSurface.historyEmptyStateVisible
     readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
                                                                                       ownership.liveSurface.geometryAnimationDuration
+    readonly property bool transientCommitted: ownership.liveSurface !== null
+                                               && ownership.liveSurface.transientCommitted
+    readonly property bool transientEntryAnimationRunning: ownership.liveSurface !== null
+                                                           && ownership.liveSurface.transientEntryAnimationRunning
+    readonly property string transientPrimaryText: ownership.liveSurface === null ? "" :
+                                                                                    ownership.liveSurface.transientPrimaryText
+    readonly property string transientDetailText: ownership.liveSurface === null ? "" :
+                                                                                   ownership.liveSurface.transientDetailText
 
     function cancelDashboard() {
         return ownership.liveSurface !== null && ownership.liveSurface.cancelDashboard();
@@ -190,6 +202,10 @@ Scope {
             media: host.media
             sessionService: host.sessionService
             notificationService: host.notificationService
+            workspaceTransientSource: host.workspaceTransientSource
+            brightnessTransientSource: host.brightnessTransientSource
+            volumeTransientSource: host.volumeTransientSource
+            notificationTransientSource: host.notificationTransientSource
             reducedMotion: host.reducedMotion
             dashboardMediaContent: host.dashboardMediaContent
             dashboardClockContent: host.dashboardClockContent
