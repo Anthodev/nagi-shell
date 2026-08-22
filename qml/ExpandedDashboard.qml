@@ -49,6 +49,7 @@ FocusScope {
             active: dashboard.visible
             Layout.row: 0
             Layout.column: 0
+            Layout.columnSpan: dashboard.clockContent === null ? 2 : 1
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
@@ -60,7 +61,8 @@ FocusScope {
             content: dashboard.clockContent
             active: dashboard.visible
             Layout.row: 0
-            Layout.column: 1
+            Layout.column: dashboard.mediaContent === null ? 0 : 1
+            Layout.columnSpan: dashboard.mediaContent === null ? 2 : 1
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
