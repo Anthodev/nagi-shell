@@ -34,6 +34,11 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-connectivity")
     }
 
+    SessionService {
+        id: session
+        helperPath: Quickshell.shellPath("build/nagi-session")
+    }
+
     ApplicationModel {
         id: applications
 
@@ -56,17 +61,28 @@ ShellRoot {
         }
     }
 
+    Component {
+        id: sessionDashboardEntry
+
+        SessionEntry {
+            onOpenRequested: islandState.openSession(islandHost.surfaceToken)
+        }
+    }
+
     ReducedMotion {
         id: motion
     }
 
     IslandSurfaceHost {
+        id: islandHost
         coordinator: islandState
         virtualDesktops: virtualDesktops
         clock: clock
         weather: weather
         media: media
+        sessionService: session
         reducedMotion: motion.active
         dashboardQuickControlsContent: tray.available ? trayDashboardContent : null
+        dashboardNavigationContent: sessionDashboardEntry
     }
 }

@@ -14,7 +14,7 @@ import QtQuick
 //   textSecondary >= 10.2:1  AAA body text
 //   textMuted     >=  5.8:1  AA body text
 //   accentForeground = 7.4:1  against the accent fill
-//   dangerForeground = 6.6:1  against the danger fill
+//   danger       >=  4.9:1  against every destructive control fill
 //   focusRing     >=  8.8:1  non-text UI minimum is 3:1
 //   accent        >=  7.19:1 control boundary against the surface
 //   progressFill  =   5.9:1  against the progress track
@@ -40,9 +40,9 @@ Singleton {
         readonly property color accentPressed: "#6390EE"
         readonly property color accentForeground: "#0B1220"
         readonly property color danger: "#F26D7E"
-        readonly property color dangerHover: "#F58594"
-        readonly property color dangerPressed: "#E4576B"
-        readonly property color dangerForeground: "#1F0A0E"
+        readonly property color dangerFill: "#21171B"
+        readonly property color dangerFillHover: "#321B22"
+        readonly property color dangerFillPressed: "#43202A"
         readonly property color success: "#7BD88F"
         readonly property color warning: "#E8C268"
         readonly property color focusRing: "#8FB5FF"

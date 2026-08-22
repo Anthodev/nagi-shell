@@ -22,9 +22,14 @@ CONNECTIVITY_HELPER := $(BUILD_DIR)/nagi-connectivity
 CONNECTIVITY_MOC := $(BUILD_DIR)/connectivity/main.moc
 CONNECTIVITY_DBUS_TEST := $(BUILD_DIR)/connectivity-dbus-test
 CONNECTIVITY_DBUS_TEST_MOC := $(BUILD_DIR)/connectivity_dbus_test.moc
+SESSION_HELPER := $(BUILD_DIR)/nagi-session
+SESSION_MOC := $(BUILD_DIR)/session/main.moc
+SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
+SESSION_DBUS_TEST_MOC := $(BUILD_DIR)/session_dbus_test.moc
 APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
+SESSION_TEST_DIR := $(BUILD_DIR)/session-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
 MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
@@ -75,7 +80,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -83,6 +88,7 @@ help:
 		'make helper          Build the KWin virtual desktop helper' \
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
+		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make test-native     Test KWin tuple normalization' \
@@ -90,6 +96,8 @@ help:
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
+		'make test-session-dbus  Test KDE session dispatch, denial, and cleanup' \
+		'make test-session   Test session service and interaction state' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
 		'make test-notifications  Test notification lifecycle and bounded history' \
 		'make test-adapter    Test the QML adapter boundary' \
@@ -169,7 +177,14 @@ $(CONNECTIVITY_MOC): src/connectivity/main.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(MOC) $< -o $@
 
+$(SESSION_MOC): src/session/main.cpp | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(MOC) $< -o $@
+
 $(CONNECTIVITY_DBUS_TEST_MOC): tests/connectivity_dbus_test.cpp | $(BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(SESSION_DBUS_TEST_MOC): tests/session_dbus_test.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
 
 $(NOTIFICATION_RUNTIME_MOC): src/notifications/runtime.h | $(NOTIFICATION_BUILD_DIR)
@@ -205,8 +220,14 @@ $(AUDIO_VOLUME_TEST): tests/pipewire_audio_volume_test.cpp src/pipewire-audio/vo
 $(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(CONNECTIVITY_MOC)) src/connectivity/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
+$(SESSION_HELPER): src/session/main.cpp $(SESSION_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(SESSION_MOC)) src/session/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 $(CONNECTIVITY_DBUS_TEST): tests/connectivity_dbus_test.cpp $(CONNECTIVITY_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/connectivity_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/session_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
 $(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) $(GIO_CFLAGS) $(APPLICATION_HELPER_SOURCE) -o $@ $(LDFLAGS) $(QT_LIBS) $(GIO_LIBS)
@@ -232,6 +253,8 @@ helper: check-helper-toolchain $(HELPER)
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
+
+session-helper: check-helper-toolchain $(SESSION_HELPER)
 
 application-helper: check-application-toolchain $(APPLICATION_HELPER)
 
@@ -278,6 +301,16 @@ test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTIVITY_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(CONNECTIVITY_DBUS_TEST) $(abspath $(CONNECTIVITY_HELPER))
+
+test-session-dbus: check-helper-toolchain $(SESSION_HELPER) $(SESSION_DBUS_TEST)
+	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
+	$(DBUS_RUN_SESSION) -- $(SESSION_DBUS_TEST) $(abspath $(SESSION_HELPER))
+
+test-session: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(SESSION_TEST_DIR)/qml
+	cp tests/session/shell.qml $(SESSION_TEST_DIR)/shell.qml
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/SessionBridge.qml qml/SessionService.qml qml/SessionEntry.qml qml/SessionView.qml $(SESSION_TEST_DIR)/qml/
+	$(QS) -p $(SESSION_TEST_DIR) --no-duplicate
 
 test-adapter: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/adapter-test/qml
@@ -348,13 +381,13 @@ test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUIL
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
@@ -377,10 +410,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper application-helper notification-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper session-helper application-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper application-helper notification-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper session-helper application-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -427,6 +460,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-tray test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-tray test-idle
 clean:
 	rm -rf $(BUILD_DIR)

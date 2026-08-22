@@ -22,6 +22,7 @@ Scope {
     readonly property int focusLauncherSearch: 1
     readonly property int focusPolkitModal: 2
     readonly property int focusExpandedDashboard: 3
+    readonly property int focusSessionActions: 4
 
     readonly property int surfaceGeneration: reducer.surfaceGeneration
     readonly property var surfaceToken: reducer.surfaceToken
@@ -223,6 +224,9 @@ Scope {
                             "holdDuration": holdRemaining,
                             "kind": ownerKind,
                             "rank": ownerRank,
+                            "revision": revision,
+                            "taskEpoch": (ownerKind === root.ownerLauncher || ownerKind
+                                          === root.ownerSession) ? ownerEpoch : 0,
                             "sourceToken": ownerSourceToken,
                             "surfaceGeneration": surfaceGeneration
                         });
@@ -275,20 +279,27 @@ Scope {
         }
 
         function enterOwner(kind, sourceToken, record, now) {
-            nextOwnerEpoch += 1;
+            const restoredTaskEpoch = record === null ? 0 : record.taskEpoch;
+            if ((kind === root.ownerLauncher || kind === root.ownerSession) && typeof restoredTaskEpoch
+                    === "number" && restoredTaskEpoch > 0) {
+                ownerEpoch = restoredTaskEpoch;
+                revision = Math.max(1, record.revision + 1);
+            } else {
+                nextOwnerEpoch += 1;
+                ownerEpoch = nextOwnerEpoch;
+                revision = 1;
+            }
             ownerKind = kind;
             ownerRank = rankFor(kind);
-            ownerEpoch = nextOwnerEpoch;
-            revision = 1;
             ownerSourceToken = sourceToken;
             ownerAdmission = record === null ? 0 : record.admission;
             ownerFreshUntil = record === null ? -1 : record.freshUntil;
             ownerHoldDuration = record === null ? holdFor(kind) : record.holdDuration;
             ownerHoldUntil = -1;
             presentationVisible = false;
-            focusPending = kind === root.ownerLauncher || kind === root.ownerPolkitModal || (kind
-                                                                                             === root.ownerExpanded
-                                                                                             && explicitExpandedIntent);
+            focusPending = kind === root.ownerLauncher || kind === root.ownerSession || kind
+                    === root.ownerPolkitModal || (kind === root.ownerExpanded
+                                                  && explicitExpandedIntent);
             focusTarget = focusFor(kind);
         }
 
@@ -338,20 +349,31 @@ Scope {
                 restoreNext(now);
             }
         }
-
         function finishInteractive(epoch) {
             const now = currentTime();
             expireDue(now);
 
-            if ((ownerKind !== root.ownerLauncher && ownerKind !== root.ownerSession) || ownerEpoch
-                    !== epoch) {
+            if ((ownerKind === root.ownerLauncher || ownerKind === root.ownerSession) && ownerEpoch
+                    === epoch) {
+                restoreNext(now);
                 schedule(now);
-                return false;
+                return true;
             }
 
-            restoreNext(now);
+            for (let index = restoration.length - 1; index >= 0; index -= 1) {
+                const frame = restoration[index];
+                if ((frame.kind === root.ownerLauncher || frame.kind === root.ownerSession)
+                        && frame.taskEpoch === epoch) {
+                    const frames = restoration.slice();
+                    frames.splice(index, 1);
+                    restoration = frames;
+                    schedule(now);
+                    return true;
+                }
+            }
+
             schedule(now);
-            return true;
+            return false;
         }
 
         function focusFor(kind) {
@@ -363,6 +385,9 @@ Scope {
             }
             if (kind === root.ownerExpanded && explicitExpandedIntent) {
                 return root.focusExpandedDashboard;
+            }
+            if (kind === root.ownerSession) {
+                return root.focusSessionActions;
             }
             return root.focusNone;
         }

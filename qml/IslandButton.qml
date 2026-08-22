@@ -39,8 +39,8 @@ AbstractButton {
                                                                    Theme.color.accent;
         }
         if (variant === "danger") {
-            return pressed ? Theme.color.dangerPressed : hovered ? Theme.color.dangerHover :
-                                                                   Theme.color.danger;
+            return pressed ? Theme.color.dangerFillPressed : hovered ? Theme.color.dangerFillHover :
+                                                                       Theme.color.dangerFill;
         }
         return pressed ? Theme.color.controlFillPressed : hovered ? Theme.color.controlFillHover :
                                                                     Theme.color.controlFill;
@@ -51,7 +51,7 @@ AbstractButton {
             return Theme.color.accentForeground;
         }
         if (variant === "danger") {
-            return Theme.color.dangerForeground;
+            return Theme.color.danger;
         }
         return Theme.color.textPrimary;
     }
