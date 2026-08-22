@@ -16,6 +16,7 @@ PanelWindow {
     property bool reducedMotion: false
     property var sessionService: null
     property var notificationService: null
+    property var applicationModel: null
     // Each source resolves only its own normalized payload for an exact opaque
     // token, source generation, and backend-confirmed revision.
     property var workspaceTransientSource: null
@@ -38,6 +39,7 @@ PanelWindow {
     readonly property int focusTarget: coordinator.focusTarget
     readonly property real focusRequestSerial: coordinator.focusRequestSerial
     readonly property bool expanded: ownerKind === coordinator.ownerExpanded
+    readonly property bool launcher: ownerKind === coordinator.ownerLauncher
     readonly property bool session: ownerKind === coordinator.ownerSession
     readonly property bool history: ownerKind === coordinator.ownerHistory
     readonly property bool transientOwner: ownerKind === coordinator.ownerWorkspace || ownerKind
@@ -45,7 +47,7 @@ PanelWindow {
                                            === coordinator.ownerVolume || ownerKind
                                            === coordinator.ownerNotification
     readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
-    readonly property bool largeContent: expanded || history || session
+    readonly property bool largeContent: expanded || launcher || history || session
     readonly property int edgeInset: Theme.spacing.sm
     readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth :
                                                          transientOwner ? (notificationTransient
@@ -71,6 +73,12 @@ PanelWindow {
     readonly property int geometryAnimationDuration: reducedMotion ? 0 : Theme.motion.durationSlow
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
+    readonly property bool launcherFocused: launcherLoader.item !== null
+                                            && launcherLoader.item.searchFocused
+    readonly property int launcherResultCount: launcherLoader.item === null ? 0 :
+                                                                              launcherLoader.item.resultCount
+    readonly property string launcherSelectedId: launcherLoader.item === null ? "" :
+                                                                                launcherLoader.item.selectedId
     readonly property bool sessionFocused: sessionLoader.item !== null
                                            && sessionLoader.item.activeFocus
     readonly property bool historyFocused: historyLoader.item !== null
@@ -85,6 +93,8 @@ PanelWindow {
     property real appliedFocusRequestSerial: 0
     property int sessionRequestId: 0
     property real sessionRequestOwnerEpoch: 0
+    property int launcherRequestId: 0
+    property real launcherRequestOwnerEpoch: 0
 
     function sourceForTransient(kind) {
         if (kind === coordinator.ownerWorkspace) {
@@ -130,12 +140,14 @@ PanelWindow {
         const dashboardVisible = ownerKind === coordinator.ownerExpanded && expandedContent.visible;
         const historyVisible = ownerKind === coordinator.ownerHistory && historyLoader.item
               !== null && historyLoader.item.visible;
+        const launcherVisible = ownerKind === coordinator.ownerLauncher && launcherLoader.item
+              !== null && launcherLoader.item.visible;
         const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
               !== null && sessionLoader.item.visible;
         const transientVisible = transientOwner && transientLoader.item !== null
               && transientLoader.item.visible && transientLoader.item.committed;
-        if (!idleVisible && !dashboardVisible && !historyVisible && !sessionVisible &&
-                !transientVisible) {
+        if (!idleVisible && !dashboardVisible && !launcherVisible && !historyVisible &&
+                !sessionVisible && !transientVisible) {
             return;
         }
 
@@ -153,6 +165,14 @@ PanelWindow {
         const explicitAccepted = coordinator.setExplicitExpanded(hostSurfaceGeneration, false);
         const hoverAccepted = coordinator.setHover(hostSurfaceGeneration, false);
         return explicitAccepted && hoverAccepted;
+    }
+
+    function trackLauncherRequest(requestId, epoch) {
+        if (!launcher || epoch !== ownerEpoch || requestId <= 0 || launcherRequestId !== 0) {
+            return;
+        }
+        launcherRequestId = requestId;
+        launcherRequestOwnerEpoch = epoch;
     }
 
     function trackSessionRequest(requestId, epoch) {
@@ -177,6 +197,9 @@ PanelWindow {
             if (surface.focusTarget === surface.coordinator.focusExpandedDashboard
                     && surface.expanded) {
                 target = expandedContent;
+            } else if (surface.focusTarget === surface.coordinator.focusLauncherSearch
+                       && surface.launcher && launcherLoader.item !== null) {
+                target = launcherLoader.item;
             } else if (surface.focusTarget === surface.coordinator.focusNotificationHistory
                        && surface.history && historyLoader.item !== null) {
                 target = historyLoader.item;
@@ -251,6 +274,28 @@ PanelWindow {
     }
 
     Connections {
+        target: surface.applicationModel
+        ignoreUnknownSignals: true
+
+        function onLaunchAccepted(requestId, desktopFileId) {
+            if (requestId !== surface.launcherRequestId) {
+                return;
+            }
+            const epoch = surface.launcherRequestOwnerEpoch;
+            surface.launcherRequestId = 0;
+            surface.launcherRequestOwnerEpoch = 0;
+            surface.coordinator.completeInteractive(epoch);
+        }
+
+        function onLaunchRejected(requestId, category) {
+            if (requestId === surface.launcherRequestId) {
+                surface.launcherRequestId = 0;
+                surface.launcherRequestOwnerEpoch = 0;
+            }
+        }
+    }
+
+    Connections {
         target: surface.sessionService
         ignoreUnknownSignals: true
 
@@ -272,10 +317,12 @@ PanelWindow {
     color: "transparent"
     exclusiveZone: 0
     focusable: focusedOwnerEpoch === ownerEpoch && appliedFocusRequestSerial === focusRequestSerial
-               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (history
+               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (launcher
                                                                                         && focusTarget
-                                                                                        === coordinator.focusNotificationHistory)
-                   || (session && focusTarget === coordinator.focusSessionActions))
+                                                                                        === coordinator.focusLauncherSearch)
+                   || (history && focusTarget === coordinator.focusNotificationHistory) || (session
+                                                                                            && focusTarget
+                                                                                            === coordinator.focusSessionActions))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
 
@@ -358,6 +405,29 @@ PanelWindow {
         notificationsContent: surface.dashboardNotificationsContent
         navigationContent: surface.dashboardNavigationContent
         onCloseRequested: surface.cancelDashboard()
+    }
+
+    Loader {
+        id: launcherLoader
+
+        anchors.fill: parent
+        active: surface.launcher && surface.applicationModel !== null
+        visible: active
+
+        sourceComponent: Component {
+            LauncherView {
+                applicationModel: surface.applicationModel
+                ownerEpoch: surface.ownerEpoch
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+                onLaunchDispatched: (requestId, epoch) => surface.trackLauncherRequest(requestId,
+                                                                                       epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
     }
 
     Loader {

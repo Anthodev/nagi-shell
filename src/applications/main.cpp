@@ -78,6 +78,59 @@ bool validDbusActivation(GDesktopAppInfo *info, const QString &id)
         && !busName.startsWith(u':');
 }
 
+bool eligibleDesktopInfo(GDesktopAppInfo *info, const QString &id)
+{
+    if (info == nullptr || !validDesktopId(id) || !g_app_info_should_show(G_APP_INFO(info))) {
+        return false;
+    }
+
+    const char *rawId = g_app_info_get_id(G_APP_INFO(info));
+    if (rawId == nullptr || !g_utf8_validate(rawId, -1, nullptr)
+        || QString::fromUtf8(rawId) != id) {
+        return false;
+    }
+
+    const bool terminal =
+        g_desktop_app_info_get_boolean(info, G_KEY_FILE_DESKTOP_KEY_TERMINAL);
+    char *exec = g_desktop_app_info_get_string(info, G_KEY_FILE_DESKTOP_KEY_EXEC);
+    const bool hasExec = exec != nullptr && *exec != '\0';
+    const bool launchable =
+        !terminal && (hasExec ? validExecFieldCodes(exec) : validDbusActivation(info, id));
+    g_free(exec);
+    return launchable;
+}
+
+QJsonObject launchApplication(qint64 requestId, const QString &id)
+{
+    QJsonObject response {
+        {QStringLiteral("type"), QStringLiteral("launch-result")},
+        {QStringLiteral("requestId"), requestId},
+        {QStringLiteral("accepted"), false},
+        {QStringLiteral("category"), QStringLiteral("ineligible")},
+    };
+    if (!validDesktopId(id)) {
+        return response;
+    }
+
+    const QByteArray encodedId = id.toUtf8();
+    GDesktopAppInfo *info = g_desktop_app_info_new(encodedId.constData());
+    if (!eligibleDesktopInfo(info, id)) {
+        if (info != nullptr) {
+            g_object_unref(info);
+        }
+        return response;
+    }
+
+    GError *error = nullptr;
+    const bool accepted = g_app_info_launch(G_APP_INFO(info), nullptr, nullptr, &error);
+    g_clear_error(&error);
+    g_object_unref(info);
+    response.insert(QStringLiteral("accepted"), accepted);
+    response.insert(QStringLiteral("category"),
+                    accepted ? QStringLiteral("none") : QStringLiteral("launch"));
+    return response;
+}
+
 bool discoveryPathsAccessible()
 {
     QStringList roots;
@@ -133,7 +186,7 @@ QJsonObject discoveryGeneration(qint64 generation)
     qsizetype count = 0;
     for (GList *node = applications; node != nullptr; node = node->next) {
         GAppInfo *appInfo = G_APP_INFO(node->data);
-        if (!G_IS_DESKTOP_APP_INFO(appInfo) || !g_app_info_should_show(appInfo)) {
+        if (!G_IS_DESKTOP_APP_INFO(appInfo)) {
             continue;
         }
 
@@ -152,15 +205,7 @@ QJsonObject discoveryGeneration(qint64 generation)
             valid = false;
             break;
         }
-
-        const bool terminal = g_desktop_app_info_get_boolean(
-            desktopInfo, G_KEY_FILE_DESKTOP_KEY_TERMINAL);
-        char *exec = g_desktop_app_info_get_string(desktopInfo, G_KEY_FILE_DESKTOP_KEY_EXEC);
-        const bool hasExec = exec != nullptr && *exec != '\0';
-        const bool launchable = !terminal
-            && (hasExec ? validExecFieldCodes(exec) : validDbusActivation(desktopInfo, id));
-        g_free(exec);
-        if (!launchable) {
+        if (!eligibleDesktopInfo(desktopInfo, id)) {
             continue;
         }
 
@@ -450,6 +495,20 @@ private:
                                    {QStringLiteral("category"), QStringLiteral("protocol")}});
             } else {
                 write(discoveryGeneration(generation));
+            }
+            return;
+        }
+        if (operation == QStringLiteral("launch")) {
+            const qint64 requestId =
+                command.value(QStringLiteral("requestId")).toInteger(-1);
+            const QString desktopFileId =
+                command.value(QStringLiteral("desktopFileId")).toString();
+            if (requestId <= 0 || requestId > std::numeric_limits<int>::max()
+                || !validDesktopId(desktopFileId)) {
+                write(QJsonObject {{QStringLiteral("type"), QStringLiteral("error")},
+                                   {QStringLiteral("category"), QStringLiteral("protocol")}});
+            } else {
+                write(launchApplication(requestId, desktopFileId));
             }
             return;
         }

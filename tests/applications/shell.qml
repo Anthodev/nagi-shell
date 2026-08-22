@@ -234,8 +234,16 @@ ShellRoot {
                 return;
             }
             test.stage = "launching";
-            test.require(applications.recordAcceptedLaunch("app9.desktop"),
-                         "accepted launch did not update MRU");
+            test.require(applications.dispatchLaunch("app9.desktop") > 0,
+                         "eligible launch dispatch was rejected");
+        }
+        onLaunchAccepted: (requestId, desktopFileId) => {
+            if (test.stage === "launching" && desktopFileId === "app9.desktop") {
+                test.stage = "launched-persisting";
+            }
+        }
+        onLaunchRejected: (requestId, category) => {
+            test.require(false, "structured launch was rejected: " + category);
         }
         onRecencyPersisted: {
             if (test.stage === "unsafe-launch" && applications.recencyIds[0] === "app7.desktop") {
@@ -243,7 +251,8 @@ ShellRoot {
                 Qt.exit(0);
                 return;
             }
-            if (test.stage !== "launching" || applications.recencyIds[0] !== "app9.desktop") {
+            if (test.stage !== "launched-persisting"
+                    || applications.recencyIds[0] !== "app9.desktop") {
                 return;
             }
             if (!test.require(equal(applications.recencyIds, ["app9.desktop", "app8.desktop"]),

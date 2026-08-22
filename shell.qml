@@ -18,6 +18,13 @@ ShellRoot {
         id: islandState
     }
 
+    LauncherShortcutAdapter {
+        id: launcherShortcut
+
+        coordinator: islandState
+        helperPath: Quickshell.shellPath("build/launcher-shortcut/nagi-launcher-shortcut")
+    }
+
     WeatherAdapter {
         id: weather
     }
@@ -73,6 +80,14 @@ ShellRoot {
         RowLayout {
             spacing: Theme.spacing.sm
 
+            LauncherEntry {
+                Layout.fillWidth: true
+                shortcutAvailable: launcherShortcut.available
+                activeShortcut: launcherShortcut.activeShortcut
+                preferredConflict: launcherShortcut.preferredConflict
+                onOpenRequested: islandState.openLauncher(islandHost.surfaceToken)
+            }
+
             NotificationHistoryEntry {
                 Layout.fillWidth: true
                 onOpenRequested: islandState.openHistory(islandHost.surfaceToken)
@@ -98,6 +113,7 @@ ShellRoot {
         media: media
         sessionService: session
         notificationService: notifications
+        applicationModel: applications
         workspaceTransientSource: virtualDesktops
         brightnessTransientSource: brightness
         volumeTransientSource: audio

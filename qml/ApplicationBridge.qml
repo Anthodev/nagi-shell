@@ -19,6 +19,7 @@ Scope {
 
     signal initialized(var stores)
     signal generationReceived(var generation)
+    signal launchResult(int requestId, bool accepted, string category)
     signal writeReady(string store, int serial, bool success, string category)
     signal writeVerified(string store, int serial, bool success, string category)
     signal fatalFailure
@@ -27,6 +28,14 @@ Scope {
         return send({
                         "op": "scan",
                         "generation": generation
+                    });
+    }
+
+    function launch(requestId, desktopFileId) {
+        return send({
+                        "op": "launch",
+                        "requestId": requestId,
+                        "desktopFileId": desktopFileId
                     });
     }
 
@@ -95,6 +104,14 @@ Scope {
             root.generationReceived(message);
             return;
         }
+        if (message.type === "launch-result") {
+            if (!validLaunchResult(message)) {
+                warnBounded("invalid launch response");
+                return;
+            }
+            root.launchResult(message.requestId, message.accepted, message.category);
+            return;
+        }
         if (message.type === "write-ready" || message.type === "write-verified") {
             if (!validWriteResponse(message)) {
                 warnBounded("invalid write response");
@@ -159,6 +176,17 @@ Scope {
         return (message.store === "pins" || message.store === "recency") && Number.isInteger(message.serial)
                 && message.serial >= 0 && message.serial <= 2147483647 && typeof message.success === "boolean"
                 && validCategory(message.category);
+    }
+
+    function validLaunchResult(message) {
+        return Number.isInteger(message.requestId) && message.requestId > 0 && message.requestId
+                <= 2147483647 && typeof message.accepted === "boolean" && (message.category
+                                                                           === "none"
+                                                                           || message.category
+                                                                           === "ineligible"
+                                                                           || message.category
+                                                                           === "launch")
+                && message.accepted === (message.category === "none");
     }
 
     function validDesktopId(id) {

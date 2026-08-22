@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -11,6 +12,7 @@
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSet>
+#include <QThread>
 #include <QTemporaryDir>
 
 #include <cstdio>
@@ -143,6 +145,10 @@ int main(int argc, char **argv)
 
     writeDesktop(highApplications, QStringLiteral("valid.desktop"),
                  "[Desktop Entry]\nType=Application\nName=Valid\nExec=/usr/bin/true\n");
+    const QString launchedMarker = root + QStringLiteral("/launched");
+    writeDesktop(highApplications, QStringLiteral("launchable.desktop"),
+                 "[Desktop Entry]\nType=Application\nName=Launchable\nExec=/usr/bin/touch "
+                     + launchedMarker.toUtf8() + "\n");
     writeDesktop(highApplications, QStringLiteral("precedence.desktop"),
                  "[Desktop Entry]\nType=Application\nName=Masked\nNoDisplay=true\nExec=/usr/bin/true\n");
     writeDesktop(lowApplications, QStringLiteral("precedence.desktop"),
@@ -200,8 +206,36 @@ int main(int argc, char **argv)
                 "fixture discovery was incomplete");
         require(ids(generation)
                     == QSet<QString> {QStringLiteral("valid.desktop"),
+                                      QStringLiteral("launchable.desktop"),
                                       QStringLiteral("org.example.Dbus.desktop")},
                 "ineligible desktop entries were not excluded");
+        const QJsonObject launched = helper.request(
+            QJsonObject {{QStringLiteral("op"), QStringLiteral("launch")},
+                         {QStringLiteral("requestId"), 11},
+                         {QStringLiteral("desktopFileId"),
+                          QStringLiteral("launchable.desktop")}});
+        require(launched.value(QStringLiteral("type")) == QStringLiteral("launch-result")
+                    && launched.value(QStringLiteral("requestId")).toInteger() == 11
+                    && launched.value(QStringLiteral("accepted")).toBool()
+                    && launched.value(QStringLiteral("category")) == QStringLiteral("none"),
+                "eligible exact ID was not accepted by the structured launch path");
+        QElapsedTimer launchWait;
+        launchWait.start();
+        while (!QFileInfo::exists(launchedMarker) && launchWait.elapsed() < 3000) {
+            QThread::msleep(10);
+        }
+        require(QFileInfo::exists(launchedMarker), "accepted structured launch did not dispatch");
+
+        require(QFile::remove(highApplications + QStringLiteral("/launchable.desktop")),
+                "could not remove launch fixture");
+        const QJsonObject vanished = helper.request(
+            QJsonObject {{QStringLiteral("op"), QStringLiteral("launch")},
+                         {QStringLiteral("requestId"), 12},
+                         {QStringLiteral("desktopFileId"),
+                          QStringLiteral("launchable.desktop")}});
+        require(!vanished.value(QStringLiteral("accepted")).toBool()
+                    && vanished.value(QStringLiteral("category")) == QStringLiteral("ineligible"),
+                "vanished exact ID was not rejected");
 
         const QJsonObject ready = helper.request(
             QJsonObject {{QStringLiteral("op"), QStringLiteral("prepare-write")},
