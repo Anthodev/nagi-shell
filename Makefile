@@ -15,17 +15,28 @@ HELPER_TEST := $(BUILD_DIR)/kwin-virtual-desktops-test
 HELPER_MOC := $(BUILD_DIR)/main.moc
 OWNER_TEST := $(BUILD_DIR)/kwin-owner-lifecycle-test
 OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
+AUDIO_HELPER := $(BUILD_DIR)/nagi-pipewire-audio
+AUDIO_PROTOCOL_TEST := $(BUILD_DIR)/pipewire-audio-protocol-test
+AUDIO_VOLUME_TEST := $(BUILD_DIR)/pipewire-audio-volume-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
 MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
+AUDIO_TEST_DIR := $(BUILD_DIR)/audio-test
+AUDIO_LIVE_TEST_DIR := $(BUILD_DIR)/audio-live-test
+AUDIO_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/audio-live-write-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
+AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
+AUDIO_HELPER_HEADERS := src/pipewire-audio/protocol.h src/pipewire-audio/volume.h
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
 QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus)
+PIPEWIRE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpipewire-0.3)
+PIPEWIRE_LIBS := $(shell $(PKG_CONFIG) --libs libpipewire-0.3)
 NATIVE_CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -Wpedantic
+AUDIO_NATIVE_CXXFLAGS := -std=gnu++20 -O2 -Wall -Wextra -Wno-sfinae-incomplete
 
 
 QUICKSHELL_MIN_VERSION := 0.3.0
@@ -33,19 +44,25 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain helper test-native test-owner-lifecycle test-adapter test-coordinator test-weather test-media test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain helper audio-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
-		'make requirements    Show and verify the Quickshell dependency' \
+		'make requirements    Show and verify runtime/build dependencies' \
 		'make helper          Build the KWin virtual desktop helper' \
+		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
+		'make test-audio-protocol  Test the audio bridge command boundary' \
+		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
 		'make test-weather    Test compact clock and weather adapter state' \
 		'make test-media      Test the MPRIS media adapter state' \
+		'make test-audio      Test the PipeWire audio adapter state' \
+		'make test-audio-live Probe the live PipeWire graph without changing it' \
+		'make test-audio-live-write  Change and restore live default audio state' \
 		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
 		'make test-idle       Test idle island composition and collapse' \
 		'make launch          Run this checkout in the foreground' \
@@ -63,10 +80,11 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native helper build: C++20 plus Qt 6 Core and DBus development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus, and libpipewire 0.3 development files\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
+	@$(MAKE) --no-print-directory check-audio-toolchain
 
 prepare:
 	@touch .qmlls.ini
@@ -74,6 +92,9 @@ prepare:
 check-helper-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core Qt6DBus
 	@test -x '$(MOC)'
+
+check-audio-toolchain:
+	@$(PKG_CONFIG) --exists Qt6Core libpipewire-0.3
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -93,10 +114,27 @@ $(HELPER_TEST): tests/kwin_virtual_desktops_test.cpp src/kwin-virtual-desktops/d
 $(OWNER_TEST): tests/kwin_owner_lifecycle_test.cpp $(OWNER_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/kwin_owner_lifecycle_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
+$(AUDIO_HELPER): $(AUDIO_HELPER_SOURCES) $(AUDIO_HELPER_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) $(QT_CFLAGS) $(PIPEWIRE_CFLAGS) -Isrc/pipewire-audio $(AUDIO_HELPER_SOURCES) -o $@ $(LDFLAGS) $(QT_LIBS) $(PIPEWIRE_LIBS)
+
+$(AUDIO_PROTOCOL_TEST): tests/pipewire_audio_protocol_test.cpp src/pipewire-audio/protocol.cpp $(AUDIO_HELPER_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) $(QT_CFLAGS) -Isrc/pipewire-audio tests/pipewire_audio_protocol_test.cpp src/pipewire-audio/protocol.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(AUDIO_VOLUME_TEST): tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp src/pipewire-audio/volume.h | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) -Isrc/pipewire-audio tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp -o $@ $(LDFLAGS)
+
 helper: check-helper-toolchain $(HELPER)
+
+audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 
 test-native: check-helper-toolchain $(HELPER_TEST)
 	$(HELPER_TEST)
+
+test-audio-protocol: check-audio-toolchain $(AUDIO_PROTOCOL_TEST)
+	$(AUDIO_PROTOCOL_TEST)
+
+test-audio-volume: $(AUDIO_VOLUME_TEST)
+	$(AUDIO_VOLUME_TEST)
 
 test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
@@ -125,6 +163,24 @@ test-media: check-quickshell | $(BUILD_DIR)
 	cp tests/media/shell.qml $(MEDIA_TEST_DIR)/shell.qml
 	cp qml/MediaAdapter.qml $(MEDIA_TEST_DIR)/qml/
 	$(QS) -p $(MEDIA_TEST_DIR) --no-duplicate
+
+test-audio: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(AUDIO_TEST_DIR)/qml
+	cp tests/audio/shell.qml $(AUDIO_TEST_DIR)/shell.qml
+	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml $(AUDIO_TEST_DIR)/qml/
+	$(QS) -p $(AUDIO_TEST_DIR) --no-duplicate
+
+test-audio-live: check-quickshell audio-helper | $(BUILD_DIR)
+	mkdir -p $(AUDIO_LIVE_TEST_DIR)/qml
+	cp tests/audio/live.qml $(AUDIO_LIVE_TEST_DIR)/shell.qml
+	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml $(AUDIO_LIVE_TEST_DIR)/qml/
+	NAGI_AUDIO_HELPER='$(abspath $(AUDIO_HELPER))' $(QS) -p $(AUDIO_LIVE_TEST_DIR) --no-duplicate
+
+test-audio-live-write: check-quickshell audio-helper | $(BUILD_DIR)
+	mkdir -p $(AUDIO_LIVE_WRITE_TEST_DIR)/qml
+	cp tests/audio/live-write.qml $(AUDIO_LIVE_WRITE_TEST_DIR)/shell.qml
+	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml $(AUDIO_LIVE_WRITE_TEST_DIR)/qml/
+	NAGI_AUDIO_HELPER='$(abspath $(AUDIO_HELPER))' $(QS) -p $(AUDIO_LIVE_WRITE_TEST_DIR) --no-duplicate
 
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
@@ -158,10 +214,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper
+launch: check-quickshell prepare helper audio-helper
 	$(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper
+diagnose: check-quickshell prepare helper audio-helper
 	$(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -208,6 +264,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check test-native test-owner-lifecycle test-adapter test-coordinator test-weather test-media test-idle
+check-nondisplay: check-quickshell format-check audio-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-adapter test-coordinator test-weather test-media test-audio test-idle
 clean:
 	rm -rf $(BUILD_DIR)

@@ -6,18 +6,19 @@
 #
 # Environment contract:
 #   - Pinned Fedora 44 container aligned with the supported local toolchain.
-#   - Quickshell installed from the stable errornointernet/quickshell COPR;
-#     `make requirements` fails before any test when the version is below the
-#     repository minimum.
+#   - Quickshell installed from the stable errornointernet/quickshell COPR and
+#     PipeWire development headers installed from Fedora; `make requirements`
+#     validates both before any test.
 #   - No secret, privileged runner, GPU, real KDE session, or external service
 #     state is required.
 #
 # Scope boundary:
 #   A successful run covers formatting, native normalization, D-Bus owner
-#   lifecycle, the QML adapter boundary, coordinator determinism, and the real
-#   PanelWindow state scenario and the UI-primitive gallery, under a
-#   software-rendered headless wlroots compositor. Success here does NOT
-#   replace the real KDE/KWin verification matrix tracked in issue #35
+#   lifecycle, the native audio bridge protocol and volume math, QML adapter
+#   boundaries, coordinator determinism, the real PanelWindow state scenario,
+#   and the UI-primitive gallery under a software-rendered headless wlroots
+#   compositor. Success here does NOT replace the real KDE/KWin verification
+#   matrix tracked in issue #35
 #   (multi-display, hardware rendering, and final cross-state checks still
 #   require a real desktop session).
 name: Repository checks
