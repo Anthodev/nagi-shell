@@ -1,7 +1,7 @@
 name: 'Install Fedora 44 toolchain'
 description: >-
-  Installs the pinned Fedora 44 CI toolchain: native Qt and PipeWire build
-  dependencies, QML tools, and Quickshell from the stable COPR.
+  Installs the pinned Fedora 44 CI toolchain: native Qt, PipeWire, and GIO
+  development dependencies, QML tools, and Quickshell from the stable COPR.
 runs:
   using: composite
   steps:
@@ -15,6 +15,7 @@ runs:
         gcc-c++
         pkgconf-pkg-config
         pipewire-devel
+        glib2-devel
         qt6-qtbase-devel
         qt6-qtdeclarative-devel
         dbus-daemon

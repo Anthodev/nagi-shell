@@ -32,6 +32,12 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-connectivity")
     }
 
+    ApplicationModel {
+        id: applications
+
+        helperPath: Quickshell.shellPath("build/nagi-applications")
+    }
+
     ReducedMotion {
         id: motion
     }
