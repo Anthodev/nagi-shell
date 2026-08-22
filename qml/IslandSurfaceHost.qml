@@ -14,6 +14,7 @@ Scope {
     property var weather: null
     property var media: null
     property var sessionService: null
+    property var polkitController: null
     property var notificationService: null
     property var applicationModel: null
     property var workspaceTransientSource: null
@@ -55,6 +56,16 @@ Scope {
                                                                                   ownership.liveSurface.launcherSelectedId
     readonly property bool sessionFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.sessionFocused
+    readonly property bool polkitLoaded: ownership.liveSurface !== null
+                                         && ownership.liveSurface.polkitLoaded
+    readonly property bool polkitFocused: ownership.liveSurface !== null
+                                          && ownership.liveSurface.polkitFocused
+    readonly property bool polkitResponseFocused: ownership.liveSurface !== null
+                                                  && ownership.liveSurface.polkitResponseFocused
+    readonly property int polkitIdentityCount: ownership.liveSurface === null ? 0 :
+                                                                                ownership.liveSurface.polkitIdentityCount
+    readonly property bool polkitResponseFieldVisible: ownership.liveSurface !== null
+                                                       && ownership.liveSurface.polkitResponseFieldVisible
     readonly property bool historyFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.historyFocused
     readonly property int historyRowCount: ownership.liveSurface === null ? 0 :
@@ -208,6 +219,7 @@ Scope {
             weather: host.weather
             media: host.media
             sessionService: host.sessionService
+            polkitController: host.polkitController
             notificationService: host.notificationService
             applicationModel: host.applicationModel
             workspaceTransientSource: host.workspaceTransientSource
