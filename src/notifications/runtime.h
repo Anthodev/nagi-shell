@@ -93,6 +93,7 @@ public:
     Q_INVOKABLE void closeNotification(QObject *notification, int reason);
     Q_INVOKABLE void finishGeneration(quint64 generation);
     Q_INVOKABLE bool dismiss(const QVariant &recordKey);
+    Q_INVOKABLE int historyIndex(const QVariant &recordKey) const;
     Q_INVOKABLE bool canAct(const QVariant &recordKey) const;
     Q_INVOKABLE QVariantList actionsFor(const QVariant &recordKey) const;
     Q_INVOKABLE QVariantMap historySnapshot(int index) const;

@@ -54,6 +54,7 @@ NOTIFICATION_TEST_MOC := $(NOTIFICATION_BUILD_DIR)/notification_runtime_test.moc
 NOTIFICATION_DBUS_TEST := $(BUILD_DIR)/notification-dbus-test
 NOTIFICATION_DBUS_TEST_MOC := $(NOTIFICATION_BUILD_DIR)/notifications_dbus_test.moc
 NOTIFICATION_QML_TEST_DIR := $(BUILD_DIR)/notifications-test
+NOTIFICATION_HISTORY_TEST_DIR := $(BUILD_DIR)/notification-history-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
@@ -99,7 +100,7 @@ help:
 		'make test-session-dbus  Test KDE session dispatch, denial, and cleanup' \
 		'make test-session   Test session service and interaction state' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
-		'make test-notifications  Test notification lifecycle and bounded history' \
+		'make test-notifications  Test notification lifecycle, bounds, and history view' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
@@ -279,10 +280,15 @@ test-applications: check-application-toolchain $(APPLICATION_HELPER) $(APPLICATI
 
 test-notifications: check-quickshell check-notification-toolchain $(NOTIFICATION_PLUGIN) $(NOTIFICATION_TEST) $(NOTIFICATION_DBUS_TEST)
 	$(NOTIFICATION_TEST)
+	rm -rf $(NOTIFICATION_HISTORY_TEST_DIR)
+	mkdir -p $(NOTIFICATION_HISTORY_TEST_DIR)/qml
+	cp tests/notification-history/shell.qml $(NOTIFICATION_HISTORY_TEST_DIR)/shell.qml
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/NotificationHistoryView.qml $(NOTIFICATION_HISTORY_TEST_DIR)/qml/
+	$(QS) -p $(NOTIFICATION_HISTORY_TEST_DIR) --no-duplicate
 	rm -rf $(NOTIFICATION_QML_TEST_DIR)
 	mkdir -p $(NOTIFICATION_QML_TEST_DIR)/qml
 	cp tests/notifications/shell.qml $(NOTIFICATION_QML_TEST_DIR)/shell.qml
-	cp qml/NotificationService.qml $(NOTIFICATION_QML_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/NotificationHistoryView.qml qml/NotificationService.qml $(NOTIFICATION_QML_TEST_DIR)/qml/
 	QT_QPA_PLATFORM='offscreen' GTK_USE_PORTAL='0' $(DBUS_RUN_SESSION) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(NOTIFICATION_DBUS_TEST) '$(QS)' '$(abspath $(NOTIFICATION_QML_TEST_DIR))'
 
 test-native: check-helper-toolchain $(HELPER_TEST)
@@ -381,13 +387,13 @@ test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUIL
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)

@@ -63,6 +63,10 @@ ShellRoot {
             if (mode !== "normal" || service.generation > 1) {
                 return;
             }
+            if (historyView.rowCount !== service.historyCount) {
+                Qt.callLater(test.advance);
+                return;
+            }
             const snapshot = NotificationRuntime.historySnapshot(0);
             if (stage === 0 && service.historyCount === 1) {
                 const expectedKeys = ["appIconName", "appName", "body", "desktopEntry",
@@ -71,21 +75,21 @@ ShellRoot {
                                       "urgency"];
                 if (!require(Object.keys(snapshot).sort().join(",") === expectedKeys.sort().join(","),
                              "snapshot-fields") || !require(snapshot.appName === "App�Name",
-                                                              "app-normalization") || !require(
-                        snapshot.body === "Bold linkALT", "body-normalization") || !require(
-                        snapshot.state === "live" && !service.actionsSupported
-                            && !service.canAct(snapshot.firstAdmissionSequence)
-                            && service.actionsFor(snapshot.firstAdmissionSequence).length === 0,
-                        "initial-contract")) {
+                                                            "app-normalization") || !require(
+                            snapshot.body === "Bold linkALT", "body-normalization") || !require(
+                            snapshot.state === "live" && !service.actionsSupported &&
+                            !service.canAct(snapshot.firstAdmissionSequence) && service.actionsFor(
+                                snapshot.firstAdmissionSequence).length === 0
+                            && historyView.visibleActionCount === 0, "initial-contract")) {
                     return;
                 }
                 firstKey = snapshot.firstAdmissionSequence;
+                historyView.focusInitialControl();
                 stage = 1;
                 console.warn("notification-harness-received");
                 return;
             }
-            if (stage === 1 && service.historyCount === 1
-                    && snapshot.summary === "Replacement") {
+            if (stage === 1 && service.historyCount === 1 && snapshot.summary === "Replacement") {
                 if (!require(snapshot.firstAdmissionSequence === firstKey,
                              "replacement-key-changed")) {
                     return;
@@ -137,9 +141,12 @@ ShellRoot {
             }
             if (stage === 9 && service.historyCount === 2 && snapshot.summary === "Dismiss") {
                 stage = 10;
-                if (!service.dismiss(snapshot.firstAdmissionSequence)) {
-                    fail("dismiss-dispatch-failed");
-                }
+                historyView.focusRow(0, Qt.ShortcutFocusReason);
+                Qt.callLater(function () {
+                    if (!historyView.dismissCurrent()) {
+                        fail("dismiss-dispatch-failed");
+                    }
+                });
                 return;
             }
             if (stage === 10 && service.historyCount === 1 && service.liveCount === 0) {
@@ -164,6 +171,15 @@ ShellRoot {
                 Qt.callLater(test.start);
             }
         }
+    }
+
+    NotificationHistoryView {
+        id: historyView
+
+        width: Theme.size.islandExpandedWidth
+        height: Theme.size.islandExpandedHeight
+        service: service
+        ownerEpoch: 1
     }
 
     Connections {

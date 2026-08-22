@@ -14,6 +14,7 @@ Scope {
     property var weather: null
     property var media: null
     property var sessionService: null
+    property var notificationService: null
     property bool reducedMotion: false
     property Component dashboardMediaContent: null
     property Component dashboardClockContent: null
@@ -43,6 +44,12 @@ Scope {
                                                                                        ownership.liveSurface.loadedDashboardRegionCount
     readonly property bool sessionFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.sessionFocused
+    readonly property bool historyFocused: ownership.liveSurface !== null
+                                           && ownership.liveSurface.historyFocused
+    readonly property int historyRowCount: ownership.liveSurface === null ? 0 :
+                                                                            ownership.liveSurface.historyRowCount
+    readonly property bool historyEmptyStateVisible: ownership.liveSurface !== null
+                                                     && ownership.liveSurface.historyEmptyStateVisible
     readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
                                                                                       ownership.liveSurface.geometryAnimationDuration
 
@@ -182,6 +189,7 @@ Scope {
             weather: host.weather
             media: host.media
             sessionService: host.sessionService
+            notificationService: host.notificationService
             reducedMotion: host.reducedMotion
             dashboardMediaContent: host.dashboardMediaContent
             dashboardClockContent: host.dashboardClockContent

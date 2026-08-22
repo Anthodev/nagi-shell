@@ -11,6 +11,7 @@ ShellRoot {
     property int hoverExpandedEpoch: 0
     property int focusSerialBeforeRestore: 0
     property real sessionEpoch: 0
+    property real historyEpoch: 0
     property var initialSurfaceToken: null
     property int initialSurfaceGeneration: 0
     readonly property int maximumRetryAttempts: 500
@@ -161,17 +162,39 @@ ShellRoot {
                             "session cancellation did not restore the deliberate dashboard")) {
                 return;
             }
-            require(host.cancelDashboard(), "restored dashboard remains cancellable");
+            require(coordinator.openHistory(host.surfaceToken),
+                    "visible dashboard history entry is admitted");
+            historyEpoch = coordinator.ownerEpoch;
         } else if (step === 11) {
+            if (!awaitState(coordinator.ownerName === "history" && coordinator.presentationVisible
+                            && host.surfaceFocusable && host.historyFocused
+                            && host.historyRowCount === 2,
+                            "history view did not render and receive focus in the actual surface")) {
+                return;
+            }
+            require(coordinator.focusTarget === coordinator.focusNotificationHistory,
+                    "history presentation receives the list focus target");
+            require(!coordinator.cancelInteractive(historyEpoch - 1),
+                    "stale history Back cannot close the current owner");
+            require(coordinator.cancelInteractive(historyEpoch),
+                    "history Back accepts the current owner epoch");
+        } else if (step === 12) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.dashboardFocused,
+                            "history Back did not restore the deliberate dashboard")) {
+                return;
+            }
+            require(host.cancelDashboard(), "restored dashboard remains cancellable");
+        } else if (step === 13) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
                             "final dashboard cancellation did not restore Idle")) {
                 return;
             }
             require(mountedRegionCount >= 18,
-                    "all six real region components remount across both interruptions");
+                    "all six real region components remount across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
-            console.warn("actual island dashboard and session surface tests passed");
+            console.warn("actual island dashboard, history, and session surface tests passed");
             Qt.exit(0);
             return;
         }
@@ -216,6 +239,52 @@ ShellRoot {
         TestRegion {}
     }
 
+    ListModel {
+        id: fakeHistoryModel
+
+        ListElement {
+            firstAdmissionSequence: "2"
+            state: "expired"
+            appName: "Mail"
+            summary: "Build finished"
+            body: "The controlled verification run completed."
+        }
+
+        ListElement {
+            firstAdmissionSequence: "1"
+            state: "live"
+            appName: "Messages"
+            summary: "Review requested"
+            body: "Please check the latest changes."
+        }
+    }
+
+    QtObject {
+        id: fakeNotificationService
+
+        readonly property var historyModel: fakeHistoryModel
+        readonly property bool serverOwned: true
+
+        function dismiss(recordKey) {
+            const index = historyIndex(recordKey);
+            if (index < 0) {
+                return false;
+            }
+            fakeHistoryModel.remove(index);
+            return true;
+        }
+
+        function historyIndex(recordKey) {
+            const key = String(recordKey);
+            for (let index = 0; index < fakeHistoryModel.count; index += 1) {
+                if (String(fakeHistoryModel.get(index).firstAdmissionSequence) === key) {
+                    return index;
+                }
+            }
+            return -1;
+        }
+    }
+
     QtObject {
         id: fakeSessionService
 
@@ -247,6 +316,7 @@ ShellRoot {
         dashboardNotificationsContent: notificationsRegion
         dashboardNavigationContent: navigationRegion
         sessionService: fakeSessionService
+        notificationService: fakeNotificationService
     }
 
     Timer {

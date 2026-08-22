@@ -200,7 +200,24 @@ ShellRoot {
         require(coordinator.cancelInteractive(launcherEpoch), "Escape cancels current launcher");
         require(coordinator.ownerName === "expanded", "Escape restores the predecessor");
 
-        require(coordinator.openSession(token), "visible dashboard session intent opens");
+        require(!coordinator.openHistory(null),
+                "history requires the current dashboard surface entry point");
+        require(coordinator.openHistory(token), "visible dashboard history intent opens");
+        const historyEpoch = coordinator.ownerEpoch;
+        require(coordinator.ownerName === "history",
+                "history owns the island as an Interactive task");
+        require(coordinator.acknowledgeVisible(generation, historyEpoch, coordinator.revision),
+                "matching history presentation is acknowledged");
+        const historyFocus = coordinator.focusRequestSerial;
+        require(historyFocus > 0 && coordinator.focusTarget === coordinator.focusNotificationHistory,
+                "visible history requests list focus");
+        require(coordinator.openHistory(token) && coordinator.ownerEpoch === historyEpoch
+                && coordinator.focusRequestSerial === historyFocus + 1,
+                "repeated history intent preserves its epoch and renews focus");
+        require(!coordinator.openLauncher(token),
+                "equal-rank launcher cannot replace active history");
+
+        require(coordinator.openSession(token), "session preempts visible history");
         const sessionEpoch = coordinator.ownerEpoch;
         require(coordinator.acknowledgeVisible(generation, sessionEpoch, coordinator.revision),
                 "matching session presentation is acknowledged");
@@ -216,12 +233,18 @@ ShellRoot {
                 "restoration preserves the session task epoch with a fresh presentation revision");
         require(coordinator.acknowledgeVisible(generation, sessionEpoch, coordinator.revision),
                 "restored session presentation is acknowledged");
-        require(!coordinator.cancelInteractive(sessionEpoch - 1),
+        require(!coordinator.cancelInteractive(sessionEpoch + 100),
                 "stale session cancellation is rejected");
         require(coordinator.cancelInteractive(sessionEpoch),
                 "current session cancellation is accepted");
+        require(coordinator.ownerName === "history" && coordinator.ownerEpoch === historyEpoch,
+                "session cancellation restores the suspended history task");
+        require(coordinator.acknowledgeVisible(generation, historyEpoch, coordinator.revision),
+                "restored history presentation is acknowledged");
+        require(coordinator.cancelInteractive(historyEpoch),
+                "history Back accepts its current owner epoch");
         require(coordinator.ownerName === "expanded",
-                "session cancellation atomically restores its predecessor");
+                "history Back atomically restores its dashboard predecessor");
         require(coordinator.openLauncher(null), "shortcut launcher intent opens");
         require(coordinator.ownerName === "launcher",
                 "global and local origins share launcher behavior");
@@ -236,6 +259,7 @@ ShellRoot {
                 "matching Modal presentation is acknowledged");
         const modalFocus = coordinator.focusRequestSerial;
         require(!coordinator.openLauncher(null), "launcher is rejected during Modal");
+        require(!coordinator.openHistory(token), "history is rejected during Modal");
         require(!coordinator.openSession(token), "session is rejected during Modal");
         require(coordinator.ownerName === "polkitModal" && coordinator.focusRequestSerial
                 === modalFocus, "lower requests cannot steal Modal ownership or focus");

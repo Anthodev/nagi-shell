@@ -1,6 +1,7 @@
 //@ pragma UseQApplication
 import Quickshell
 import QtQuick
+import QtQuick.Layouts
 import "qml"
 
 ShellRoot {
@@ -62,10 +63,20 @@ ShellRoot {
     }
 
     Component {
-        id: sessionDashboardEntry
+        id: dashboardNavigation
 
-        SessionEntry {
-            onOpenRequested: islandState.openSession(islandHost.surfaceToken)
+        RowLayout {
+            spacing: Theme.spacing.sm
+
+            NotificationHistoryEntry {
+                Layout.fillWidth: true
+                onOpenRequested: islandState.openHistory(islandHost.surfaceToken)
+            }
+
+            SessionEntry {
+                Layout.fillWidth: true
+                onOpenRequested: islandState.openSession(islandHost.surfaceToken)
+            }
         }
     }
 
@@ -81,8 +92,9 @@ ShellRoot {
         weather: weather
         media: media
         sessionService: session
+        notificationService: notifications
         reducedMotion: motion.active
         dashboardQuickControlsContent: tray.available ? trayDashboardContent : null
-        dashboardNavigationContent: sessionDashboardEntry
+        dashboardNavigationContent: dashboardNavigation
     }
 }
