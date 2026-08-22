@@ -71,6 +71,26 @@ ShellRoot {
         require(indeterminateProgress.indeterminate, "indeterminate progress reports its mode");
         require(iconButton.implicitWidth === iconButton.implicitHeight,
                 "icon button stays circular");
+
+        require(trayView.itemCount === 2 && trayView.implicitHeight > 0,
+                "tray renders live items as one contextual control row");
+        trayView.moveFocus(0, 0);
+        require(trayView.currentItem !== null && trayView.currentItem.activeFocus
+                && trayView.currentItem.objectName === "trayItemButton",
+                "tray items accept keyboard focus");
+        trayView.currentItem.clicked();
+        require(trayActions.length === 1 && trayActions[0].action === "activate"
+                && trayActions[0].token === 1, "primary control activation reaches the adapter");
+        trayView.moveFocus(0, 1);
+        require(trayView.currentItem.modelData.label === "Menu item",
+                "arrow navigation reaches the next labeled tray item");
+        trayView.currentItem.clicked();
+        require(trayActions.length === 2 && trayActions[1].action === "menu"
+                && trayActions[1].token === 2 && trayActions[1].parent !== null,
+                "menu-only controls open the platform menu against their live window");
+        require(trayView.secondaryAction(trayAdapter.items[0]) === "dispatched"
+                && trayActions[2].action === "secondary",
+                "secondary pointer behavior stays available through the normalized adapter");
         console.log("island ui primitive tests passed");
 
         if (Quickshell.env("NAGI_UI_HOLD") === "1") {
@@ -83,6 +103,60 @@ ShellRoot {
     }
 
     Component.onCompleted: Qt.callLater(test.runChecks)
+
+    property var trayActions: []
+
+    QtObject {
+        id: trayAdapter
+
+        readonly property var items: [
+            {
+                "token": 1,
+                "label": "Active item",
+                "tooltip": "Active item",
+                "iconSource": "",
+                "status": "active",
+                "hasMenu": false,
+                "onlyMenu": false
+            },
+            {
+                "token": 2,
+                "label": "Menu item",
+                "tooltip": "Menu item\nContext action",
+                "iconSource": "",
+                "status": "needsAttention",
+                "hasMenu": true,
+                "onlyMenu": true
+            }
+        ]
+
+        function activate(token) {
+            test.trayActions.push({
+                                      "action": "activate",
+                                      "token": token
+                                  });
+            return "dispatched";
+        }
+
+        function secondaryActivate(token) {
+            test.trayActions.push({
+                                      "action": "secondary",
+                                      "token": token
+                                  });
+            return "dispatched";
+        }
+
+        function openMenu(token, parentWindow, x, y) {
+            test.trayActions.push({
+                                      "action": "menu",
+                                      "token": token,
+                                      "parent": parentWindow,
+                                      "x": x,
+                                      "y": y
+                                  });
+            return "dispatched";
+        }
+    }
 
     IslandStateCoordinator {
         id: coordinator
@@ -179,6 +253,13 @@ ShellRoot {
                     size: "lg"
                     source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><path d='M3 13 L13 13 L8 4 Z' fill='%237AA2F7'/></svg>"
                 }
+            }
+
+            TrayView {
+                id: trayView
+
+                width: 240
+                adapter: trayAdapter
             }
 
             IslandProgressBar {

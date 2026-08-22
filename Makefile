@@ -34,6 +34,9 @@ AUDIO_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/audio-live-write-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
+TRAY_TEST_DIR := $(BUILD_DIR)/tray-test
+TRAY_LIVE_TEST_DIR := $(BUILD_DIR)/tray-live-test
+TRAY_LIVE_TEST := $(BUILD_DIR)/tray-live-test-runner
 APPLICATION_TEST := $(BUILD_DIR)/applications-helper-test
 APPLICATION_QML_TEST_DIR := $(BUILD_DIR)/applications-test
 NOTIFICATION_BUILD_DIR := $(BUILD_DIR)/notifications
@@ -57,6 +60,8 @@ QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
 QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus)
 NOTIFICATION_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus Qt6Qml)
 NOTIFICATION_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus Qt6Qml)
+TRAY_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6Gui Qt6Widgets)
+TRAY_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6Gui Qt6Widgets)
 PIPEWIRE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpipewire-0.3)
 PIPEWIRE_LIBS := $(shell $(PKG_CONFIG) --libs libpipewire-0.3)
 GIO_CFLAGS := $(shell $(PKG_CONFIG) --cflags gio-unix-2.0)
@@ -70,7 +75,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain helper audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -97,6 +102,8 @@ help:
 		'make test-audio-live-write  Change and restore live default audio state' \
 		'make test-connectivity  Test Wi-Fi and Bluetooth adapter state' \
 		'make test-connectivity-live-write  Change and restore live radios' \
+		'make test-tray       Test system tray lifecycle and actions' \
+		'make test-tray-live  Exercise a controlled real tray item on KDE' \
 		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
 		'make test-idle       Test idle island composition and collapse' \
 		'make launch          Run this checkout in the foreground' \
@@ -114,13 +121,14 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel qt6-qtdeclarative-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native builds: C++20, Qt 6 Core/DBus/QML, libpipewire 0.3, and GIO Unix development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel qt6-qtbase-devel qt6-qtdeclarative-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, libpipewire 0.3, and GIO Unix development files\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
 	@$(MAKE) --no-print-directory check-application-toolchain
 	@$(MAKE) --no-print-directory check-notification-toolchain
+	@$(MAKE) --no-print-directory check-tray-toolchain
 
 prepare:
 	@touch .qmlls.ini
@@ -138,6 +146,9 @@ check-application-toolchain:
 check-notification-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core Qt6DBus Qt6Qml
 	@test -x '$(MOC)'
+
+check-tray-toolchain:
+	@$(PKG_CONFIG) --exists Qt6Core Qt6Gui Qt6Widgets
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -212,6 +223,9 @@ $(NOTIFICATION_TEST): tests/notification_runtime_test.cpp $(NOTIFICATION_TEST_MO
 
 $(NOTIFICATION_DBUS_TEST): tests/notifications_dbus_test.cpp $(NOTIFICATION_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(NOTIFICATION_BUILD_DIR) tests/notifications_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(TRAY_LIVE_TEST): tests/tray_live_test.cpp | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(TRAY_QT_CFLAGS) tests/tray_live_test.cpp -o $@ $(LDFLAGS) $(TRAY_QT_LIBS)
 
 helper: check-helper-toolchain $(HELPER)
 
@@ -319,6 +333,18 @@ test-connectivity-live-write: check-quickshell connectivity-helper | $(BUILD_DIR
 	cp qml/ConnectivityAdapter.qml qml/ConnectivityBridge.qml $(CONNECTIVITY_LIVE_WRITE_TEST_DIR)/qml/
 	NAGI_CONNECTIVITY_HELPER='$(abspath $(CONNECTIVITY_HELPER))' $(QS) -p $(CONNECTIVITY_LIVE_WRITE_TEST_DIR) --no-duplicate
 
+test-tray: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(TRAY_TEST_DIR)/qml
+	cp tests/tray/shell.qml $(TRAY_TEST_DIR)/shell.qml
+	cp qml/TrayAdapter.qml $(TRAY_TEST_DIR)/qml/
+	$(QS) -p $(TRAY_TEST_DIR) --no-duplicate
+
+test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUILD_DIR)
+	mkdir -p $(TRAY_LIVE_TEST_DIR)/qml
+	cp tests/tray/live.qml $(TRAY_LIVE_TEST_DIR)/shell.qml
+	cp qml/TrayAdapter.qml $(TRAY_LIVE_TEST_DIR)/qml/
+	$(TRAY_LIVE_TEST) '$(QS)' '$(abspath $(TRAY_LIVE_TEST_DIR))'
+
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
@@ -328,7 +354,7 @@ test-surface-state: check-quickshell | $(BUILD_DIR)
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
@@ -401,6 +427,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-tray test-idle
 clean:
 	rm -rf $(BUILD_DIR)

@@ -1,4 +1,6 @@
+//@ pragma UseQApplication
 import Quickshell
+import QtQuick
 import "qml"
 
 ShellRoot {
@@ -42,6 +44,18 @@ ShellRoot {
         id: notifications
     }
 
+    TrayAdapter {
+        id: tray
+    }
+
+    Component {
+        id: trayDashboardContent
+
+        TrayView {
+            adapter: tray
+        }
+    }
+
     ReducedMotion {
         id: motion
     }
@@ -53,5 +67,6 @@ ShellRoot {
         weather: weather
         media: media
         reducedMotion: motion.active
+        dashboardQuickControlsContent: tray.available ? trayDashboardContent : null
     }
 }
