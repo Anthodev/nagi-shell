@@ -21,6 +21,10 @@ Scope {
         const current = adapter.currentDesktop();
         return current === null ? -1 : current.position;
     }
+    readonly property string transientSourceToken: "workspace-current"
+
+    signal confirmedWorkspaceChanged(string sourceToken, int sourceGeneration, int revision)
+    signal confirmedWorkspaceInvalidated(string sourceToken, int sourceGeneration)
 
     readonly property int maximumLineLength: 65536
     readonly property int maximumDiagnostics: 4
@@ -54,8 +58,7 @@ Scope {
             return;
         }
 
-        state.serializedSnapshot = serialized;
-        state.snapshot = normalized;
+        applySnapshot(normalized, serialized);
     }
 
     function currentDesktop() {
@@ -70,6 +73,82 @@ Scope {
         }
 
         return null;
+    }
+    function resolveTransient(sourceToken, sourceGeneration, revision) {
+        if (!available || sourceToken !== transientSourceToken || sourceGeneration
+                !== state.sourceGeneration || revision !== state.revision || state.presentation
+                === null) {
+            return null;
+        }
+        return state.presentation;
+    }
+
+    function applySnapshot(normalized, serialized) {
+        const previous = state.snapshot;
+        const previousProjection = projectionFor(previous);
+        const nextProjection = projectionFor(normalized);
+        state.serializedSnapshot = serialized;
+        state.snapshot = normalized;
+
+        if (!normalized.available) {
+            if (previous.available) {
+                adapter.confirmedWorkspaceInvalidated(transientSourceToken, state.sourceGeneration);
+            }
+            state.presentation = null;
+            state.revision = 0;
+            return;
+        }
+
+        if (!previous.available) {
+            state.sourceGeneration += 1;
+            state.revision = 1;
+            state.presentation = presentationFor(nextProjection);
+            return;
+        }
+        if (projectionEquals(previousProjection, nextProjection)) {
+            return;
+        }
+
+        state.revision += 1;
+        state.presentation = presentationFor(nextProjection);
+        adapter.confirmedWorkspaceChanged(transientSourceToken, state.sourceGeneration,
+                                          state.revision);
+    }
+
+    function projectionFor(snapshot) {
+        if (!snapshot.available) {
+            return null;
+        }
+        for (let index = 0; index < snapshot.desktops.length; index += 1) {
+            const desktop = snapshot.desktops[index];
+            if (desktop.id === snapshot.currentId) {
+                return {
+                    "id": desktop.id,
+                    "name": desktop.name,
+                    "position": desktop.position,
+                    "count": snapshot.desktops.length
+                };
+            }
+        }
+        return null;
+    }
+
+    function projectionEquals(left, right) {
+        return left !== null && right !== null && left.id === right.id && left.name === right.name
+                && left.position === right.position && left.count === right.count;
+    }
+
+    function presentationFor(projection) {
+        if (projection === null) {
+            return null;
+        }
+        const boundedName = projection.name.slice(0, 256).trim();
+        return {
+            "iconName": "preferences-desktop-virtual-symbolic",
+            "primary": boundedName === "" ? "Workspace" : boundedName,
+            "detail": "Current desktop",
+            "value": (projection.position + 1) + " / " + projection.count
+        };
     }
 
     function normalizeSnapshot(candidate) {
@@ -164,6 +243,9 @@ Scope {
         id: state
 
         property int diagnosticCount: 0
+        property int sourceGeneration: 0
+        property int revision: 0
+        property var presentation: null
         property string serializedSnapshot:
         "{\"available\":false,\"currentId\":null,\"desktops\":[]}"
         property var snapshot: ({
@@ -194,12 +276,16 @@ Scope {
     }
 
     Component.onDestruction: {
+        if (state.snapshot.available) {
+            adapter.confirmedWorkspaceInvalidated(transientSourceToken, state.sourceGeneration);
+        }
         helper.running = false;
         state.snapshot = {
             "available": false,
             "currentId": null,
             "desktops": []
         };
+        state.presentation = null;
         state.serializedSnapshot = "";
     }
 }

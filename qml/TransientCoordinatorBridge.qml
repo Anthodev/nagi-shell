@@ -8,8 +8,38 @@ Scope {
 
     required property var coordinator
     required property var surfaceToken
+    property var workspaceSource: null
+    property var brightnessSource: null
     property var audioSource: null
     property var notificationSource: null
+
+    Connections {
+        target: bridge.workspaceSource
+        ignoreUnknownSignals: true
+
+        function onConfirmedWorkspaceChanged(sourceToken, sourceGeneration, revision) {
+            bridge.coordinator.requestWorkspace(sourceToken, sourceGeneration, revision, null);
+        }
+
+        function onConfirmedWorkspaceInvalidated(sourceToken, sourceGeneration) {
+            bridge.coordinator.invalidateTransient(sourceToken, sourceGeneration);
+        }
+    }
+
+    Connections {
+        target: bridge.brightnessSource
+        ignoreUnknownSignals: true
+
+        function onConfirmedBrightnessChanged(sourceToken, sourceGeneration, revision,
+                                              initiatingSurfaceToken) {
+            bridge.coordinator.requestBrightness(sourceToken, sourceGeneration, revision,
+                                                 initiatingSurfaceToken);
+        }
+
+        function onConfirmedBrightnessInvalidated(sourceToken, sourceGeneration) {
+            bridge.coordinator.invalidateTransient(sourceToken, sourceGeneration);
+        }
+    }
 
     Connections {
         target: bridge.audioSource

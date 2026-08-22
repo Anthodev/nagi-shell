@@ -22,6 +22,10 @@ CONNECTIVITY_HELPER := $(BUILD_DIR)/nagi-connectivity
 CONNECTIVITY_MOC := $(BUILD_DIR)/connectivity/main.moc
 CONNECTIVITY_DBUS_TEST := $(BUILD_DIR)/connectivity-dbus-test
 CONNECTIVITY_DBUS_TEST_MOC := $(BUILD_DIR)/connectivity_dbus_test.moc
+BRIGHTNESS_HELPER := $(BUILD_DIR)/nagi-brightness
+BRIGHTNESS_MOC := $(BUILD_DIR)/brightness/main.moc
+BRIGHTNESS_DBUS_TEST := $(BUILD_DIR)/brightness-dbus-test
+BRIGHTNESS_DBUS_TEST_MOC := $(BUILD_DIR)/brightness_dbus_test.moc
 SESSION_HELPER := $(BUILD_DIR)/nagi-session
 SESSION_MOC := $(BUILD_DIR)/session/main.moc
 SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
@@ -29,6 +33,8 @@ SESSION_DBUS_TEST_MOC := $(BUILD_DIR)/session_dbus_test.moc
 APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
+BRIGHTNESS_TEST_DIR := $(BUILD_DIR)/brightness-test
+BRIGHTNESS_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/brightness-live-write-test
 SESSION_TEST_DIR := $(BUILD_DIR)/session-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 TRANSIENT_TEST_DIR := $(BUILD_DIR)/transient-test
@@ -82,7 +88,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory clean
 
 help:
 	@printf '%s\n' \
@@ -90,6 +96,7 @@ help:
 		'make helper          Build the KWin virtual desktop helper' \
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
+		'make brightness-helper  Build the PowerDevil brightness bridge' \
 		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
@@ -98,13 +105,16 @@ help:
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
+		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
+		'make test-brightness  Test normalized brightness adapter state' \
+		'make test-brightness-live-write  Change and restore live PowerDevil brightness' \
 		'make test-session-dbus  Test KDE session dispatch, denial, and cleanup' \
 		'make test-session   Test session service and interaction state' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
 		'make test-notifications  Test notification lifecycle, bounds, and history view' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
-		'make test-transients  Test notification and confirmed-audio transient routing' \
+		'make test-transients  Test workspace, brightness, audio, and notification routing' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
 		'make test-weather    Test compact clock and weather adapter state' \
 		'make test-media      Test the MPRIS media adapter state' \
@@ -180,11 +190,18 @@ $(CONNECTIVITY_MOC): src/connectivity/main.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(MOC) $< -o $@
 
+$(BRIGHTNESS_MOC): src/brightness/main.cpp | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(MOC) $< -o $@
+
 $(SESSION_MOC): src/session/main.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(MOC) $< -o $@
 
 $(CONNECTIVITY_DBUS_TEST_MOC): tests/connectivity_dbus_test.cpp | $(BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(BRIGHTNESS_DBUS_TEST_MOC): tests/brightness_dbus_test.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
 
 $(SESSION_DBUS_TEST_MOC): tests/session_dbus_test.cpp | $(BUILD_DIR)
@@ -223,11 +240,17 @@ $(AUDIO_VOLUME_TEST): tests/pipewire_audio_volume_test.cpp src/pipewire-audio/vo
 $(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(CONNECTIVITY_MOC)) src/connectivity/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
+$(BRIGHTNESS_HELPER): src/brightness/main.cpp $(BRIGHTNESS_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(BRIGHTNESS_MOC)) src/brightness/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 $(SESSION_HELPER): src/session/main.cpp $(SESSION_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(SESSION_MOC)) src/session/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
 $(CONNECTIVITY_DBUS_TEST): tests/connectivity_dbus_test.cpp $(CONNECTIVITY_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/connectivity_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(BRIGHTNESS_DBUS_TEST): tests/brightness_dbus_test.cpp $(BRIGHTNESS_DBUS_TEST_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/brightness_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
 $(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/session_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
@@ -256,6 +279,8 @@ helper: check-helper-toolchain $(HELPER)
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
+
+brightness-helper: check-helper-toolchain $(BRIGHTNESS_HELPER)
 
 session-helper: check-helper-toolchain $(SESSION_HELPER)
 
@@ -310,6 +335,10 @@ test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTI
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(CONNECTIVITY_DBUS_TEST) $(abspath $(CONNECTIVITY_HELPER))
 
+test-brightness-dbus: check-helper-toolchain $(BRIGHTNESS_HELPER) $(BRIGHTNESS_DBUS_TEST)
+	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
+	$(DBUS_RUN_SESSION) -- $(BRIGHTNESS_DBUS_TEST) $(abspath $(BRIGHTNESS_HELPER))
+
 test-session-dbus: check-helper-toolchain $(SESSION_HELPER) $(SESSION_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(SESSION_DBUS_TEST) $(abspath $(SESSION_HELPER))
@@ -325,6 +354,12 @@ test-adapter: check-quickshell | $(BUILD_DIR)
 	cp tests/adapter/shell.qml $(BUILD_DIR)/adapter-test/shell.qml
 	cp qml/KWinVirtualDesktopAdapter.qml $(BUILD_DIR)/adapter-test/qml/KWinVirtualDesktopAdapter.qml
 	$(QS) -p $(BUILD_DIR)/adapter-test --no-duplicate
+
+test-brightness: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(BRIGHTNESS_TEST_DIR)/qml
+	cp tests/brightness/shell.qml $(BRIGHTNESS_TEST_DIR)/shell.qml
+	cp qml/BrightnessBridge.qml qml/BrightnessAdapter.qml $(BRIGHTNESS_TEST_DIR)/qml/
+	$(QS) -p $(BRIGHTNESS_TEST_DIR) --no-duplicate
 
 test-coordinator: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(COORDINATOR_TEST_DIR)/qml
@@ -367,6 +402,12 @@ test-audio-live-write: check-quickshell audio-helper | $(BUILD_DIR)
 	cp tests/audio/live-write.qml $(AUDIO_LIVE_WRITE_TEST_DIR)/shell.qml
 	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml $(AUDIO_LIVE_WRITE_TEST_DIR)/qml/
 	NAGI_AUDIO_HELPER='$(abspath $(AUDIO_HELPER))' $(QS) -p $(AUDIO_LIVE_WRITE_TEST_DIR) --no-duplicate
+
+test-brightness-live-write: check-quickshell brightness-helper | $(BUILD_DIR)
+	mkdir -p $(BRIGHTNESS_LIVE_WRITE_TEST_DIR)/qml
+	cp tests/brightness/live-write.qml $(BRIGHTNESS_LIVE_WRITE_TEST_DIR)/shell.qml
+	cp qml/BrightnessBridge.qml qml/BrightnessAdapter.qml $(BRIGHTNESS_LIVE_WRITE_TEST_DIR)/qml/
+	NAGI_BRIGHTNESS_HELPER='$(abspath $(BRIGHTNESS_HELPER))' $(QS) -p $(BRIGHTNESS_LIVE_WRITE_TEST_DIR) --no-duplicate
 
 test-connectivity: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(CONNECTIVITY_TEST_DIR)/qml
@@ -424,10 +465,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper session-helper application-helper notification-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper session-helper application-helper notification-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -474,6 +515,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle
 clean:
 	rm -rf $(BUILD_DIR)
