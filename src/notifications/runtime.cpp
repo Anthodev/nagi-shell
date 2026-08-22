@@ -383,6 +383,28 @@ QVariantMap NotificationRuntime::historySnapshot(int index) const
     return value;
 }
 
+QVariantMap NotificationRuntime::resolveTransient(const QString &sourceToken, int sourceGeneration,
+                                                  int revision) const
+{
+    if (sourceToken.isEmpty() || sourceGeneration <= 0 || revision <= 0) {
+        return {};
+    }
+    for (auto association = liveAssociations.cbegin(); association != liveAssociations.cend();
+         ++association) {
+        if (!association->transientPresentationValid
+            || association->transientSourceToken != sourceToken
+            || association->transientSourceGeneration != sourceGeneration
+            || association->transientRevision != revision) {
+            continue;
+        }
+        return {
+            {QStringLiteral("appName"), association->transientAppName},
+            {QStringLiteral("summary"), association->transientSummary},
+        };
+    }
+    return {};
+}
+
 const QVector<NotificationSnapshot> &NotificationRuntime::history() const
 {
     return historySnapshots;
@@ -592,6 +614,7 @@ void NotificationRuntime::admitFresh(QObject *notification)
     provisional.liveAdmissionSequence = *liveSequence;
     provisional.notification = notification;
     provisional.recordKey = recordKey;
+    provisional.transientSourceToken = transientSourceToken(*liveSequence);
     provisional.urgency = normalized.urgency;
     provisional.transient = normalized.transient;
     provisional.seenInGeneration = true;
@@ -642,7 +665,7 @@ void NotificationRuntime::admitFresh(QObject *notification)
     scheduleExpiry(provisional, normalized, acceptedAt);
     liveAssociations.insert(normalized.protocolId, provisional);
     notifyLiveCountIfChanged(previousLiveCount);
-    dispatchPresentation(normalized, recordKey);
+    dispatchPresentation(liveAssociations[normalized.protocolId], normalized);
     armScheduler();
 }
 
@@ -690,24 +713,41 @@ void NotificationRuntime::processReplacement(quint32 protocolId, QObject *notifi
     if (historyChanged) {
         notifyHistoryReset();
     }
-    dispatchPresentation(normalized, association->recordKey);
+    dispatchPresentation(*association, normalized);
     armScheduler();
 }
 
-void NotificationRuntime::dispatchPresentation(
-    const NormalizedNotification &notification, const std::optional<quint64> &recordKey)
+QString NotificationRuntime::transientSourceToken(quint64 liveAdmissionSequence)
 {
-    QVariantMap presentation {
-        {QStringLiteral("appName"), notification.appName},
-        {QStringLiteral("summary"), notification.summary},
-        {QStringLiteral("urgency"), notification.urgency},
-        {QStringLiteral("transient"), notification.transient},
-    };
-    if (recordKey.has_value()) {
-        presentation.insert(QStringLiteral("firstAdmissionSequence"),
-                            QString::number(*recordKey));
+    return QStringLiteral("notification-") + QString::number(liveAdmissionSequence);
+}
+
+void NotificationRuntime::dispatchPresentation(
+    LiveAssociation &association, const NormalizedNotification &notification)
+{
+    if (association.transientRevision == std::numeric_limits<int>::max()) {
+        invalidatePresentation(association);
+        return;
     }
-    emit presentationRequested(presentation);
+    association.transientAppName = notification.appName;
+    association.transientSummary = notification.summary;
+    ++association.transientRevision;
+    association.transientPresentationValid = true;
+    emit transientRequested(association.transientSourceToken,
+                            association.transientSourceGeneration,
+                            association.transientRevision);
+}
+
+void NotificationRuntime::invalidatePresentation(LiveAssociation &association)
+{
+    if (!association.transientPresentationValid) {
+        return;
+    }
+    association.transientPresentationValid = false;
+    association.transientAppName.clear();
+    association.transientSummary.clear();
+    emit transientInvalidated(association.transientSourceToken,
+                              association.transientSourceGeneration);
 }
 
 void NotificationRuntime::scheduleExpiry(LiveAssociation &association,
@@ -769,8 +809,9 @@ void NotificationRuntime::clearLiveStateForOwnershipFailure()
     }
     const int previousLiveCount = liveAssociations.size();
     QVector<quint64> liveRecordKeys;
-    for (auto association = liveAssociations.cbegin(); association != liveAssociations.cend();
+    for (auto association = liveAssociations.begin(); association != liveAssociations.end();
          ++association) {
+        invalidatePresentation(*association);
         if (association->recordKey.has_value()) {
             liveRecordKeys.append(*association->recordKey);
         }
@@ -878,7 +919,12 @@ bool NotificationRuntime::expireNotification(QObject *notification)
 
 void NotificationRuntime::eraseAssociation(quint32 protocolId)
 {
-    liveAssociations.remove(protocolId);
+    auto association = liveAssociations.find(protocolId);
+    if (association == liveAssociations.end()) {
+        return;
+    }
+    invalidatePresentation(*association);
+    liveAssociations.erase(association);
 }
 
 void NotificationRuntime::queueReplacement(quint32 protocolId, QObject *notification)

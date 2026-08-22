@@ -98,13 +98,16 @@ public:
     Q_INVOKABLE QVariantList actionsFor(const QVariant &recordKey) const;
     Q_INVOKABLE QVariantMap historySnapshot(int index) const;
     Q_INVOKABLE void refreshServerOwnership();
+    Q_INVOKABLE QVariantMap resolveTransient(const QString &sourceToken, int sourceGeneration,
+                                             int revision) const;
 
 signals:
     void liveCountChanged();
     void historyCountChanged();
     void serverOwnershipChanged();
     void activeTimerCountChanged();
-    void presentationRequested(const QVariantMap &snapshot);
+    void transientRequested(const QString &sourceToken, int sourceGeneration, int revision);
+    void transientInvalidated(const QString &sourceToken, int sourceGeneration);
 
 private slots:
     void processDueDeadlines();
@@ -135,6 +138,12 @@ private:
         qint64 expiryDeadlineMonotonicMs = -1;
         bool updateQueued = false;
         bool seenInGeneration = false;
+        QString transientSourceToken;
+        QString transientAppName;
+        QString transientSummary;
+        int transientSourceGeneration = 1;
+        int transientRevision = 0;
+        bool transientPresentationValid = false;
     };
 
     struct BufferedNotification {
@@ -161,8 +170,10 @@ private:
     void admitCarried(const QVector<QPointer<QObject>> &notifications);
     void admitFresh(QObject *notification);
     void processReplacement(quint32 protocolId, QObject *notification);
-    void dispatchPresentation(const NormalizedNotification &notification,
-                              const std::optional<quint64> &recordKey);
+    static QString transientSourceToken(quint64 liveAdmissionSequence);
+    void dispatchPresentation(LiveAssociation &association,
+                              const NormalizedNotification &notification);
+    void invalidatePresentation(LiveAssociation &association);
     void scheduleExpiry(LiveAssociation &association,
                         const NormalizedNotification &notification, qint64 acceptedAt);
     void pruneHistory(qint64 now);

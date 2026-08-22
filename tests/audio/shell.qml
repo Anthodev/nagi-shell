@@ -368,6 +368,13 @@ ShellRoot {
         require(bundle.adapter.outputVolume === 1 && bundle.adapter.outputOveramplified &&
                 !bundle.adapter.outputMuted,
                 "external amplification is clamped and represented separately");
+        const amplifiedPresentation = bundle.adapter.resolveTransient(
+                  bundle.adapter.outputSourceToken, bundle.adapter.outputGeneration,
+                  bundle.adapter.outputRevision);
+        require(amplifiedPresentation !== null && amplifiedPresentation.primary === "Main Output"
+                && amplifiedPresentation.detail === "Output volume · Amplified"
+                && amplifiedPresentation.progress === 1 && amplifiedPresentation.value === "100%",
+                "transient resolver presents normalized confirmed amplification explicitly");
         require(near(bundle.adapter.inputVolume, 0.4) && !bundle.adapter.inputOveramplified,
                 "input state is normalized independently");
         require(bundle.capture.outputChanges.length === 0 && bundle.capture.inputChanges.length
@@ -397,6 +404,16 @@ ShellRoot {
                                                                latest.revision);
         require(resolved !== null && resolved.label === "Main Output" && resolved.muted,
                 "opaque latest output revision resolves to normalized presentation");
+        const mutedPresentation = bundle.adapter.resolveTransient(latest.token, latest.generation,
+                                                                  latest.revision);
+        require(mutedPresentation !== null && mutedPresentation.primary === "Main Output"
+                && mutedPresentation.detail === "Muted" && mutedPresentation.iconName
+                === "audio-volume-muted-symbolic" && near(mutedPresentation.progress, 0.73)
+                && mutedPresentation.value === "73%",
+                "transient resolver presents the exact confirmed output, level, and mute state");
+        require(bundle.adapter.resolveTransient(latest.token, latest.generation, latest.revision
+                                                - 1) === null,
+                "transient resolver cannot expose superseded confirmed output");
         require(bundle.adapter.resolveConfirmedOutput(latest.token, latest.generation,
                                                       latest.revision - 1) === null,
                 "superseded backend revisions cannot resolve newer content");
@@ -521,6 +538,11 @@ ShellRoot {
         require(!bundle.adapter.outputAvailable && bundle.adapter.outputEndpointKey === ""
                 && bundle.adapter.outputDisplayLabel === oldLabel,
                 "brief null default disables controls and preserves only presentation label");
+        require(bundle.capture.outputInvalidations.length > 0
+                && bundle.capture.outputInvalidations[bundle.capture.outputInvalidations.length
+                                                      - 1].token === oldSourceToken
+                && bundle.adapter.resolveTransient(oldSourceToken, oldGeneration, latest.revision)
+                === null, "endpoint disappearance invalidates its transient source and stale presentation");
         require(!bundle.adapter.requestOutputVolume(0.4, true),
                 "brief null default rejects writes without claiming the old node");
         bundle.adapter.refreshLabelDeadlineReached("output");

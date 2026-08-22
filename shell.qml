@@ -93,8 +93,17 @@ ShellRoot {
         media: media
         sessionService: session
         notificationService: notifications
+        volumeTransientSource: audio
+        notificationTransientSource: notifications
         reducedMotion: motion.active
         dashboardQuickControlsContent: tray.available ? trayDashboardContent : null
         dashboardNavigationContent: dashboardNavigation
+    }
+
+    TransientCoordinatorBridge {
+        coordinator: islandState
+        surfaceToken: islandHost.surfaceToken
+        audioSource: audio
+        notificationSource: notifications
     }
 }

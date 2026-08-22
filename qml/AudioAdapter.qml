@@ -121,6 +121,37 @@ Scope {
         return engine.resolveEndpoint("input", sourceToken, sourceGeneration, revision);
     }
 
+    function resolveTransient(sourceToken, sourceGeneration, revision) {
+        const confirmed = resolveConfirmedOutput(sourceToken, sourceGeneration, revision);
+        if (confirmed === null || typeof confirmed.label !== "string" || typeof confirmed.volume
+                !== "number" || !Number.isFinite(confirmed.volume) || typeof confirmed.muted
+                !== "boolean" || typeof confirmed.overamplified !== "boolean") {
+            return null;
+        }
+
+        const volume = Math.min(1, Math.max(0, confirmed.volume));
+        let iconName = "audio-volume-high-symbolic";
+        if (confirmed.muted || volume === 0) {
+            iconName = "audio-volume-muted-symbolic";
+        } else if (volume <= 0.33) {
+            iconName = "audio-volume-low-symbolic";
+        } else if (volume <= 0.66) {
+            iconName = "audio-volume-medium-symbolic";
+        }
+
+        let detail = confirmed.muted ? "Muted" : "Output volume";
+        if (confirmed.overamplified) {
+            detail += " · Amplified";
+        }
+        return {
+            "detail": detail,
+            "iconName": iconName,
+            "primary": confirmed.label !== "" ? confirmed.label : "Audio output",
+            "progress": volume,
+            "value": Math.round(volume * 100) + "%"
+        };
+    }
+
     // Deterministic deadline/flush seams used by the focused harness. Runtime
     // reaches the same functions through the timers below.
     function processPendingChanges() {
