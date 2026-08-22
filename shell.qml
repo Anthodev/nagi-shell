@@ -23,6 +23,11 @@ ShellRoot {
         id: media
     }
 
+    AudioAdapter {
+        id: audio
+        bridgePath: Quickshell.shellPath("build/nagi-pipewire-audio")
+    }
+
     ReducedMotion {
         id: motion
     }
