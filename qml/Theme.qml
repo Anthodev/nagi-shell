@@ -87,6 +87,11 @@ Singleton {
         // Compact idle caps keep one long label from stretching the pill.
         readonly property int islandIdleWorkspaceMaximumWidth: 96
         readonly property int islandIdleMediaMaximumWidth: 220
+        readonly property int islandTransientCompactWidth: 340
+        readonly property int islandTransientCompactHeight: 56
+        readonly property int islandTransientNotificationWidth: 420
+        readonly property int islandTransientNotificationHeight: 72
+        readonly property int islandTransientValueMaximumWidth: 96
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38

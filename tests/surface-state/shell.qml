@@ -14,6 +14,8 @@ ShellRoot {
     property real historyEpoch: 0
     property var initialSurfaceToken: null
     property int initialSurfaceGeneration: 0
+    property int compactTransientWidth: 0
+    property int compactTransientHeight: 0
     readonly property int maximumRetryAttempts: 500
 
     function advance() {
@@ -167,9 +169,8 @@ ShellRoot {
             historyEpoch = coordinator.ownerEpoch;
         } else if (step === 11) {
             if (!awaitState(coordinator.ownerName === "history" && coordinator.presentationVisible
-                            && host.surfaceFocusable && host.historyFocused
-                            && host.historyRowCount === 2,
-                            "history view did not render and receive focus in the actual surface")) {
+                            && host.surfaceFocusable && host.historyFocused && host.historyRowCount
+                            === 2, "history view did not render and receive focus in the actual surface")) {
                 return;
             }
             require(coordinator.focusTarget === coordinator.focusNotificationHistory,
@@ -190,11 +191,82 @@ ShellRoot {
                             "final dashboard cancellation did not restore Idle")) {
                 return;
             }
+            host.reducedMotion = false;
+            require(coordinator.requestVolume("surface-volume", 1, 1, host.surfaceToken),
+                    "actual surface accepts a compact value transient");
+            require(!coordinator.presentationVisible,
+                    "visible hold waits for compact entry completion");
+        } else if (step === 14) {
+            if (!awaitState(coordinator.ownerName === "volume" && coordinator.presentationVisible
+                            && host.transientCommitted,
+                            "compact value transient did not commit visibly")) {
+                return;
+            }
+            require(host.transientPrimaryText === "Built-in Audio" && host.transientDetailText
+                    === "Output volume", "compact transient resolves the exact normalized payload");
+            require(host.surfacePreferredWidth === Theme.size.islandTransientCompactWidth
+                    && host.surfacePreferredHeight === Theme.size.islandTransientCompactHeight,
+                    "compact transient uses representative OSD geometry");
+            require(!host.transientEntryAnimationRunning && !host.surfaceFocusable,
+                    "settled transient suspends animation and never steals focus");
+            compactTransientWidth = host.surfacePreferredWidth;
+            compactTransientHeight = host.surfacePreferredHeight;
+            require(coordinator.requestNotification("surface-notification", 2, 1, host.surfaceToken),
+                    "notification preempts the compact transient");
+            require(!coordinator.presentationVisible,
+                    "notification hold waits for its taller entry completion");
+        } else if (step === 15) {
+            if (!awaitState(coordinator.ownerName === "notification"
+                            && coordinator.presentationVisible && host.transientCommitted,
+                            "notification transient did not commit visibly")) {
+                return;
+            }
+            require(host.transientPrimaryText === "Messages" && host.transientDetailText
+                    === "Review requested",
+                    "notification transient replaces compact content without stale text");
+            require(host.surfacePreferredWidth > compactTransientWidth
+                    && host.surfacePreferredHeight > compactTransientHeight,
+                    "notification content receives taller representative geometry");
+            require(coordinator.invalidateTransient("surface-notification", 2),
+                    "notification source invalidation releases current ownership");
+        } else if (step === 16) {
+            if (!awaitState(coordinator.ownerName === "volume" && coordinator.presentationVisible
+                            && host.transientPrimaryText === "Built-in Audio",
+                            "fresh compact predecessor did not restore visibly")) {
+                return;
+            }
+            require(coordinator.invalidateTransient("surface-volume", 1),
+                    "restored compact source invalidates cleanly");
+        } else if (step === 17) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
+                            "transient invalidation did not restore Idle")) {
+                return;
+            }
+            host.reducedMotion = true;
+            require(coordinator.requestWorkspace("surface-workspace", 3, 1, host.surfaceToken),
+                    "reduced-motion workspace transient enters");
+        } else if (step === 18) {
+            if (!awaitState(coordinator.ownerName === "workspace"
+                            && coordinator.presentationVisible && host.transientCommitted,
+                            "reduced-motion transient did not commit")) {
+                return;
+            }
+            require(host.transientPrimaryText === "Development" && host.transientDetailText
+                    === "Desktop 2 of 4", "reduced motion preserves transient state meaning");
+            require(host.geometryAnimationDuration === 0 && !host.transientEntryAnimationRunning,
+                    "reduced motion removes geometry and entry animation work");
+            require(coordinator.invalidateTransient("surface-workspace", 3),
+                    "reduced-motion source invalidates");
+        } else if (step === 19) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
+                            "final transient cleanup did not restore Idle")) {
+                return;
+            }
             require(mountedRegionCount >= 18,
                     "all six real region components remount across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
-            console.warn("actual island dashboard, history, and session surface tests passed");
+            console.warn("actual island transient, dashboard, history, and session tests passed");
             Qt.exit(0);
             return;
         }
@@ -301,6 +373,42 @@ ShellRoot {
             return 0;
         }
     }
+    QtObject {
+        id: fakeTransientSource
+
+        function resolveTransient(sourceToken, sourceGeneration, sourceRevision) {
+            if (sourceToken === "surface-volume" && sourceGeneration === 1 && sourceRevision
+                    === 1) {
+                return {
+                    "detail": "Output volume",
+                    "iconName": "audio-volume-high-symbolic",
+                    "primary": "Built-in Audio",
+                    "progress": 0.64,
+                    "value": "64%"
+                };
+            }
+            if (sourceToken === "surface-notification" && sourceGeneration === 2 && sourceRevision
+                    === 1) {
+                return {
+                    "detail": "Review requested",
+                    "iconName": "preferences-desktop-notification-symbolic",
+                    "primary": "Messages",
+                    "value": ""
+                };
+            }
+            if (sourceToken === "surface-workspace" && sourceGeneration === 3 && sourceRevision
+                    === 1) {
+                return {
+                    "detail": "Desktop 2 of 4",
+                    "iconName": "preferences-desktop-virtual-symbolic",
+                    "primary": "Development",
+                    "value": "2 / 4"
+                };
+            }
+            return null;
+        }
+    }
+
     IslandStateCoordinator {
         id: coordinator
     }
@@ -317,6 +425,10 @@ ShellRoot {
         dashboardNavigationContent: navigationRegion
         sessionService: fakeSessionService
         notificationService: fakeNotificationService
+        workspaceTransientSource: fakeTransientSource
+        brightnessTransientSource: fakeTransientSource
+        volumeTransientSource: fakeTransientSource
+        notificationTransientSource: fakeTransientSource
     }
 
     Timer {

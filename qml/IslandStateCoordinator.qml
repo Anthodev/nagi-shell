@@ -6,6 +6,7 @@ Scope {
 
     readonly property int maximumPendingTransients: 8
     readonly property int maximumRestorationDepth: 8
+    readonly property int maximumSourceVersion: 2147483647
 
     readonly property int ownerNone: 0
     readonly property int ownerIdle: 1
@@ -34,6 +35,8 @@ Scope {
     readonly property real ownerEpoch: reducer.ownerEpoch
     readonly property real revision: reducer.revision
     readonly property var ownerSourceToken: reducer.ownerSourceToken
+    readonly property int ownerSourceGeneration: reducer.ownerSourceGeneration
+    readonly property int ownerSourceRevision: reducer.ownerSourceRevision
     readonly property bool presentationVisible: reducer.presentationVisible
     readonly property int focusTarget: reducer.focusTarget
     readonly property real focusRequestSerial: reducer.focusRequestSerial
@@ -80,21 +83,31 @@ Scope {
         return reducer.openSession(initiatingSurfaceToken);
     }
 
-    function requestBrightness(sourceToken, initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerBrightness, sourceToken, initiatingSurfaceToken);
+    function requestBrightness(sourceToken, sourceGeneration, sourceRevision,
+                               initiatingSurfaceToken) {
+        return reducer.requestTransient(root.ownerBrightness, sourceToken, sourceGeneration,
+                                        sourceRevision, initiatingSurfaceToken);
     }
 
-    function requestNotification(sourceToken, initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerNotification, sourceToken,
-                                        initiatingSurfaceToken);
+    function requestNotification(sourceToken, sourceGeneration, sourceRevision,
+                                 initiatingSurfaceToken) {
+        return reducer.requestTransient(root.ownerNotification, sourceToken, sourceGeneration,
+                                        sourceRevision, initiatingSurfaceToken);
     }
 
-    function requestVolume(sourceToken, initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerVolume, sourceToken, initiatingSurfaceToken);
+    function requestVolume(sourceToken, sourceGeneration, sourceRevision, initiatingSurfaceToken) {
+        return reducer.requestTransient(root.ownerVolume, sourceToken, sourceGeneration,
+                                        sourceRevision, initiatingSurfaceToken);
     }
 
-    function requestWorkspace(sourceToken, initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerWorkspace, sourceToken, initiatingSurfaceToken);
+    function requestWorkspace(sourceToken, sourceGeneration, sourceRevision,
+                              initiatingSurfaceToken) {
+        return reducer.requestTransient(root.ownerWorkspace, sourceToken, sourceGeneration,
+                                        sourceRevision, initiatingSurfaceToken);
+    }
+
+    function invalidateTransient(sourceToken, sourceGeneration) {
+        return reducer.invalidateTransient(sourceToken, sourceGeneration);
     }
 
     function setExplicitExpanded(generation, expanded) {
@@ -123,6 +136,8 @@ Scope {
         property real ownerEpoch: 0
         property real revision: 0
         property var ownerSourceToken: null
+        property int ownerSourceGeneration: 0
+        property int ownerSourceRevision: 0
         property real ownerAdmission: 0
         property real ownerFreshUntil: -1
         property real ownerHoldDuration: 0
@@ -233,6 +248,8 @@ Scope {
                             "revision": revision,
                             "taskEpoch": isInteractiveKind(ownerKind) ? ownerEpoch : 0,
                             "sourceToken": ownerSourceToken,
+                            "sourceGeneration": ownerSourceGeneration,
+                            "sourceRevision": ownerSourceRevision,
                             "surfaceGeneration": surfaceGeneration
                         });
             restoration = frames;
@@ -249,6 +266,8 @@ Scope {
             ownerEpoch = 0;
             revision = 0;
             ownerSourceToken = null;
+            ownerSourceGeneration = 0;
+            ownerSourceRevision = 0;
             ownerAdmission = 0;
             ownerFreshUntil = -1;
             ownerHoldDuration = 0;
@@ -297,6 +316,8 @@ Scope {
             ownerKind = kind;
             ownerRank = rankFor(kind);
             ownerSourceToken = sourceToken;
+            ownerSourceGeneration = record === null ? 0 : record.sourceGeneration;
+            ownerSourceRevision = record === null ? 0 : record.sourceRevision;
             ownerAdmission = record === null ? 0 : record.admission;
             ownerFreshUntil = record === null ? -1 : record.freshUntil;
             ownerHoldDuration = record === null ? holdFor(kind) : record.holdDuration;
@@ -440,6 +461,21 @@ Scope {
         function isSourceToken(token) {
             return (typeof token === "string" && token.length > 0 && token.length <= 128) || (
                         typeof token === "number" && Number.isSafeInteger(token));
+        }
+        function isSourceVersion(sourceGeneration, sourceRevision) {
+            return Number.isInteger(sourceGeneration) && sourceGeneration > 0 && sourceGeneration
+                    <= root.maximumSourceVersion && Number.isInteger(sourceRevision)
+                    && sourceRevision > 0 && sourceRevision <= root.maximumSourceVersion;
+        }
+
+        function matchesSource(record, kind, sourceToken, sourceGeneration) {
+            return record.kind === kind && record.sourceToken === sourceToken
+                    && record.sourceGeneration === sourceGeneration;
+        }
+
+        function matchesInvalidation(record, sourceToken, sourceGeneration) {
+            return isTransient(record.kind) && record.sourceToken === sourceToken
+                    && record.sourceGeneration === sourceGeneration;
         }
 
         function isInteractiveKind(kind) {
@@ -647,30 +683,79 @@ Scope {
             return -1;
         }
 
-        function transientRecord(kind, sourceToken, admission, freshUntil) {
+        function transientRecord(kind, sourceToken, sourceGeneration, sourceRevision, admission,
+                                 freshUntil) {
             return {
                 "admission": admission,
                 "freshUntil": freshUntil,
                 "holdDuration": holdFor(kind),
                 "kind": kind,
                 "rank": rankFor(kind),
+                "sourceGeneration": sourceGeneration,
+                "sourceRevision": sourceRevision,
                 "sourceToken": sourceToken,
                 "surfaceGeneration": surfaceGeneration
             };
         }
 
-        function requestTransient(kind, sourceToken, initiatingSurfaceToken) {
+        function invalidateTransient(sourceToken, sourceGeneration) {
+            if (!isSourceToken(sourceToken) || !isSourceVersion(sourceGeneration, 1)) {
+                return false;
+            }
+
+            const now = currentTime();
+            expireDue(now);
+            let removed = false;
+            const nextPending = [];
+            for (let index = 0; index < pending.length; index += 1) {
+                if (matchesInvalidation(pending[index], sourceToken, sourceGeneration)) {
+                    removed = true;
+                } else {
+                    nextPending.push(pending[index]);
+                }
+            }
+            pending = nextPending;
+
+            const nextRestoration = [];
+            for (let index = 0; index < restoration.length; index += 1) {
+                if (matchesInvalidation(restoration[index], sourceToken, sourceGeneration)) {
+                    removed = true;
+                } else {
+                    nextRestoration.push(restoration[index]);
+                }
+            }
+            restoration = nextRestoration;
+
+            if (isTransient(ownerKind) && ownerSourceToken === sourceToken && ownerSourceGeneration
+                    === sourceGeneration) {
+                removed = true;
+                restoreNext(now);
+            }
+
+            schedule(now);
+            return removed;
+        }
+
+        function requestTransient(kind, sourceToken, sourceGeneration, sourceRevision,
+                                  initiatingSurfaceToken) {
             const now = currentTime();
             expireDue(now);
 
-            if (!matchingSurface(initiatingSurfaceToken) || !isSourceToken(sourceToken)) {
+            if (!isTransient(kind) || !matchingSurface(initiatingSurfaceToken) || !isSourceToken(
+                        sourceToken) || !isSourceVersion(sourceGeneration, sourceRevision)) {
                 schedule(now);
                 return false;
             }
 
             const freshUntil = now + freshnessFor(kind);
-            if (ownerKind === kind && ownerSourceToken === sourceToken) {
+            if (ownerKind === kind && ownerSourceToken === sourceToken && ownerSourceGeneration
+                    === sourceGeneration) {
+                if (sourceRevision <= ownerSourceRevision) {
+                    schedule(now);
+                    return false;
+                }
                 revision += 1;
+                ownerSourceRevision = sourceRevision;
                 ownerFreshUntil = freshUntil;
                 ownerHoldDuration = holdFor(kind);
                 ownerHoldUntil = -1;
@@ -680,10 +765,14 @@ Scope {
             }
 
             for (let index = restoration.length - 1; index >= 0; index -= 1) {
-                if (restoration[index].kind === kind && restoration[index].sourceToken
-                        === sourceToken) {
+                if (matchesSource(restoration[index], kind, sourceToken, sourceGeneration)) {
+                    if (sourceRevision <= restoration[index].sourceRevision) {
+                        schedule(now);
+                        return false;
+                    }
                     const frames = restoration.slice();
-                    frames[index] = transientRecord(kind, sourceToken, restoration[index].admission,
+                    frames[index] = transientRecord(kind, sourceToken, sourceGeneration,
+                                                    sourceRevision, restoration[index].admission,
                                                     freshUntil);
                     restoration = frames;
                     schedule(now);
@@ -692,9 +781,14 @@ Scope {
             }
 
             for (let index = 0; index < pending.length; index += 1) {
-                if (pending[index].kind === kind && pending[index].sourceToken === sourceToken) {
+                if (matchesSource(pending[index], kind, sourceToken, sourceGeneration)) {
+                    if (sourceRevision <= pending[index].sourceRevision) {
+                        schedule(now);
+                        return false;
+                    }
                     const records = pending.slice();
-                    records[index] = transientRecord(kind, sourceToken, pending[index].admission,
+                    records[index] = transientRecord(kind, sourceToken, sourceGeneration,
+                                                     sourceRevision, pending[index].admission,
                                                      freshUntil);
                     pending = records;
                     schedule(now);
@@ -703,7 +797,8 @@ Scope {
             }
 
             nextAdmission += 1;
-            const record = transientRecord(kind, sourceToken, nextAdmission, freshUntil);
+            const record = transientRecord(kind, sourceToken, sourceGeneration, sourceRevision,
+                                           nextAdmission, freshUntil);
 
             if (record.rank > ownerRank) {
                 captureCurrent(now);
