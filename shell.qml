@@ -1,4 +1,6 @@
 //@ pragma UseQApplication
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import QtQuick
 import QtQuick.Layouts
@@ -11,7 +13,7 @@ ShellRoot {
     }
 
     CompactClock {
-        id: clock
+        id: clockState
     }
 
     IslandStateCoordinator {
@@ -30,11 +32,13 @@ ShellRoot {
     }
 
     MediaAdapter {
-        id: media
+        id: mediaAdapter
+        detailsVisible: islandState.ownerKind === islandState.ownerExpanded
+                        && islandState.presentationVisible
     }
 
     AudioAdapter {
-        id: audio
+        id: audioAdapter
         bridgePath: Quickshell.shellPath("build/nagi-pipewire-audio")
     }
     BrightnessAdapter {
@@ -43,7 +47,7 @@ ShellRoot {
     }
 
     ConnectivityAdapter {
-        id: connectivity
+        id: connectivityAdapter
         helperPath: Quickshell.shellPath("build/nagi-connectivity")
     }
 
@@ -53,24 +57,59 @@ ShellRoot {
     }
 
     ApplicationModel {
-        id: applications
+        id: applicationModel
 
         helperPath: Quickshell.shellPath("build/nagi-applications")
     }
 
     NotificationService {
-        id: notifications
+        id: notificationService
     }
 
     TrayAdapter {
-        id: tray
+        id: trayAdapter
     }
 
     Component {
-        id: trayDashboardContent
+        id: dashboardMedia
 
-        TrayView {
-            adapter: tray
+        DashboardMedia {
+            media: mediaAdapter
+        }
+    }
+
+    Component {
+        id: dashboardClock
+
+        DashboardClock {
+            clock: clockState
+        }
+    }
+
+    Component {
+        id: dashboardQuickControls
+
+        DashboardQuickControls {
+            connectivity: connectivityAdapter
+            audio: audioAdapter
+            applicationModel: applicationModel
+            tray: trayAdapter
+        }
+    }
+
+    Component {
+        id: dashboardAudio
+
+        DashboardAudio {
+            audio: audioAdapter
+        }
+    }
+
+    Component {
+        id: dashboardNotifications
+
+        DashboardNotifications {
+            service: notificationService
         }
     }
 
@@ -108,18 +147,22 @@ ShellRoot {
         id: islandHost
         coordinator: islandState
         virtualDesktops: virtualDesktops
-        clock: clock
+        clock: clockState
         weather: weather
-        media: media
+        media: mediaAdapter
         sessionService: session
-        notificationService: notifications
-        applicationModel: applications
+        notificationService: notificationService
+        applicationModel: applicationModel
         workspaceTransientSource: virtualDesktops
         brightnessTransientSource: brightness
-        volumeTransientSource: audio
-        notificationTransientSource: notifications
+        volumeTransientSource: audioAdapter
+        notificationTransientSource: notificationService
         reducedMotion: motion.active
-        dashboardQuickControlsContent: tray.available ? trayDashboardContent : null
+        dashboardMediaContent: mediaAdapter.available ? dashboardMedia : null
+        dashboardClockContent: dashboardClock
+        dashboardQuickControlsContent: dashboardQuickControls
+        dashboardAudioContent: dashboardAudio
+        dashboardNotificationsContent: dashboardNotifications
         dashboardNavigationContent: dashboardNavigation
     }
 
@@ -128,7 +171,7 @@ ShellRoot {
         surfaceToken: islandHost.surfaceToken
         workspaceSource: virtualDesktops
         brightnessSource: brightness
-        audioSource: audio
-        notificationSource: notifications
+        audioSource: audioAdapter
+        notificationSource: notificationService
     }
 }

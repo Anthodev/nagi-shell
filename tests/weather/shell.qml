@@ -524,6 +524,8 @@ ShellRoot {
                 "the compact clock renders 24-hour minute text");
         require(clock.precision === SystemClock.Minutes && !isNaN(clock.date.getTime()),
                 "the compact clock updates only at minute precision");
+        require(clock.dateText.length > 0 && /^Week [1-9][0-9]?$/.test(clock.weekText),
+                "expanded clock derives date and ISO week from the same minute source");
 
         // Cache lifecycle across instances: adoption without requests, keyed
         // replacement, and removal of a previous location's record.
@@ -611,3 +613,4 @@ ShellRoot {
 
     Component.onCompleted: Qt.callLater(test.run)
 }
+
