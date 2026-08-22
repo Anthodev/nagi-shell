@@ -313,6 +313,92 @@ void testReplacementAndCloseReasons()
             "undefined close reason did not fail closed");
 }
 
+void testTransientPresentationContract()
+{
+    qint64 now = 0;
+    NotificationRuntime runtime([&now] { return now; }, false);
+    startGeneration(runtime);
+
+    QVector<QString> requestedTokens;
+    QVector<int> requestedGenerations;
+    QVector<int> requestedRevisions;
+    QVector<QString> invalidatedTokens;
+    QObject::connect(
+        &runtime, &NotificationRuntime::transientRequested, &runtime,
+        [&](const QString &sourceToken, int sourceGeneration, int revision) {
+            requestedTokens.append(sourceToken);
+            requestedGenerations.append(sourceGeneration);
+            requestedRevisions.append(revision);
+        });
+    QObject::connect(
+        &runtime, &NotificationRuntime::transientInvalidated, &runtime,
+        [&](const QString &sourceToken, int sourceGeneration) {
+            require(sourceGeneration == 1, "notification source generation was not bounded");
+            invalidatedTokens.append(sourceToken);
+        });
+
+    FakeNotification notification(20);
+    notification.appName = QStringLiteral("Messages");
+    notification.summary = QStringLiteral("Review requested");
+    notification.body = QStringLiteral("private body");
+    attach(runtime, notification);
+
+    require(requestedTokens.size() == 1 && requestedGenerations.constFirst() == 1
+                && requestedRevisions.constFirst() == 1,
+            "fresh notification did not emit one bounded transient identity");
+    const QString sourceToken = requestedTokens.constFirst();
+    const QString recordKey =
+        runtime.historySnapshot(0).value("firstAdmissionSequence").toString();
+    const QVariantMap initial = runtime.resolveTransient(sourceToken, 1, 1);
+    require(initial.size() == 2
+                && initial.value("appName").toString() == QStringLiteral("Messages")
+                && initial.value("summary").toString() == QStringLiteral("Review requested")
+                && !initial.contains("body"),
+            "transient resolver exposed anything beyond bounded app name and summary");
+
+    notification.summary = QStringLiteral("Intermediate");
+    runtime.updateNotification(&notification);
+    notification.summary = QStringLiteral("Latest");
+    runtime.updateNotification(&notification);
+    drainEvents();
+    require(requestedTokens.size() == 2 && requestedTokens.constLast() == sourceToken
+                && requestedRevisions.constLast() == 2
+                && runtime.resolveTransient(sourceToken, 1, 1).isEmpty()
+                && runtime.resolveTransient(sourceToken, 1, 2).value("summary").toString()
+                    == QStringLiteral("Latest"),
+            "same-source replacement did not coalesce to one exact latest revision");
+    require(runtime.historyCount() == 1
+                && runtime.historySnapshot(0).value("firstAdmissionSequence").toString()
+                    == recordKey,
+            "transient presentation changed notification history identity or count");
+
+    FakeNotification protocolTransient(21);
+    protocolTransient.transient = true;
+    protocolTransient.appName = QStringLiteral("Transient sender");
+    attach(runtime, protocolTransient);
+    require(requestedTokens.size() == 3 && requestedTokens.constLast() != sourceToken
+                && runtime.historyCount() == 1,
+            "independent protocol-transient notification was merged or admitted to history");
+    const QString protocolTransientToken = requestedTokens.constLast();
+    emit protocolTransient.closed(3);
+    require(invalidatedTokens.contains(protocolTransientToken)
+                && runtime.resolveTransient(protocolTransientToken, 1, 1).isEmpty(),
+            "closed transient notification remained resolvable");
+
+    const int requestsBeforeReload = requestedTokens.size();
+    notification.lastGeneration = true;
+    const quint64 generation = runtime.beginGeneration();
+    runtime.attachNotification(&notification, generation);
+    runtime.finishGeneration(generation);
+    require(requestedTokens.size() == requestsBeforeReload && runtime.historyCount() == 1,
+            "last-generation handoff replayed a transient or failed history reconciliation");
+
+    emit notification.closed(3);
+    require(invalidatedTokens.contains(sourceToken)
+                && runtime.resolveTransient(sourceToken, 1, 2).isEmpty(),
+            "notification closure did not invalidate the live source");
+}
+
 void testUrgencyAndAgePrecedence()
 {
     qint64 now = 0;
@@ -480,6 +566,7 @@ int main(int argc, char **argv)
     testNormalization();
     testLifecycleAndExpiry();
     testReplacementAndCloseReasons();
+    testTransientPresentationContract();
     testUrgencyAndAgePrecedence();
     testCapacityAndBounds();
     testReloadRestartAndOwnershipFailure();

@@ -22,7 +22,8 @@ Scope {
     property var generation: NotificationRuntime.beginGeneration()
     property var watchers: ({})
 
-    signal presentationRequested(var snapshot)
+    signal transientRequested(string sourceToken, int sourceGeneration, int revision)
+    signal transientInvalidated(string sourceToken, int sourceGeneration)
 
     function dismiss(recordKey) {
         return NotificationRuntime.dismiss(recordKey);
@@ -38,6 +39,22 @@ Scope {
 
     function actionsFor(recordKey) {
         return [];
+    }
+
+    function resolveTransient(sourceToken, sourceGeneration, revision) {
+        const normalized = NotificationRuntime.resolveTransient(sourceToken, sourceGeneration,
+                                                                revision);
+        if (normalized === null || typeof normalized !== "object" || Array.isArray(normalized)
+                || typeof normalized.appName !== "string" || typeof normalized.summary
+                !== "string") {
+            return null;
+        }
+        return {
+            "detail": normalized.summary,
+            "iconName": "preferences-desktop-notification-symbolic",
+            "primary": normalized.appName !== "" ? normalized.appName : "Notification",
+            "value": ""
+        };
     }
 
     function watchNotification(notification) {
@@ -103,8 +120,12 @@ Scope {
     Connections {
         target: NotificationRuntime
 
-        function onPresentationRequested(snapshot) {
-            root.presentationRequested(snapshot);
+        function onTransientRequested(sourceToken, sourceGeneration, revision) {
+            root.transientRequested(sourceToken, sourceGeneration, revision);
+        }
+
+        function onTransientInvalidated(sourceToken, sourceGeneration) {
+            root.transientInvalidated(sourceToken, sourceGeneration);
         }
 
         function onServerOwnershipChanged() {

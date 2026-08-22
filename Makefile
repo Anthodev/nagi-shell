@@ -31,6 +31,7 @@ CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 SESSION_TEST_DIR := $(BUILD_DIR)/session-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
+TRANSIENT_TEST_DIR := $(BUILD_DIR)/transient-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
 MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
 AUDIO_TEST_DIR := $(BUILD_DIR)/audio-test
@@ -81,7 +82,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -103,6 +104,7 @@ help:
 		'make test-notifications  Test notification lifecycle, bounds, and history view' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
+		'make test-transients  Test notification and confirmed-audio transient routing' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
 		'make test-weather    Test compact clock and weather adapter state' \
 		'make test-media      Test the MPRIS media adapter state' \
@@ -330,6 +332,12 @@ test-coordinator: check-quickshell | $(BUILD_DIR)
 	cp qml/IslandStateCoordinator.qml $(COORDINATOR_TEST_DIR)/qml/
 	$(QS) -p $(COORDINATOR_TEST_DIR) --no-duplicate
 
+test-transients: check-quickshell | $(BUILD_DIR)
+	mkdir -p $(TRANSIENT_TEST_DIR)/qml
+	cp tests/transients/shell.qml $(TRANSIENT_TEST_DIR)/shell.qml
+	cp qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml $(TRANSIENT_TEST_DIR)/qml/
+	$(QS) -p $(TRANSIENT_TEST_DIR) --no-duplicate
+
 test-weather: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(WEATHER_TEST_DIR)/qml
 	cp tests/weather/shell.qml $(WEATHER_TEST_DIR)/shell.qml
@@ -466,6 +474,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-tray test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle
 clean:
 	rm -rf $(BUILD_DIR)
