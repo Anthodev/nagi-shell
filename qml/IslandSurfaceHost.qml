@@ -15,6 +15,7 @@ Scope {
     property var media: null
     property var sessionService: null
     property var notificationService: null
+    property var applicationModel: null
     property var workspaceTransientSource: null
     property var brightnessTransientSource: null
     property var volumeTransientSource: null
@@ -46,6 +47,12 @@ Scope {
                                              && ownership.liveSurface.dashboardFocused
     readonly property int loadedDashboardRegionCount: ownership.liveSurface === null ? 0 :
                                                                                        ownership.liveSurface.loadedDashboardRegionCount
+    readonly property bool launcherFocused: ownership.liveSurface !== null
+                                            && ownership.liveSurface.launcherFocused
+    readonly property int launcherResultCount: ownership.liveSurface === null ? 0 :
+                                                                                ownership.liveSurface.launcherResultCount
+    readonly property string launcherSelectedId: ownership.liveSurface === null ? "" :
+                                                                                  ownership.liveSurface.launcherSelectedId
     readonly property bool sessionFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.sessionFocused
     readonly property bool historyFocused: ownership.liveSurface !== null
@@ -202,6 +209,7 @@ Scope {
             media: host.media
             sessionService: host.sessionService
             notificationService: host.notificationService
+            applicationModel: host.applicationModel
             workspaceTransientSource: host.workspaceTransientSource
             brightnessTransientSource: host.brightnessTransientSource
             volumeTransientSource: host.volumeTransientSource

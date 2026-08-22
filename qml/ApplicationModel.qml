@@ -18,6 +18,9 @@ Scope {
     readonly property var recentApplications: state.recentApplications
     readonly property var pinIds: state.committedPins
     readonly property var recencyIds: state.recencyIds
+    readonly property bool pinMutationPending: state.pinsWritePhase !== "idle" || state.pendingPins
+                                               !== null
+    readonly property bool launchPending: state.pendingLaunch !== null
     readonly property string pinFailure: state.pinFailure
     readonly property string recencyFailure: state.recencyFailure
     readonly property string pinsPath: state.pinsPath
@@ -33,6 +36,8 @@ Scope {
     signal pinReordered(string desktopFileId)
     signal pinMutationFailed(string category)
     signal recencyPersisted
+    signal launchAccepted(int requestId, string desktopFileId)
+    signal launchRejected(int requestId, string category)
 
     function pin(desktopFileId) {
         if (!state.pinStoreAvailable || !bridge.ready) {
@@ -89,8 +94,46 @@ Scope {
         return true;
     }
 
+    function dispatchLaunch(desktopFileId) {
+        if (state.pendingLaunch !== null || !eligible(desktopFileId) || !bridge.ready) {
+            return 0;
+        }
+        state.nextLaunchRequestId = state.nextLaunchRequestId >= 2147483647 ? 1 :
+                                                                              state.nextLaunchRequestId
+                                                                              + 1;
+        const requestId = state.nextLaunchRequestId;
+        state.pendingLaunch = {
+            "requestId": requestId,
+            "desktopFileId": desktopFileId
+        };
+        if (!bridge.launch(requestId, desktopFileId)) {
+            state.pendingLaunch = null;
+            return 0;
+        }
+        return requestId;
+    }
+
+    function acceptLaunchResult(requestId, accepted, category) {
+        const pending = state.pendingLaunch;
+        if (pending === null || pending.requestId !== requestId) {
+            return;
+        }
+        state.pendingLaunch = null;
+        if (!accepted) {
+            root.launchRejected(requestId, category);
+            captureDiscoveryGeneration();
+            return;
+        }
+        commitAcceptedLaunch(pending.desktopFileId);
+        root.launchAccepted(requestId, pending.desktopFileId);
+    }
+
     function recordAcceptedLaunch(desktopFileId) {
-        if (!eligible(desktopFileId)) {
+        return eligible(desktopFileId) && commitAcceptedLaunch(desktopFileId);
+    }
+
+    function commitAcceptedLaunch(desktopFileId) {
+        if (!validDesktopId(desktopFileId)) {
             return false;
         }
         const target = state.recencyIds.slice();
@@ -192,6 +235,7 @@ Scope {
                         complete = false;
                         break;
                     }
+                    row.idOrder = index;
                     map[row.id] = row;
                     applications.push(row);
                 }
@@ -199,6 +243,9 @@ Scope {
 
             if (complete) {
                 applications.sort(compareApplications);
+                for (let index = 0; index < applications.length; ++index) {
+                    applications[index].nameOrder = index;
+                }
                 state.entryById = map;
                 state.applications = applications;
                 state.discoveryAvailable = true;
@@ -569,12 +616,19 @@ Scope {
 
         onInitialized: stores => root.acceptStores(stores)
         onGenerationReceived: generation => root.acceptDiscoveryGeneration(generation)
+        onLaunchResult: (requestId, accepted, category) => root.acceptLaunchResult(requestId,
+                                                                                   accepted, category)
         onWriteReady: (store, serial, success, category) => root.acceptWriteReady(store, serial, success,
                                                                                   category)
         onWriteVerified: (store, serial, success, category) => root.acceptWriteVerified(store,
                                                                                         serial, success,
                                                                                         category)
         onFatalFailure: {
+            if (state.pendingLaunch !== null) {
+                const requestId = state.pendingLaunch.requestId;
+                state.pendingLaunch = null;
+                root.launchRejected(requestId, "unavailable");
+            }
             root.markDiscoveryIncomplete("helper unavailable");
             state.scanInFlight = false;
             if (state.inFlightDiscoveryGeneration !== 0) {
@@ -641,6 +695,8 @@ Scope {
         property bool scanInFlight: false
         property int inFlightDiscoveryGeneration: 0
         property var inFlightDiscoveryEntries: []
+        property int nextLaunchRequestId: 0
+        property var pendingLaunch: null
         property string pinsWritePhase: "idle"
         property int pinsWriteSerial: 0
         property var currentPinsWrite: null

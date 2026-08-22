@@ -5,6 +5,7 @@ QMLFORMAT ?= qmlformat-qt6
 QMLLINT ?= qmllint-qt6
 QML_SOURCES := shell.qml $(wildcard qml/*.qml)
 CXX ?= c++
+CMAKE ?= cmake
 PKG_CONFIG ?= pkg-config
 QT_PATHS ?= qtpaths6
 MOC ?= $(shell $(QT_PATHS) --query QT_HOST_LIBEXECS)/moc
@@ -31,6 +32,10 @@ SESSION_MOC := $(BUILD_DIR)/session/main.moc
 SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
 SESSION_DBUS_TEST_MOC := $(BUILD_DIR)/session_dbus_test.moc
 APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
+LAUNCHER_SHORTCUT_BUILD_DIR := $(BUILD_DIR)/launcher-shortcut
+LAUNCHER_SHORTCUT_HELPER := $(LAUNCHER_SHORTCUT_BUILD_DIR)/nagi-launcher-shortcut
+LAUNCHER_SHORTCUT_TEST := $(LAUNCHER_SHORTCUT_BUILD_DIR)/nagi-launcher-shortcut-test
+LAUNCHER_SHORTCUT_TEST_DIR := $(BUILD_DIR)/launcher-shortcut-test
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 BRIGHTNESS_TEST_DIR := $(BUILD_DIR)/brightness-test
@@ -51,6 +56,7 @@ TRAY_LIVE_TEST_DIR := $(BUILD_DIR)/tray-live-test
 TRAY_LIVE_TEST := $(BUILD_DIR)/tray-live-test-runner
 APPLICATION_TEST := $(BUILD_DIR)/applications-helper-test
 APPLICATION_QML_TEST_DIR := $(BUILD_DIR)/applications-test
+LAUNCHER_TEST_DIR := $(BUILD_DIR)/launcher-test
 NOTIFICATION_BUILD_DIR := $(BUILD_DIR)/notifications
 NOTIFICATION_MODULE_DIR := $(BUILD_DIR)/qml/Nagi/Notifications
 NOTIFICATION_PLUGIN := $(NOTIFICATION_MODULE_DIR)/libnaginotificationsplugin.so
@@ -88,7 +94,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-launcher-shortcut-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop
 
 help:
 	@printf '%s\n' \
@@ -99,6 +105,7 @@ help:
 		'make brightness-helper  Build the PowerDevil brightness bridge' \
 		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
+		'make launcher-shortcut-helper  Build the KF6 KGlobalAccel launcher shortcut helper' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
@@ -110,7 +117,9 @@ help:
 		'make test-brightness-live-write  Change and restore live PowerDevil brightness' \
 		'make test-session-dbus  Test KDE session dispatch, denial, and cleanup' \
 		'make test-session   Test session service and interaction state' \
+		'make test-launcher   Test launcher search, ordering, pin actions, and dispatch' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
+		'make test-launcher-shortcut  Test KGlobalAccel conflict, persistence, activation, and lifecycle' \
 		'make test-notifications  Test notification lifecycle, bounds, and history view' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
@@ -142,12 +151,13 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel qt6-qtbase-devel qt6-qtdeclarative-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, libpipewire 0.3, and GIO Unix development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel kf6-kglobalaccel-devel qt6-qtbase-devel qt6-qtdeclarative-devel cmake\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, KF6 GlobalAccel, libpipewire 0.3, and GIO Unix development files\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
 	@$(MAKE) --no-print-directory check-application-toolchain
+	@$(MAKE) --no-print-directory check-launcher-shortcut-toolchain
 	@$(MAKE) --no-print-directory check-notification-toolchain
 	@$(MAKE) --no-print-directory check-tray-toolchain
 
@@ -164,6 +174,10 @@ check-audio-toolchain:
 check-application-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core gio-unix-2.0
 
+
+check-launcher-shortcut-toolchain:
+	@command -v '$(CMAKE)' >/dev/null
+	@$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)' >/dev/null
 check-notification-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core Qt6DBus Qt6Qml
 	@test -x '$(MOC)'
@@ -258,6 +272,15 @@ $(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(B
 $(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) $(GIO_CFLAGS) $(APPLICATION_HELPER_SOURCE) -o $@ $(LDFLAGS) $(QT_LIBS) $(GIO_LIBS)
 
+$(LAUNCHER_SHORTCUT_HELPER): src/launcher-shortcut/main.cpp src/launcher-shortcut/registration_policy.h src/launcher-shortcut/CMakeLists.txt | $(BUILD_DIR)
+	$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)'
+	$(CMAKE) --build '$(LAUNCHER_SHORTCUT_BUILD_DIR)' --target nagi-launcher-shortcut
+
+
+$(LAUNCHER_SHORTCUT_TEST): tests/launcher_shortcut_test.cpp src/launcher-shortcut/registration_policy.h src/launcher-shortcut/CMakeLists.txt | $(BUILD_DIR)
+	$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)'
+	$(CMAKE) --build '$(LAUNCHER_SHORTCUT_BUILD_DIR)' --target nagi-launcher-shortcut-test
+
 $(APPLICATION_TEST): tests/applications_helper_test.cpp | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) tests/applications_helper_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
@@ -285,6 +308,8 @@ brightness-helper: check-helper-toolchain $(BRIGHTNESS_HELPER)
 session-helper: check-helper-toolchain $(SESSION_HELPER)
 
 application-helper: check-application-toolchain $(APPLICATION_HELPER)
+
+launcher-shortcut-helper: check-launcher-shortcut-toolchain $(LAUNCHER_SHORTCUT_HELPER)
 
 notification-plugin: check-notification-toolchain $(NOTIFICATION_PLUGIN)
 
@@ -433,16 +458,28 @@ test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUIL
 	cp qml/TrayAdapter.qml $(TRAY_LIVE_TEST_DIR)/qml/
 	$(TRAY_LIVE_TEST) '$(QS)' '$(abspath $(TRAY_LIVE_TEST_DIR))'
 
+test-launcher-shortcut: check-launcher-shortcut-toolchain $(LAUNCHER_SHORTCUT_HELPER) $(LAUNCHER_SHORTCUT_TEST)
+	rm -rf $(LAUNCHER_SHORTCUT_TEST_DIR)
+	mkdir -p $(LAUNCHER_SHORTCUT_TEST_DIR)/config
+	QT_QPA_PLATFORM='offscreen' QT_ACCESSIBILITY='0' GTK_USE_PORTAL='0' XDG_CURRENT_DESKTOP='KDE' XDG_CONFIG_HOME='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/config' $(DBUS_RUN_SESSION) -- $(LAUNCHER_SHORTCUT_TEST) '$(abspath $(LAUNCHER_SHORTCUT_HELPER))'
+
+test-launcher: check-quickshell | $(BUILD_DIR)
+	rm -rf $(LAUNCHER_TEST_DIR)
+	mkdir -p $(LAUNCHER_TEST_DIR)/qml
+	cp tests/launcher/shell.qml $(LAUNCHER_TEST_DIR)/shell.qml
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/LauncherView.qml qml/LauncherShortcutAdapter.qml $(LAUNCHER_TEST_DIR)/qml/
+	QT_QPA_PLATFORM='offscreen' $(QS) -p $(LAUNCHER_TEST_DIR) --no-duplicate
+
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
@@ -465,10 +502,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -515,6 +552,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle
+
 clean:
 	rm -rf $(BUILD_DIR)

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Nagi Shell
+Comment=Open the Nagi Shell desktop island
+Exec=qs -p /usr/share/nagi-shell --no-duplicate
+Icon=system-run
+Terminal=false
+Categories=Utility;System;
+StartupNotify=false

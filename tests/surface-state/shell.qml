@@ -82,14 +82,16 @@ ShellRoot {
             require(coordinator.openLauncher(host.surfaceToken),
                     "higher-priority interaction interrupts Expanded");
         } else if (step === 3) {
-            if (!awaitState(coordinator.ownerName === "launcher" &&
-                            !coordinator.presentationVisible && !host.surfaceFocusable
+            if (!awaitState(coordinator.ownerName === "launcher"
+                            && coordinator.presentationVisible && host.surfaceFocusable
+                            && host.launcherFocused && host.launcherResultCount === 1
                             && host.loadedDashboardRegionCount === 0,
-                            "interruption did not hide obsolete dashboard content")) {
+                            "launcher did not replace and focus within five seconds")) {
                 return;
             }
-            require(host.surfaceToken === initialSurfaceToken,
-                    "interruption still uses the original surface");
+            require(host.launcherSelectedId === "fixture.desktop"
+                    && host.surfaceToken === initialSurfaceToken,
+                    "launcher selection did not remain on the original surface");
             focusSerialBeforeRestore = coordinator.focusRequestSerial;
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
@@ -266,7 +268,7 @@ ShellRoot {
                     "all six real region components remount across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
-            console.warn("actual island transient, dashboard, history, and session tests passed");
+            console.warn("actual island launcher, transient, dashboard, history, and session tests passed");
             Qt.exit(0);
             return;
         }
@@ -409,6 +411,49 @@ ShellRoot {
         }
     }
 
+    QtObject {
+        id: fakeApplicationModel
+
+        readonly property bool initialized: true
+        readonly property bool available: true
+        readonly property bool pinMutationPending: false
+        readonly property string pinFailure: "none"
+        readonly property var pinIds: []
+        readonly property var recencyIds: ["fixture.desktop"]
+        readonly property var applications: [{
+                "id": "fixture.desktop",
+                "name": "Fixture Application",
+                "keywords": ["fixture"],
+                "icon": "",
+                "nameOrder": 0,
+                "idOrder": 0
+            }]
+        readonly property var pinnedApplications: []
+        readonly property var recentApplications: applications
+
+        signal launchAccepted(int requestId, string desktopFileId)
+        signal launchRejected(int requestId, string category)
+        signal pinCommitted(string desktopFileId)
+        signal pinRemoved(string desktopFileId)
+        signal pinReordered(string desktopFileId)
+        signal pinMutationFailed(string category)
+
+        function captureDiscoveryGeneration() {
+        }
+        function dispatchLaunch(desktopFileId) {
+            return 1;
+        }
+        function movePin(desktopFileId, newIndex) {
+            return false;
+        }
+        function pin(desktopFileId) {
+            return true;
+        }
+        function unpin(desktopFileId) {
+            return false;
+        }
+    }
+
     IslandStateCoordinator {
         id: coordinator
     }
@@ -425,6 +470,7 @@ ShellRoot {
         dashboardNavigationContent: navigationRegion
         sessionService: fakeSessionService
         notificationService: fakeNotificationService
+        applicationModel: fakeApplicationModel
         workspaceTransientSource: fakeTransientSource
         brightnessTransientSource: fakeTransientSource
         volumeTransientSource: fakeTransientSource
