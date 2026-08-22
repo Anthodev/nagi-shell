@@ -26,10 +26,11 @@ ShellRoot {
         require(request(), owner + " freshness request enters");
         require(coordinator.ownerName === owner, owner + " owns before freshness boundary");
         nowMs += freshness - 1;
-        require(coordinator.setExpanded(false, token), owner + " pre-boundary dispatch succeeds");
+        require(coordinator.setHover(generation, false), owner
+                + " pre-boundary dispatch succeeds");
         require(coordinator.ownerName === owner, owner + " remains fresh before boundary");
         nowMs += 1;
-        require(coordinator.setExpanded(false, token), owner
+        require(coordinator.setHover(generation, false), owner
                 + " freshness boundary dispatch succeeds");
         require(coordinator.ownerName === "idle", owner + " expires at freshness boundary");
     }
@@ -41,11 +42,12 @@ ShellRoot {
                                                coordinator.revision), owner
                 + " presentation is acknowledged");
         nowMs += hold - 1;
-        require(coordinator.setExpanded(false, token), owner
+        require(coordinator.setHover(generation, false), owner
                 + " hold pre-boundary dispatch succeeds");
         require(coordinator.ownerName === owner, owner + " remains visible before hold boundary");
         nowMs += 1;
-        require(coordinator.setExpanded(false, token), owner + " hold boundary dispatch succeeds");
+        require(coordinator.setHover(generation, false), owner
+                + " hold boundary dispatch succeeds");
         require(coordinator.ownerName === "idle", owner + " releases at hold boundary");
     }
 
@@ -59,7 +61,7 @@ ShellRoot {
         require(first !== null, "pre-reload coordinator is created");
         const firstToken = {};
         require(first.attachSurface(firstToken, 1), "pre-reload surface attaches");
-        require(first.setExpanded(true, firstToken), "pre-reload predecessor enters");
+        require(first.setHover(1, true), "pre-reload predecessor enters");
         require(syncFakePolkitSnapshot(first), "pre-reload Modal snapshot enters");
         require(first.ownerName === "polkitModal", "pre-reload Modal owns the island");
         first.destroy();
@@ -89,6 +91,52 @@ ShellRoot {
         replacement.destroy();
     }
 
+    function verifyExpandedIntents() {
+        attachFreshSurface();
+        require(!coordinator.setHover(generation + 1, true),
+                "stale hover generation is rejected");
+        require(coordinator.setHover(generation, true), "current hover expands the baseline");
+        require(coordinator.ownerName === "expanded"
+                && coordinator.focusTarget === coordinator.focusNone,
+                "hover expansion never requests keyboard focus");
+        const hoverFocusSerial = coordinator.focusRequestSerial;
+        require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
+                                               coordinator.revision),
+                "hover dashboard presentation is acknowledged");
+        require(coordinator.focusRequestSerial === hoverFocusSerial,
+                "hover acknowledgement does not issue focus");
+
+        require(coordinator.setExplicitExpanded(generation, true),
+                "deliberate intent joins the expanded baseline");
+        require(coordinator.ownerName === "expanded"
+                && coordinator.focusTarget === coordinator.focusExpandedDashboard
+                && coordinator.focusRequestSerial === hoverFocusSerial + 1,
+                "visible deliberate expansion receives dashboard focus intent");
+        require(coordinator.setExplicitExpanded(generation, false),
+                "deliberate intent can clear independently");
+        require(coordinator.ownerName === "expanded" && coordinator.hoverIntent
+                && coordinator.focusTarget === coordinator.focusNone,
+                "current hover keeps Expanded visible without retaining focus");
+        require(coordinator.setHover(generation, false), "pointer exit clears hover intent");
+        require(coordinator.ownerName === "idle", "clearing both intents restores Idle");
+
+        const deliberateFocusSerial = coordinator.focusRequestSerial;
+        require(coordinator.setExplicitExpanded(generation, true),
+                "keyboard expansion enters from Idle");
+        require(coordinator.focusRequestSerial === deliberateFocusSerial
+                && coordinator.focusTarget === coordinator.focusExpandedDashboard,
+                "focus waits for the deliberate dashboard presentation");
+        require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
+                                               coordinator.revision),
+                "deliberate dashboard presentation is acknowledged");
+        require(coordinator.focusRequestSerial === deliberateFocusSerial + 1,
+                "matching visibility acknowledgement issues focus once");
+        require(coordinator.setExplicitExpanded(generation, false),
+                "keyboard cancellation clears deliberate intent");
+        require(coordinator.ownerName === "idle" && coordinator.focusTarget
+                === coordinator.focusNone, "keyboard cancellation restores Idle focus policy");
+    }
+
     function require(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -109,7 +157,7 @@ ShellRoot {
                 "lower transient enters mailbox");
         require(coordinator.ownerName === "brightness",
                 "lower transient cannot replace higher transient");
-        require(coordinator.setExpanded(true, token), "expanded baseline is accepted");
+        require(coordinator.setHover(generation, true), "expanded baseline is accepted");
         require(coordinator.ownerName === "expanded", "expanded preempts transients");
         require(coordinator.requestNotification("notification", token),
                 "notification is held while expanded");
@@ -131,7 +179,7 @@ ShellRoot {
         require(coordinator.ownerName === "expanded", "launcher restores expanded");
 
         attachFreshSurface();
-        require(coordinator.setExpanded(true, token), "expanded predecessor is set");
+        require(coordinator.setHover(generation, true), "expanded predecessor is set");
         require(coordinator.openLauncher(token), "dashboard launcher intent opens");
         const launcherEpoch = coordinator.ownerEpoch;
         const launcherRevision = coordinator.revision;
@@ -203,10 +251,10 @@ ShellRoot {
         require(coordinator.acknowledgeVisible(generation, notificationEpoch, coordinator.revision),
                 "notification presentation is acknowledged");
         nowMs += 2999;
-        require(coordinator.setExpanded(false, token), "dispatch processes elapsed time");
+        require(coordinator.setHover(generation, false), "dispatch processes elapsed time");
         require(coordinator.ownerName === "notification", "hold remains before exact boundary");
         nowMs += 1;
-        require(coordinator.setExpanded(false, token), "exact hold boundary is processed");
+        require(coordinator.setHover(generation, false), "exact hold boundary is processed");
         require(coordinator.ownerName === "idle", "visible hold starts at acknowledgement");
         require(!coordinator.acknowledgeVisible(generation, notificationEpoch, 1),
                 "stale visible acknowledgement is ignored");
@@ -225,7 +273,7 @@ ShellRoot {
         require(coordinator.acknowledgeVisible(generation, coalescedEpoch, coordinator.revision),
                 "current coalesced presentation is acknowledged");
         nowMs += 1800;
-        require(coordinator.setExpanded(false, token), "coalesced hold boundary is processed");
+        require(coordinator.setHover(generation, false), "coalesced hold boundary is processed");
         require(coordinator.ownerName === "idle", "coalesced value releases once");
 
         require(!coordinator.requestNotification("x".repeat(129), token),
@@ -241,7 +289,7 @@ ShellRoot {
         require(coordinator.requestWorkspace("freshness", token),
                 "workspace enters without acknowledgement");
         nowMs += 2000;
-        require(coordinator.setExpanded(false, token), "freshness boundary is processed");
+        require(coordinator.setHover(generation, false), "freshness boundary is processed");
         require(coordinator.ownerName === "idle",
                 "freshness expires even before visibility acknowledgement");
 
@@ -258,19 +306,22 @@ ShellRoot {
                                                coordinator.revision),
                 "notification hold starts after visibility");
         nowMs += 500;
-        require(coordinator.setExpanded(true, token), "Expanded preempts visible notification");
+        require(coordinator.setHover(generation, true),
+                "Expanded preempts visible notification");
         require(coordinator.ownerName === "expanded", "Expanded owns during preemption");
-        require(coordinator.setExpanded(false, token), "Expanded releases notification");
+        require(coordinator.setHover(generation, false), "Expanded releases notification");
         require(coordinator.ownerName === "notification", "fresh predecessor is restored");
         require(coordinator.acknowledgeVisible(generation, coordinator.ownerEpoch,
                                                coordinator.revision),
                 "restored notification is acknowledged");
         nowMs += 2499;
-        require(coordinator.setExpanded(false, token), "remaining hold pre-boundary is processed");
+        require(coordinator.setHover(generation, false),
+                "remaining hold pre-boundary is processed");
         require(coordinator.ownerName === "notification",
                 "restored notification keeps only its remaining hold");
         nowMs += 1;
-        require(coordinator.setExpanded(false, token), "remaining hold boundary is processed");
+        require(coordinator.setHover(generation, false),
+                "remaining hold boundary is processed");
         require(coordinator.ownerName === "idle",
                 "remaining hold does not restart from full duration");
 
@@ -293,6 +344,8 @@ ShellRoot {
         require(coordinator.ownerName === "notification" && coordinator.ownerSourceToken
                 === "notification-2",
                 "highest-rank oldest remaining transient is selected deterministically");
+
+        verifyExpandedIntents();
 
         verifyReloadReattachment();
 

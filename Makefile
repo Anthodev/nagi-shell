@@ -185,13 +185,13 @@ test-audio-live-write: check-quickshell audio-helper | $(BUILD_DIR)
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)

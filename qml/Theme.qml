@@ -61,6 +61,8 @@ Singleton {
     readonly property QtObject radius: QtObject {
         readonly property int sm: 8
         readonly property int md: 12
+        readonly property int lg: 18
+        readonly property int xl: 24
         readonly property int pill: 9999
     }
 
@@ -68,6 +70,7 @@ Singleton {
     // weights are tokenized until a concrete typeface decision exists.
     readonly property QtObject type: QtObject {
         readonly property int caption: 11
+        readonly property int display: 48
         readonly property int body: 13
         readonly property int title: 15
         readonly property int weightRegular: Font.Normal
@@ -79,6 +82,8 @@ Singleton {
         // Minimum compact idle width; the live island width follows visible content.
         readonly property int islandIdleWidth: 120
         readonly property int islandIdleHeight: 36
+        readonly property int islandExpandedWidth: 700
+        readonly property int islandExpandedHeight: 480
         // Compact idle caps keep one long label from stretching the pill.
         readonly property int islandIdleWorkspaceMaximumWidth: 96
         readonly property int islandIdleMediaMaximumWidth: 220

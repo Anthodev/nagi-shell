@@ -6,15 +6,28 @@ ShellRoot {
     id: test
 
     property int step: 0
-    property int launcherEpoch: 0
-    property int launcherFocusSerial: 0
-    property int modalEpoch: 0
-    property int modalRevision: 0
-    readonly property int maximumRetryAttempts: 500
     property int retryAttempts: 0
+    property int mountedRegionCount: 0
+    property int hoverExpandedEpoch: 0
+    property int focusSerialBeforeRestore: 0
+    property var initialSurfaceToken: null
+    property int initialSurfaceGeneration: 0
+    readonly property int maximumRetryAttempts: 500
 
     function advance() {
         Qt.callLater(test.runStep);
+    }
+
+    function awaitState(condition, message) {
+        if (condition) {
+            retryAttempts = 0;
+            return true;
+        }
+
+        retryAttempts += 1;
+        require(retryAttempts <= maximumRetryAttempts, message);
+        retry.restart();
+        return false;
     }
 
     function require(condition, message) {
@@ -26,120 +39,143 @@ ShellRoot {
     }
 
     function runStep() {
-        if (host.surfaceToken === null || !coordinator.presentationVisible) {
-            retryAttempts += 1;
-            require(retryAttempts <= maximumRetryAttempts,
-                    "actual surface did not acknowledge state within five seconds");
-            retry.restart();
-            return;
-        }
-        retryAttempts = 0;
-
         if (step === 0) {
+            if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible,
+                            "actual surface did not acknowledge Idle within five seconds")) {
+                return;
+            }
             require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
-            require(coordinator.openLauncher(null), "shortcut opens Launcher from Idle");
+            require(!host.surfaceFocusable, "Idle never takes keyboard focus");
+            initialSurfaceToken = host.surfaceToken;
+            initialSurfaceGeneration = host.surfaceGeneration;
+            require(coordinator.setHover(host.surfaceGeneration, true),
+                    "pointer hover intent expands locally");
         } else if (step === 1) {
-            require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,
-                    "actual surface acknowledges Launcher from Idle");
-            require(coordinator.focusTarget === coordinator.focusLauncherSearch,
-                    "Launcher presentation targets search focus");
-            require(coordinator.cancelInteractive(coordinator.ownerEpoch),
-                    "Idle Launcher cancellation is routed through coordinator");
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible
+                            && host.loadedDashboardRegionCount === 6,
+                            "hover dashboard did not become visible within five seconds")) {
+                return;
+            }
+            require(coordinator.focusTarget === coordinator.focusNone && !host.surfaceFocusable,
+                    "hover expansion never steals keyboard focus");
+            require(host.surfaceToken === initialSurfaceToken
+                    && host.surfaceGeneration === initialSurfaceGeneration,
+                    "expansion preserves the one live surface");
+            require(host.surfaceWidth <= Theme.size.islandExpandedWidth
+                    && host.surfaceHeight <= Theme.size.islandExpandedHeight,
+                    "expanded geometry stays within its logical bounds");
+            hoverExpandedEpoch = coordinator.ownerEpoch;
+            require(coordinator.setExplicitExpanded(host.surfaceGeneration, true),
+                    "deliberate keyboard intent joins the visible dashboard");
         } else if (step === 2) {
-            require(coordinator.ownerName === "idle", "Launcher restores Idle");
-            require(coordinator.setExpanded(true, host.surfaceToken), "dashboard expands locally");
-        } else if (step === 3) {
-            require(coordinator.ownerName === "expanded" && coordinator.presentationVisible,
-                    "actual surface acknowledges Expanded");
-            require(coordinator.openLauncher(null), "shortcut opens Launcher from Expanded");
-            launcherEpoch = coordinator.ownerEpoch;
-        } else if (step === 4) {
-            require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,
-                    "actual surface acknowledges Launcher from Expanded");
-            launcherFocusSerial = coordinator.focusRequestSerial;
-            require(coordinator.openLauncher(null),
-                    "shortcut repeats the already-visible Launcher intent");
-            require(coordinator.ownerEpoch === launcherEpoch,
-                    "repeated shortcut preserves the Launcher owner");
-            require(coordinator.focusRequestSerial === launcherFocusSerial + 1,
-                    "repeated visible intent refocuses search");
-            require(coordinator.cancelInteractive(launcherEpoch),
-                    "Expanded Launcher cancellation is routed through coordinator");
-        } else if (step === 5) {
-            require(coordinator.ownerName === "expanded", "Launcher restores Expanded");
-            require(coordinator.setExpanded(false, host.surfaceToken),
-                    "dashboard collapses locally");
-            require(coordinator.requestVolume("visible-volume", host.surfaceToken),
-                    "volume transient enters from Idle");
-        } else if (step === 6) {
-            require(coordinator.ownerName === "volume" && coordinator.presentationVisible,
-                    "actual surface acknowledges Transient");
-            require(coordinator.openLauncher(null), "shortcut opens Launcher from Transient");
-        } else if (step === 7) {
-            require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,
-                    "actual surface acknowledges Launcher from Transient");
-            require(coordinator.cancelInteractive(coordinator.ownerEpoch),
-                    "Transient Launcher cancellation is routed through coordinator");
-        } else if (step === 8) {
-            require(coordinator.ownerName === "volume" && coordinator.presentationVisible,
-                    "Launcher restores fresh Transient predecessor");
+            if (!awaitState(host.surfaceFocusable && host.dashboardFocused,
+                            "deliberate expansion did not receive focus within five seconds")) {
+                return;
+            }
+            require(coordinator.ownerEpoch === hoverExpandedEpoch,
+                    "deliberate intent updates the visible dashboard in place");
+            require(coordinator.focusTarget === coordinator.focusExpandedDashboard,
+                    "coordinator targets dashboard focus only after deliberate intent");
             require(coordinator.openLauncher(host.surfaceToken),
-                    "dashboard reopens Launcher for Modal predecessor");
-        } else if (step === 9) {
-            require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,
-                    "actual surface acknowledges Modal predecessor");
-            require(coordinator.syncPolkitModal(true, true, 1),
-                    "existing Polkit flow enters Modal");
-            modalEpoch = coordinator.ownerEpoch;
-            modalRevision = coordinator.revision;
-        } else if (step === 10) {
-            require(coordinator.ownerName === "polkitModal" && coordinator.presentationVisible,
-                    "actual surface acknowledges Modal");
-            require(!coordinator.openLauncher(null), "shortcut is rejected during Modal");
-            require(!coordinator.openSession(host.surfaceToken),
-                    "session is rejected during Modal");
-            require(coordinator.setExpanded(true, host.surfaceToken),
-                    "dashboard baseline request is held during Modal");
-            require(coordinator.requestNotification("notification", null),
-                    "notification remains relevant during Modal");
-            require(coordinator.requestVolume("modal-volume", null),
-                    "audio remains relevant during Modal");
-            require(coordinator.requestBrightness("brightness", null),
-                    "brightness remains relevant during Modal");
-            require(coordinator.requestWorkspace("workspace", null),
-                    "workspace remains relevant during Modal");
-            require(coordinator.pendingTransientCount === 4,
-                    "all lower transient classes use the bounded mailbox");
-            require(coordinator.ownerName === "polkitModal",
-                    "lower visible work cannot replace Modal");
-            require(coordinator.syncPolkitModal(true, true, 2),
-                    "serialized Polkit replacement updates content");
-            require(coordinator.ownerEpoch === modalEpoch && coordinator.revision === modalRevision
-                    + 1, "serialized replacement preserves Modal ownership");
-        } else if (step === 11) {
-            require(coordinator.ownerName === "polkitModal" && coordinator.presentationVisible,
-                    "replacement Modal content is acknowledged without predecessor flash");
-            require(coordinator.syncPolkitModal(false, true, 2),
-                    "flow keeps ownership after active clears");
-            require(coordinator.ownerName === "polkitModal",
-                    "Modal does not restore before flow clears");
-            require(coordinator.syncPolkitModal(false, false, 0),
-                    "full Polkit cleanup releases Modal");
-        } else if (step === 12) {
-            require(coordinator.ownerName === "launcher" && coordinator.presentationVisible,
-                    "Modal restores the still-relevant Launcher");
+                    "higher-priority interaction interrupts Expanded");
+        } else if (step === 3) {
+            if (!awaitState(coordinator.ownerName === "launcher"
+                            && !coordinator.presentationVisible
+                            && !host.surfaceFocusable
+                            && host.loadedDashboardRegionCount === 0,
+                            "interruption did not hide obsolete dashboard content")) {
+                return;
+            }
+            require(host.surfaceToken === initialSurfaceToken,
+                    "interruption still uses the original surface");
+            focusSerialBeforeRestore = coordinator.focusRequestSerial;
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
-                    "Launcher Escape is routed through coordinator");
-        } else if (step === 13) {
-            require(coordinator.ownerName === "expanded" && coordinator.presentationVisible,
-                    "Launcher Escape restores the held dashboard baseline");
-            console.log("actual island surface state tests passed");
+                    "interrupted interaction cancels through the coordinator");
+        } else if (step === 4) {
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible && host.surfaceFocusable
+                            && host.dashboardFocused && host.loadedDashboardRegionCount === 6,
+                            "dashboard did not restore visibly with focus")) {
+                return;
+            }
+            require(coordinator.focusRequestSerial === focusSerialBeforeRestore + 1,
+                    "restored deliberate dashboard receives one fresh focus request");
+            require(host.cancelDashboard(), "keyboard cancellation closes the dashboard");
+        } else if (step === 5) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.surfaceFocusable,
+                            "dashboard cancellation did not restore Idle")) {
+                return;
+            }
+            require(!coordinator.hoverIntent && !coordinator.explicitExpandedIntent,
+                    "cancellation clears both baseline intents");
+            host.reducedMotion = true;
+            require(host.requestDeliberateExpansion(),
+                    "host exposes deliberate keyboard expansion");
+        } else if (step === 6) {
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible && host.surfaceFocusable
+                            && host.surfacePreferredWidth > Theme.size.islandIdleWidth
+                            && host.surfacePreferredHeight > Theme.size.islandIdleHeight,
+                            "reduced-motion dashboard did not become usable")) {
+                return;
+            }
+            require(host.geometryAnimationDuration === 0,
+                    "reduced motion removes geometry interpolation");
+            require(host.cancelDashboard(), "Close remains functional with reduced motion");
+        } else if (step === 7) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
+                            "reduced-motion collapse did not restore Idle")) {
+                return;
+            }
+            require(mountedRegionCount >= 12,
+                    "all six real region components remount after interruption");
+            require(!coordinator.setHover(host.surfaceGeneration + 1, true),
+                    "stale surface intent cannot reopen the dashboard");
+            console.warn("actual island dashboard surface tests passed");
             Qt.exit(0);
             return;
         }
 
         step += 1;
         advance();
+    }
+
+    component TestRegion: Item {
+        implicitWidth: 120
+        implicitHeight: 72
+        Component.onCompleted: test.mountedRegionCount += 1
+    }
+
+    Component {
+        id: mediaRegion
+        TestRegion {}
+    }
+
+    Component {
+        id: clockRegion
+        TestRegion {}
+    }
+
+    Component {
+        id: quickControlsRegion
+        TestRegion {}
+    }
+
+    Component {
+        id: audioRegion
+        TestRegion {}
+    }
+
+    Component {
+        id: notificationsRegion
+        TestRegion {}
+    }
+
+    Component {
+        id: navigationRegion
+        TestRegion {}
     }
 
     IslandStateCoordinator {
@@ -150,6 +186,12 @@ ShellRoot {
         id: host
 
         coordinator: coordinator
+        dashboardMediaContent: mediaRegion
+        dashboardClockContent: clockRegion
+        dashboardQuickControlsContent: quickControlsRegion
+        dashboardAudioContent: audioRegion
+        dashboardNotificationsContent: notificationsRegion
+        dashboardNavigationContent: navigationRegion
     }
 
     Timer {

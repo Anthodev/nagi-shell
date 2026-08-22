@@ -14,9 +14,42 @@ Scope {
     property var weather: null
     property var media: null
     property bool reducedMotion: false
+    property Component dashboardMediaContent: null
+    property Component dashboardClockContent: null
+    property Component dashboardQuickControlsContent: null
+    property Component dashboardAudioContent: null
+    property Component dashboardNotificationsContent: null
+    property Component dashboardNavigationContent: null
 
     readonly property int surfaceGeneration: ownership.surfaceGeneration
     readonly property var surfaceToken: ownership.surfaceToken
+    readonly property int surfaceWidth: ownership.liveSurface === null ? 0 :
+                                                                         ownership.liveSurface.width
+
+    readonly property int surfaceHeight: ownership.liveSurface === null ? 0 :
+                                                                          ownership.liveSurface.height
+
+    readonly property int surfacePreferredWidth: ownership.liveSurface === null ? 0 :
+                                                                                  ownership.liveSurface.preferredWidth
+    readonly property int surfacePreferredHeight: ownership.liveSurface === null ? 0 :
+                                                                                   ownership.liveSurface.preferredHeight
+
+    readonly property bool surfaceFocusable: ownership.liveSurface !== null
+                                             && ownership.liveSurface.focusable
+    readonly property bool dashboardFocused: ownership.liveSurface !== null
+                                             && ownership.liveSurface.dashboardFocused
+    readonly property int loadedDashboardRegionCount: ownership.liveSurface === null ? 0 :
+                                                                                       ownership.liveSurface.loadedDashboardRegionCount
+    readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
+                                                                                      ownership.liveSurface.geometryAnimationDuration
+
+    function cancelDashboard() {
+        return ownership.liveSurface !== null && ownership.liveSurface.cancelDashboard();
+    }
+
+    function requestDeliberateExpansion() {
+        return ownership.liveSurface !== null && ownership.liveSurface.requestDeliberateExpansion();
+    }
 
     QtObject {
         id: ownership
@@ -146,6 +179,12 @@ Scope {
             weather: host.weather
             media: host.media
             reducedMotion: host.reducedMotion
+            dashboardMediaContent: host.dashboardMediaContent
+            dashboardClockContent: host.dashboardClockContent
+            dashboardQuickControlsContent: host.dashboardQuickControlsContent
+            dashboardAudioContent: host.dashboardAudioContent
+            dashboardNotificationsContent: host.dashboardNotificationsContent
+            dashboardNavigationContent: host.dashboardNavigationContent
 
             Component.onCompleted: ownership.queueSurfaceRegistration(island)
             Component.onDestruction: ownership.unregisterSurface(island)
