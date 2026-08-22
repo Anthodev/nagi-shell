@@ -38,6 +38,10 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-applications")
     }
 
+    NotificationService {
+        id: notifications
+    }
+
     ReducedMotion {
         id: motion
     }
