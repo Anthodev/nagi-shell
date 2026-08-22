@@ -21,6 +21,7 @@ Scope {
     readonly property int focusNone: 0
     readonly property int focusLauncherSearch: 1
     readonly property int focusPolkitModal: 2
+    readonly property int focusExpandedDashboard: 3
 
     readonly property int surfaceGeneration: reducer.surfaceGeneration
     readonly property var surfaceToken: reducer.surfaceToken
@@ -33,6 +34,8 @@ Scope {
     readonly property bool presentationVisible: reducer.presentationVisible
     readonly property int focusTarget: reducer.focusTarget
     readonly property real focusRequestSerial: reducer.focusRequestSerial
+    readonly property bool hoverIntent: reducer.hoverIntent
+    readonly property bool explicitExpandedIntent: reducer.explicitExpandedIntent
     readonly property int pendingTransientCount: reducer.pending.length
     readonly property int restorationDepth: reducer.restoration.length
     readonly property bool modalPresent: reducer.modalPresent
@@ -87,8 +90,12 @@ Scope {
         return reducer.requestTransient(root.ownerWorkspace, sourceToken, initiatingSurfaceToken);
     }
 
-    function setExpanded(expanded, initiatingSurfaceToken) {
-        return reducer.setExpanded(expanded, initiatingSurfaceToken);
+    function setExplicitExpanded(generation, expanded) {
+        return reducer.setExplicitExpanded(generation, expanded);
+    }
+
+    function setHover(generation, hovered) {
+        return reducer.setHover(generation, hovered);
     }
 
     function syncPolkitModal(isActive, flowPresent, flowGeneration) {
@@ -100,7 +107,9 @@ Scope {
 
         property int surfaceGeneration: 0
         property var surfaceToken: null
-        property bool baselineExpanded: false
+        property bool hoverIntent: false
+        property bool explicitExpandedIntent: false
+        readonly property bool baselineExpanded: hoverIntent || explicitExpandedIntent
 
         property int ownerKind: root.ownerNone
         property int ownerRank: -1
@@ -224,7 +233,8 @@ Scope {
             scheduler.stop();
             surfaceToken = null;
             surfaceGeneration = 0;
-            baselineExpanded = false;
+            hoverIntent = false;
+            explicitExpandedIntent = false;
             ownerKind = root.ownerNone;
             ownerRank = -1;
             ownerEpoch = 0;
@@ -276,7 +286,9 @@ Scope {
             ownerHoldDuration = record === null ? holdFor(kind) : record.holdDuration;
             ownerHoldUntil = -1;
             presentationVisible = false;
-            focusPending = kind === root.ownerLauncher || kind === root.ownerPolkitModal;
+            focusPending = kind === root.ownerLauncher || kind === root.ownerPolkitModal || (kind
+                                                                                             === root.ownerExpanded
+                                                                                             && explicitExpandedIntent);
             focusTarget = focusFor(kind);
         }
 
@@ -348,6 +360,9 @@ Scope {
             }
             if (kind === root.ownerPolkitModal) {
                 return root.focusPolkitModal;
+            }
+            if (kind === root.ownerExpanded && explicitExpandedIntent) {
+                return root.focusExpandedDashboard;
             }
             return root.focusNone;
         }
@@ -718,30 +733,52 @@ Scope {
             schedule(now);
         }
 
-        function setExpanded(expanded, initiatingSurfaceToken) {
+        function setBaselineIntent(generation, value, explicitIntent) {
             const now = currentTime();
             expireDue(now);
 
-            if (typeof expanded !== "boolean" || !matchingSurface(initiatingSurfaceToken)) {
+            if (typeof value !== "boolean" || generation !== surfaceGeneration || surfaceToken
+                    === null) {
                 schedule(now);
                 return false;
             }
 
-            if (baselineExpanded === expanded) {
-                schedule(now);
-                return true;
+            const wasExpanded = baselineExpanded;
+            const wasExplicit = explicitExpandedIntent;
+            if (explicitIntent) {
+                explicitExpandedIntent = value;
+            } else {
+                hoverIntent = value;
             }
 
-            baselineExpanded = expanded;
-            if (expanded && ownerRank < rankFor(root.ownerExpanded)) {
+            if (!wasExpanded && baselineExpanded && ownerRank < rankFor(root.ownerExpanded)) {
                 captureCurrent(now);
                 enterOwner(root.ownerExpanded, null, null, now);
-            } else if (!expanded && ownerKind === root.ownerExpanded) {
+            } else if (wasExpanded && !baselineExpanded && ownerKind === root.ownerExpanded) {
                 restoreNext(now);
+            } else if (explicitIntent && value && ownerKind === root.ownerExpanded) {
+                focusTarget = root.focusExpandedDashboard;
+                if (presentationVisible) {
+                    focusRequestSerial += 1;
+                } else {
+                    focusPending = true;
+                }
+            } else if (explicitIntent && wasExplicit && !value && ownerKind
+                       === root.ownerExpanded) {
+                focusPending = false;
+                focusTarget = root.focusNone;
             }
 
             schedule(now);
             return true;
+        }
+
+        function setExplicitExpanded(generation, expanded) {
+            return setBaselineIntent(generation, expanded, true);
+        }
+
+        function setHover(generation, hovered) {
+            return setBaselineIntent(generation, hovered, false);
         }
 
         function syncPolkitModal(isActive, flowPresent, flowGeneration) {
