@@ -50,6 +50,7 @@ AUDIO_LIVE_TEST_DIR := $(BUILD_DIR)/audio-live-test
 AUDIO_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/audio-live-write-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
+POLKIT_UI_TEST_DIR := $(BUILD_DIR)/polkit-ui-test
 DASHBOARD_TEST_DIR := $(BUILD_DIR)/dashboard-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
 TRAY_TEST_DIR := $(BUILD_DIR)/tray-test
@@ -97,6 +98,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 
 .PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-launcher-shortcut-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop
 .PHONY: test-dashboard
+.PHONY: test-polkit-ui
 
 help:
 	@printf '%s\n' \
@@ -137,6 +139,7 @@ help:
 		'make test-tray       Test system tray lifecycle and actions' \
 		'make test-tray-live  Exercise a controlled real tray item on KDE' \
 		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
+		'make test-polkit-ui  Test the dormant Polkit authentication presentation' \
 		'make test-dashboard   Test expanded dashboard composition and actions' \
 		'make test-idle       Test idle island composition and collapse' \
 		'make launch          Run this checkout in the foreground' \
@@ -476,13 +479,20 @@ test-launcher: check-quickshell | $(BUILD_DIR)
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
+
+test-polkit-ui: check-quickshell | $(BUILD_DIR)
+	rm -rf $(POLKIT_UI_TEST_DIR)
+	mkdir -p $(POLKIT_UI_TEST_DIR)/qml
+	cp tests/polkit-ui/shell.qml $(POLKIT_UI_TEST_DIR)/shell.qml
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/PolkitView.qml $(POLKIT_UI_TEST_DIR)/qml/
+	QT_QPA_PLATFORM='offscreen' $(QS) -p $(POLKIT_UI_TEST_DIR) --no-duplicate
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-dashboard: check-quickshell | $(BUILD_DIR)
@@ -562,7 +572,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle test-dashboard
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)

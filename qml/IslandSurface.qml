@@ -15,6 +15,7 @@ PanelWindow {
     property var media: null
     property bool reducedMotion: false
     property var sessionService: null
+    property var polkitController: null
     property var notificationService: null
     property var applicationModel: null
     // Each source resolves only its own normalized payload for an exact opaque
@@ -42,12 +43,22 @@ PanelWindow {
     readonly property bool launcher: ownerKind === coordinator.ownerLauncher
     readonly property bool session: ownerKind === coordinator.ownerSession
     readonly property bool history: ownerKind === coordinator.ownerHistory
+    readonly property bool polkitControllerReady: polkitController !== null && polkitController
+                                                  !== undefined && polkitController.available
+                                                  === true
+                                                  && typeof polkitController.selectIdentity
+                                                  === "function"
+                                                  && typeof polkitController.submitResponse
+                                                  === "function" && typeof polkitController.cancel
+                                                  === "function"
+    readonly property bool polkit: ownerKind === coordinator.ownerPolkitModal
+                                   && polkitControllerReady
     readonly property bool transientOwner: ownerKind === coordinator.ownerWorkspace || ownerKind
                                            === coordinator.ownerBrightness || ownerKind
                                            === coordinator.ownerVolume || ownerKind
                                            === coordinator.ownerNotification
     readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
-    readonly property bool largeContent: expanded || launcher || history || session
+    readonly property bool largeContent: expanded || launcher || history || session || polkit
     readonly property int edgeInset: Theme.spacing.sm
     readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth :
                                                          transientOwner ? (notificationTransient
@@ -81,6 +92,16 @@ PanelWindow {
                                                                                 launcherLoader.item.selectedId
     readonly property bool sessionFocused: sessionLoader.item !== null
                                            && sessionLoader.item.activeFocus
+    readonly property bool polkitLoaded: polkitLoader.item !== null
+    readonly property bool polkitFocused: polkitLoader.item !== null
+                                          && polkitLoader.item.activeFocus
+    readonly property bool polkitResponseFocused: polkitLoader.item !== null
+                                                  && polkitLoader.item.responseFocused
+    readonly property int polkitIdentityCount: polkitLoader.item === null ? 0 :
+                                                                            polkitLoader.item.identityCount
+
+    readonly property bool polkitResponseFieldVisible: polkitLoader.item !== null
+                                                       && polkitLoader.item.responseFieldVisible
     readonly property bool historyFocused: historyLoader.item !== null
                                            && historyLoader.item.historyFocused
     readonly property int historyRowCount: historyLoader.item === null ? 0 :
@@ -144,10 +165,11 @@ PanelWindow {
               !== null && launcherLoader.item.visible;
         const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
               !== null && sessionLoader.item.visible;
+        const polkitVisible = polkit && polkitLoader.item !== null && polkitLoader.item.visible;
         const transientVisible = transientOwner && transientLoader.item !== null
               && transientLoader.item.visible && transientLoader.item.committed;
         if (!idleVisible && !dashboardVisible && !launcherVisible && !historyVisible &&
-                !sessionVisible && !transientVisible) {
+                !sessionVisible && !polkitVisible && !transientVisible) {
             return;
         }
 
@@ -206,6 +228,9 @@ PanelWindow {
             } else if (surface.focusTarget === surface.coordinator.focusSessionActions
                        && surface.session && sessionLoader.item !== null) {
                 target = sessionLoader.item;
+            } else if (surface.focusTarget === surface.coordinator.focusPolkitModal
+                       && surface.polkit && polkitLoader.item !== null) {
+                target = polkitLoader.item;
             }
             if (target === null) {
                 return;
@@ -322,7 +347,8 @@ PanelWindow {
                                                                                         === coordinator.focusLauncherSearch)
                    || (history && focusTarget === coordinator.focusNotificationHistory) || (session
                                                                                             && focusTarget
-                                                                                            === coordinator.focusSessionActions))
+                                                                                            === coordinator.focusSessionActions)
+                   || (polkit && focusTarget === coordinator.focusPolkitModal))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
 
@@ -442,6 +468,27 @@ PanelWindow {
                 ownerEpoch: surface.ownerEpoch
                 service: surface.notificationService
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
+    }
+
+    Loader {
+        id: polkitLoader
+
+        anchors.fill: parent
+        active: surface.polkit
+        visible: active
+
+        sourceComponent: Component {
+            PolkitView {
+                controller: surface.polkitController
+                ownerEpoch: surface.ownerEpoch
+                ownerRevision: surface.ownerRevision
             }
         }
 

@@ -16,7 +16,9 @@ ShellRoot {
     property int initialSurfaceGeneration: 0
     property int compactTransientWidth: 0
     property int compactTransientHeight: 0
+    property real modalRevisionBeforeReplacement: 0
     readonly property int maximumRetryAttempts: 500
+    readonly property string polkitVisualState: Quickshell.env("NAGI_POLKIT_VISUAL_STATE") ?? ""
 
     function advance() {
         Qt.callLater(test.runStep);
@@ -42,7 +44,51 @@ ShellRoot {
         }
     }
 
+    function configurePolkitVisualState() {
+        const supported = ["hidden-multiple", "single", "visible", "pending", "failure",
+                           "cancellation"];
+        require(supported.indexOf(polkitVisualState) >= 0,
+                "unknown Polkit visual state: " + polkitVisualState);
+        fakePolkitController.available = true;
+        fakePolkitController.terminal = false;
+        fakePolkitController.responseRequired = true;
+        fakePolkitController.responseVisible = polkitVisualState === "visible";
+        fakePolkitController.submissionPending = polkitVisualState === "pending";
+        fakePolkitController.cancellationPending = polkitVisualState === "cancellation";
+        fakePolkitController.supplementaryMessage = polkitVisualState === "failure"
+                ? "Authentication failed. Check the response and try again." : "";
+        fakePolkitController.supplementaryIsError = polkitVisualState === "failure";
+        fakePolkitController.identities = polkitVisualState === "hidden-multiple"
+                ? [modalIdentity, alternateModalIdentity] : [modalIdentity];
+        fakePolkitController.selectedIdentity = modalIdentity;
+    }
+
+    function runPolkitVisualStep() {
+        if (step === 0) {
+            if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible,
+                            "visual surface did not acknowledge Idle")) {
+                return;
+            }
+            configurePolkitVisualState();
+            require(coordinator.syncPolkitModal(true, true, 1),
+                    "visual Modal snapshot enters");
+            step = 1;
+            advance();
+            return;
+        }
+        if (!awaitState(coordinator.ownerName === "polkitModal"
+                        && coordinator.presentationVisible && host.polkitLoaded,
+                        "visual Polkit state did not render")) {
+            return;
+        }
+        console.warn("holding Polkit visual state " + polkitVisualState);
+    }
+
     function runStep() {
+        if (polkitVisualState !== "") {
+            runPolkitVisualStep();
+            return;
+        }
         if (step === 0) {
             if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible,
                             "actual surface did not acknowledge Idle within five seconds")) {
@@ -86,7 +132,12 @@ ShellRoot {
                             && coordinator.presentationVisible && host.surfaceFocusable
                             && host.launcherFocused && host.launcherResultCount === 1
                             && host.loadedDashboardRegionCount === 0,
-                            "launcher did not replace and focus within five seconds")) {
+                            "launcher state: owner=" + coordinator.ownerName + " visible="
+                            + coordinator.presentationVisible + " focusable="
+                            + host.surfaceFocusable + " focused=" + host.launcherFocused
+                            + " results=" + host.launcherResultCount + " regions="
+                            + host.loadedDashboardRegionCount + " target=" + coordinator.focusTarget
+                            + " serial=" + coordinator.focusRequestSerial)) {
                 return;
             }
             require(host.launcherSelectedId === "fixture.desktop"
@@ -268,7 +319,84 @@ ShellRoot {
                     "all six real region components remount across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
-            console.warn("actual island launcher, transient, dashboard, history, and session tests passed");
+            host.reducedMotion = true;
+            require(host.requestDeliberateExpansion(),
+                    "Modal predecessor opens through deliberate surface intent");
+        } else if (step === 20) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.dashboardFocused,
+                            "Modal predecessor did not become focused")) {
+                return;
+            }
+            require(coordinator.syncPolkitModal(true, true, 1),
+                    "controlled Modal snapshot enters");
+        } else if (step === 21) {
+            if (!awaitState(coordinator.ownerName === "polkitModal"
+                            && coordinator.presentationVisible && host.surfaceFocusable
+                            && host.polkitLoaded && host.polkitFocused,
+                            "Polkit presentation did not load, acknowledge, and focus")) {
+                return;
+            }
+            require(host.surfacePreferredWidth === Theme.size.islandExpandedWidth
+                    && host.surfacePreferredHeight === Theme.size.islandExpandedHeight
+                    && host.geometryAnimationDuration === 0,
+                    "Polkit Modal uses bounded reduced-motion geometry");
+            require(host.polkitIdentityCount === 2 && host.polkitResponseFieldVisible,
+                    "normalized identities and the live prompt reach the Modal view");
+            require(!coordinator.openLauncher(host.surfaceToken)
+                    && !coordinator.openSession(host.surfaceToken),
+                    "Modal rejects lower-priority Interactive requests");
+            fakePolkitController.promptGeneration += 1;
+        } else if (step === 22) {
+            if (!awaitState(host.polkitResponseFocused,
+                            "new prompt generation did not focus the response field")) {
+                return;
+            }
+            fakePolkitController.available = false;
+        } else if (step === 23) {
+            if (!awaitState(!host.polkitLoaded && !host.polkitResponseFieldVisible,
+                            "unavailable controller did not destroy the credential view")) {
+                return;
+            }
+            fakePolkitController.available = true;
+        } else if (step === 24) {
+            if (!awaitState(host.polkitLoaded && coordinator.presentationVisible
+                            && host.surfaceFocusable,
+                            "restored controller did not recreate the current Modal view")) {
+                return;
+            }
+            modalRevisionBeforeReplacement = coordinator.revision;
+            fakePolkitController.flowGeneration = 2;
+            fakePolkitController.promptGeneration += 1;
+            require(coordinator.syncPolkitModal(true, true, 2),
+                    "serialized flow replacement updates Modal in place");
+            require(!coordinator.presentationVisible,
+                    "flow replacement waits for its matching presentation acknowledgement");
+        } else if (step === 25) {
+            if (!awaitState(coordinator.ownerName === "polkitModal"
+                            && coordinator.presentationVisible && host.polkitLoaded
+                            && host.polkitResponseFocused,
+                            "replacement flow did not acknowledge and refocus")) {
+                return;
+            }
+            require(coordinator.revision === modalRevisionBeforeReplacement + 1,
+                    "flow replacement increments one Modal revision without a second frame");
+            require(coordinator.syncPolkitModal(false, false, 0),
+                    "terminal absent snapshot releases Modal");
+        } else if (step === 26) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && host.dashboardFocused && !host.polkitLoaded,
+                            "Modal completion did not restore its focused predecessor")) {
+                return;
+            }
+            require(host.cancelDashboard(), "restored predecessor remains cancellable");
+        } else if (step === 27) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.surfaceFocusable,
+                            "final Modal predecessor cleanup did not restore Idle")) {
+                return;
+            }
+            console.warn("actual island launcher, transient, dashboard, history, session, and Polkit UI tests passed");
             Qt.exit(0);
             return;
         }
@@ -356,6 +484,57 @@ ShellRoot {
                 }
             }
             return -1;
+        }
+    }
+
+    QtObject {
+        id: modalIdentity
+
+        readonly property string id: "unix-user:1000"
+        readonly property string string: "unix-user:developer"
+        readonly property string displayName: "Developer"
+        readonly property bool isGroup: false
+    }
+
+    QtObject {
+        id: alternateModalIdentity
+
+        readonly property string id: "unix-user:0"
+        readonly property string string: "unix-user:root"
+        readonly property string displayName: "Administrator"
+        readonly property bool isGroup: false
+    }
+
+    QtObject {
+        id: fakePolkitController
+
+        property bool available: true
+        property bool terminal: false
+        property bool responseRequired: true
+        property bool responseVisible: false
+        property bool submissionPending: false
+        property bool cancellationPending: false
+        property int flowGeneration: 1
+        property int promptGeneration: 1
+        property int failureGeneration: 0
+        property string message: "Authentication is required to change system settings."
+        property string actionId: "org.example.settings.modify"
+        property string inputPrompt: "Password"
+        property string supplementaryMessage: ""
+        property bool supplementaryIsError: false
+        property string iconName: "object-locked-symbolic"
+        property var identities: [modalIdentity, alternateModalIdentity]
+        property var selectedIdentity: modalIdentity
+
+        function cancel() {
+            cancellationPending = true;
+        }
+        function selectIdentity(identity) {
+            selectedIdentity = identity;
+        }
+        function submitResponse(response, generation) {
+            submissionPending = true;
+            responseRequired = false;
         }
     }
 
@@ -469,6 +648,7 @@ ShellRoot {
         dashboardNotificationsContent: notificationsRegion
         dashboardNavigationContent: navigationRegion
         sessionService: fakeSessionService
+        polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel
         workspaceTransientSource: fakeTransientSource
