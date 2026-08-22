@@ -36,13 +36,27 @@ UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
 APPLICATION_TEST := $(BUILD_DIR)/applications-helper-test
 APPLICATION_QML_TEST_DIR := $(BUILD_DIR)/applications-test
+NOTIFICATION_BUILD_DIR := $(BUILD_DIR)/notifications
+NOTIFICATION_MODULE_DIR := $(BUILD_DIR)/qml/Nagi/Notifications
+NOTIFICATION_PLUGIN := $(NOTIFICATION_MODULE_DIR)/libnaginotificationsplugin.so
+NOTIFICATION_RUNTIME_MOC := $(NOTIFICATION_BUILD_DIR)/moc_runtime.cpp
+NOTIFICATION_PLUGIN_MOC := $(NOTIFICATION_BUILD_DIR)/plugin.moc
+NOTIFICATION_TEST := $(BUILD_DIR)/notification-runtime-test
+NOTIFICATION_TEST_MOC := $(NOTIFICATION_BUILD_DIR)/notification_runtime_test.moc
+NOTIFICATION_DBUS_TEST := $(BUILD_DIR)/notification-dbus-test
+NOTIFICATION_DBUS_TEST_MOC := $(NOTIFICATION_BUILD_DIR)/notifications_dbus_test.moc
+NOTIFICATION_QML_TEST_DIR := $(BUILD_DIR)/notifications-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
 AUDIO_HELPER_HEADERS := src/pipewire-audio/protocol.h src/pipewire-audio/volume.h
 APPLICATION_HELPER_SOURCE := src/applications/main.cpp
+NOTIFICATION_SOURCES := src/notifications/runtime.cpp src/notifications/notification_text.cpp
+NOTIFICATION_HEADERS := src/notifications/runtime.h src/notifications/notification_text.h
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
 QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus)
+NOTIFICATION_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus Qt6Qml)
+NOTIFICATION_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus Qt6Qml)
 PIPEWIRE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpipewire-0.3)
 PIPEWIRE_LIBS := $(shell $(PKG_CONFIG) --libs libpipewire-0.3)
 GIO_CFLAGS := $(shell $(PKG_CONFIG) --cflags gio-unix-2.0)
@@ -56,7 +70,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain helper audio-helper connectivity-helper application-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-notification-toolchain helper audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -65,12 +79,14 @@ help:
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
+		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
+		'make test-notifications  Test notification lifecycle and bounded history' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
@@ -98,12 +114,13 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native builds: C++20, Qt 6 Core/DBus, libpipewire 0.3, and GIO Unix development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel qt6-qtdeclarative-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus/QML, libpipewire 0.3, and GIO Unix development files\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
 	@$(MAKE) --no-print-directory check-application-toolchain
+	@$(MAKE) --no-print-directory check-notification-toolchain
 
 prepare:
 	@touch .qmlls.ini
@@ -118,8 +135,18 @@ check-audio-toolchain:
 check-application-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core gio-unix-2.0
 
+check-notification-toolchain:
+	@$(PKG_CONFIG) --exists Qt6Core Qt6DBus Qt6Qml
+	@test -x '$(MOC)'
+
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+$(NOTIFICATION_BUILD_DIR):
+	mkdir -p $(NOTIFICATION_BUILD_DIR)
+
+$(NOTIFICATION_MODULE_DIR):
+	mkdir -p $(NOTIFICATION_MODULE_DIR)
 
 $(HELPER_MOC): src/kwin-virtual-desktops/main.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
@@ -132,6 +159,18 @@ $(CONNECTIVITY_MOC): src/connectivity/main.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
 
 $(CONNECTIVITY_DBUS_TEST_MOC): tests/connectivity_dbus_test.cpp | $(BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(NOTIFICATION_RUNTIME_MOC): src/notifications/runtime.h | $(NOTIFICATION_BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(NOTIFICATION_PLUGIN_MOC): src/notifications/plugin.cpp | $(NOTIFICATION_BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(NOTIFICATION_TEST_MOC): tests/notification_runtime_test.cpp | $(NOTIFICATION_BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(NOTIFICATION_DBUS_TEST_MOC): tests/notifications_dbus_test.cpp | $(NOTIFICATION_BUILD_DIR)
 	$(MOC) $< -o $@
 
 $(HELPER): $(HELPER_SOURCES) $(HELPER_HEADERS) $(HELPER_MOC) | $(BUILD_DIR)
@@ -164,6 +203,16 @@ $(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
 $(APPLICATION_TEST): tests/applications_helper_test.cpp | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) tests/applications_helper_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
+$(NOTIFICATION_PLUGIN): $(NOTIFICATION_SOURCES) $(NOTIFICATION_HEADERS) src/notifications/plugin.cpp src/notifications/qmldir $(NOTIFICATION_RUNTIME_MOC) $(NOTIFICATION_PLUGIN_MOC) | $(NOTIFICATION_MODULE_DIR)
+	cp src/notifications/qmldir $(NOTIFICATION_MODULE_DIR)/qmldir
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) -fPIC -shared $(NOTIFICATION_QT_CFLAGS) -Isrc/notifications -I$(NOTIFICATION_BUILD_DIR) $(NOTIFICATION_SOURCES) src/notifications/plugin.cpp $(NOTIFICATION_RUNTIME_MOC) -o $@ $(LDFLAGS) $(NOTIFICATION_QT_LIBS)
+
+$(NOTIFICATION_TEST): tests/notification_runtime_test.cpp $(NOTIFICATION_TEST_MOC) $(NOTIFICATION_SOURCES) $(NOTIFICATION_HEADERS) $(NOTIFICATION_RUNTIME_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(NOTIFICATION_QT_CFLAGS) -Isrc/notifications -I$(NOTIFICATION_BUILD_DIR) tests/notification_runtime_test.cpp $(NOTIFICATION_SOURCES) $(NOTIFICATION_RUNTIME_MOC) -o $@ $(LDFLAGS) $(NOTIFICATION_QT_LIBS)
+
+$(NOTIFICATION_DBUS_TEST): tests/notifications_dbus_test.cpp $(NOTIFICATION_DBUS_TEST_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(NOTIFICATION_BUILD_DIR) tests/notifications_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 helper: check-helper-toolchain $(HELPER)
 
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
@@ -171,6 +220,8 @@ audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
 
 application-helper: check-application-toolchain $(APPLICATION_HELPER)
+
+notification-plugin: check-notification-toolchain $(NOTIFICATION_PLUGIN)
 
 test-applications: check-application-toolchain $(APPLICATION_HELPER) $(APPLICATION_TEST)
 	$(APPLICATION_TEST) $(abspath $(APPLICATION_HELPER))
@@ -188,6 +239,14 @@ test-applications: check-application-toolchain $(APPLICATION_HELPER) $(APPLICATI
 	rm -rf $(APPLICATION_QML_TEST_DIR)/default-home
 	mkdir -p $(APPLICATION_QML_TEST_DIR)/default-home
 	XDG_DATA_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/data' XDG_DATA_DIRS='$(abspath $(APPLICATION_QML_TEST_DIR))/empty-data' XDG_CONFIG_HOME='relative-config' XDG_STATE_HOME='relative-state' HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/default-home' XDG_CURRENT_DESKTOP='KDE' NAGI_APPLICATION_HELPER='$(abspath $(APPLICATION_HELPER))' NAGI_APPLICATION_TEST_PHASE='defaults' $(QS) -p $(APPLICATION_QML_TEST_DIR) --no-duplicate
+
+test-notifications: check-quickshell check-notification-toolchain $(NOTIFICATION_PLUGIN) $(NOTIFICATION_TEST) $(NOTIFICATION_DBUS_TEST)
+	$(NOTIFICATION_TEST)
+	rm -rf $(NOTIFICATION_QML_TEST_DIR)
+	mkdir -p $(NOTIFICATION_QML_TEST_DIR)/qml
+	cp tests/notifications/shell.qml $(NOTIFICATION_QML_TEST_DIR)/shell.qml
+	cp qml/NotificationService.qml $(NOTIFICATION_QML_TEST_DIR)/qml/
+	QT_QPA_PLATFORM='offscreen' GTK_USE_PORTAL='0' $(DBUS_RUN_SESSION) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(NOTIFICATION_DBUS_TEST) '$(QS)' '$(abspath $(NOTIFICATION_QML_TEST_DIR))'
 
 test-native: check-helper-toolchain $(HELPER_TEST)
 	$(HELPER_TEST)
@@ -292,11 +351,11 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper application-helper
-	$(QS) -p . --no-duplicate
+launch: check-quickshell prepare helper audio-helper connectivity-helper application-helper notification-plugin
+	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper application-helper
-	$(QS) -p . --no-duplicate -vv --log-times
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper application-helper notification-plugin
+	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
 	$(QS) list -p . --json
@@ -342,6 +401,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-notifications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
 clean:
 	rm -rf $(BUILD_DIR)
