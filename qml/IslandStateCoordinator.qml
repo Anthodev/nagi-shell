@@ -17,12 +17,14 @@ Scope {
     readonly property int ownerLauncher: 7
     readonly property int ownerSession: 8
     readonly property int ownerPolkitModal: 9
+    readonly property int ownerHistory: 10
 
     readonly property int focusNone: 0
     readonly property int focusLauncherSearch: 1
     readonly property int focusPolkitModal: 2
     readonly property int focusExpandedDashboard: 3
     readonly property int focusSessionActions: 4
+    readonly property int focusNotificationHistory: 5
 
     readonly property int surfaceGeneration: reducer.surfaceGeneration
     readonly property var surfaceToken: reducer.surfaceToken
@@ -68,6 +70,10 @@ Scope {
 
     function openLauncher(initiatingSurfaceToken) {
         return reducer.openLauncher(initiatingSurfaceToken);
+    }
+
+    function openHistory(initiatingSurfaceToken) {
+        return reducer.openHistory(initiatingSurfaceToken);
     }
 
     function openSession(initiatingSurfaceToken) {
@@ -225,8 +231,7 @@ Scope {
                             "kind": ownerKind,
                             "rank": ownerRank,
                             "revision": revision,
-                            "taskEpoch": (ownerKind === root.ownerLauncher || ownerKind
-                                          === root.ownerSession) ? ownerEpoch : 0,
+                            "taskEpoch": isInteractiveKind(ownerKind) ? ownerEpoch : 0,
                             "sourceToken": ownerSourceToken,
                             "surfaceGeneration": surfaceGeneration
                         });
@@ -280,8 +285,8 @@ Scope {
 
         function enterOwner(kind, sourceToken, record, now) {
             const restoredTaskEpoch = record === null ? 0 : record.taskEpoch;
-            if ((kind === root.ownerLauncher || kind === root.ownerSession) && typeof restoredTaskEpoch
-                    === "number" && restoredTaskEpoch > 0) {
+            if (isInteractiveKind(kind) && typeof restoredTaskEpoch === "number"
+                    && restoredTaskEpoch > 0) {
                 ownerEpoch = restoredTaskEpoch;
                 revision = Math.max(1, record.revision + 1);
             } else {
@@ -297,9 +302,9 @@ Scope {
             ownerHoldDuration = record === null ? holdFor(kind) : record.holdDuration;
             ownerHoldUntil = -1;
             presentationVisible = false;
-            focusPending = kind === root.ownerLauncher || kind === root.ownerSession || kind
-                    === root.ownerPolkitModal || (kind === root.ownerExpanded
-                                                  && explicitExpandedIntent);
+            focusPending = isInteractiveKind(kind) || kind === root.ownerPolkitModal || (kind
+                                                                                         === root.ownerExpanded
+                                                                                         && explicitExpandedIntent);
             focusTarget = focusFor(kind);
         }
 
@@ -353,8 +358,7 @@ Scope {
             const now = currentTime();
             expireDue(now);
 
-            if ((ownerKind === root.ownerLauncher || ownerKind === root.ownerSession) && ownerEpoch
-                    === epoch) {
+            if (isInteractiveKind(ownerKind) && ownerEpoch === epoch) {
                 restoreNext(now);
                 schedule(now);
                 return true;
@@ -362,8 +366,7 @@ Scope {
 
             for (let index = restoration.length - 1; index >= 0; index -= 1) {
                 const frame = restoration[index];
-                if ((frame.kind === root.ownerLauncher || frame.kind === root.ownerSession)
-                        && frame.taskEpoch === epoch) {
+                if (isInteractiveKind(frame.kind) && frame.taskEpoch === epoch) {
                     const frames = restoration.slice();
                     frames.splice(index, 1);
                     restoration = frames;
@@ -379,6 +382,9 @@ Scope {
         function focusFor(kind) {
             if (kind === root.ownerLauncher) {
                 return root.focusLauncherSearch;
+            }
+            if (kind === root.ownerHistory) {
+                return root.focusNotificationHistory;
             }
             if (kind === root.ownerPolkitModal) {
                 return root.focusPolkitModal;
@@ -428,7 +434,7 @@ Scope {
             if (frame.kind === root.ownerExpanded) {
                 return baselineExpanded;
             }
-            return frame.kind === root.ownerLauncher || frame.kind === root.ownerSession;
+            return isInteractiveKind(frame.kind);
         }
 
         function isSourceToken(token) {
@@ -436,6 +442,11 @@ Scope {
                         typeof token === "number" && Number.isSafeInteger(token));
         }
 
+        function isInteractiveKind(kind) {
+            return kind === root.ownerLauncher || kind === root.ownerHistory || kind
+                    === root.ownerSession;
+
+        }
         function isTransient(kind) {
             return kind === root.ownerWorkspace || kind === root.ownerBrightness || kind === root.ownerVolume || kind
                     === root.ownerNotification;
@@ -471,7 +482,8 @@ Scope {
             expireDue(now);
 
             if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
-                    || ownerRank > 6) {
+                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
+                                         !== root.ownerLauncher)) {
                 schedule(now);
                 return false;
             }
@@ -488,6 +500,34 @@ Scope {
 
             captureCurrent(now);
             enterOwner(root.ownerLauncher, null, null, now);
+            schedule(now);
+            return true;
+        }
+
+        function openHistory(initiatingSurfaceToken) {
+            const now = currentTime();
+            expireDue(now);
+
+            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
+                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
+                                         !== root.ownerHistory)) {
+                schedule(now);
+                return false;
+            }
+
+            if (ownerKind === root.ownerHistory) {
+                if (presentationVisible) {
+                    focusRequestSerial += 1;
+                } else {
+                    focusPending = true;
+                }
+                schedule(now);
+                return true;
+            }
+
+            captureCurrent(now);
+            enterOwner(root.ownerHistory, null, null, now);
             schedule(now);
             return true;
         }
@@ -536,6 +576,9 @@ Scope {
             }
             if (kind === root.ownerSession) {
                 return "session";
+            }
+            if (kind === root.ownerHistory) {
+                return "history";
             }
             if (kind === root.ownerPolkitModal) {
                 return "polkitModal";
@@ -590,6 +633,9 @@ Scope {
                 return 5;
             }
             if (kind === root.ownerLauncher) {
+                return 6;
+            }
+            if (kind === root.ownerHistory) {
                 return 6;
             }
             if (kind === root.ownerSession) {

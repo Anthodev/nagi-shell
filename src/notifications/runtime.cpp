@@ -316,8 +316,7 @@ bool NotificationRuntime::dismiss(const QVariant &recordKeyValue)
             continue;
         }
         QObject *notification = association->notification.data();
-        const bool invoked = QMetaObject::invokeMethod(notification, "dismiss", Qt::DirectConnection);
-        if (!invoked) {
+        if (!QMetaObject::invokeMethod(notification, "dismiss", Qt::DirectConnection)) {
             const quint32 protocolId = association.key();
             const int previousLiveCount = liveAssociations.size();
             removeSnapshot(*recordKey);
@@ -326,9 +325,22 @@ bool NotificationRuntime::dismiss(const QVariant &recordKeyValue)
             notifyLiveCountIfChanged(previousLiveCount);
             armScheduler();
         }
-        return invoked;
+        return true;
     }
-    return false;
+
+    if (snapshotIndex(*recordKey) < 0) {
+        return false;
+    }
+    removeSnapshot(*recordKey);
+    notifyHistoryReset();
+    armScheduler();
+    return true;
+}
+
+int NotificationRuntime::historyIndex(const QVariant &recordKeyValue) const
+{
+    const auto recordKey = parseRecordKey(recordKeyValue);
+    return recordKey.has_value() ? snapshotIndex(*recordKey) : -1;
 }
 
 bool NotificationRuntime::canAct(const QVariant &recordKey) const

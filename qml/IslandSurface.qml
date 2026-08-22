@@ -15,6 +15,7 @@ PanelWindow {
     property var media: null
     property bool reducedMotion: false
     property var sessionService: null
+    property var notificationService: null
 
     // Downstream dashboard features provide real visual components through
     // these slots. Null content is removed instead of replaced by inert UI.
@@ -32,7 +33,8 @@ PanelWindow {
     readonly property real focusRequestSerial: coordinator.focusRequestSerial
     readonly property bool expanded: ownerKind === coordinator.ownerExpanded
     readonly property bool session: ownerKind === coordinator.ownerSession
-    readonly property bool largeContent: expanded || session
+    readonly property bool history: ownerKind === coordinator.ownerHistory
+    readonly property bool largeContent: expanded || history || session
     readonly property int edgeInset: Theme.spacing.sm
     readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth : Math.max(
                                                              Theme.size.islandIdleWidth,
@@ -46,6 +48,13 @@ PanelWindow {
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
     readonly property bool sessionFocused: sessionLoader.item !== null
                                            && sessionLoader.item.activeFocus
+    readonly property bool historyFocused: historyLoader.item !== null
+                                           && historyLoader.item.historyFocused
+    readonly property int historyRowCount: historyLoader.item === null ? 0 :
+                                                                         historyLoader.item.rowCount
+
+    readonly property bool historyEmptyStateVisible: historyLoader.item !== null
+                                                     && historyLoader.item.emptyStateVisible
 
     property real focusedOwnerEpoch: 0
     property real appliedFocusRequestSerial: 0
@@ -60,9 +69,11 @@ PanelWindow {
 
         const idleVisible = ownerKind === coordinator.ownerIdle && idleContent.visible;
         const dashboardVisible = ownerKind === coordinator.ownerExpanded && expandedContent.visible;
+        const historyVisible = ownerKind === coordinator.ownerHistory && historyLoader.item
+              !== null && historyLoader.item.visible;
         const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
               !== null && sessionLoader.item.visible;
-        if (!idleVisible && !dashboardVisible && !sessionVisible) {
+        if (!idleVisible && !dashboardVisible && !historyVisible && !sessionVisible) {
             return;
         }
 
@@ -104,6 +115,9 @@ PanelWindow {
             if (surface.focusTarget === surface.coordinator.focusExpandedDashboard
                     && surface.expanded) {
                 target = expandedContent;
+            } else if (surface.focusTarget === surface.coordinator.focusNotificationHistory
+                       && surface.history && historyLoader.item !== null) {
+                target = historyLoader.item;
             } else if (surface.focusTarget === surface.coordinator.focusSessionActions
                        && surface.session && sessionLoader.item !== null) {
                 target = sessionLoader.item;
@@ -196,9 +210,10 @@ PanelWindow {
     color: "transparent"
     exclusiveZone: 0
     focusable: focusedOwnerEpoch === ownerEpoch && appliedFocusRequestSerial === focusRequestSerial
-               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (session
+               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (history
                                                                                         && focusTarget
-                                                                                        === coordinator.focusSessionActions))
+                                                                                        === coordinator.focusNotificationHistory)
+                   || (session && focusTarget === coordinator.focusSessionActions))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
 
@@ -256,6 +271,27 @@ PanelWindow {
         notificationsContent: surface.dashboardNotificationsContent
         navigationContent: surface.dashboardNavigationContent
         onCloseRequested: surface.cancelDashboard()
+    }
+
+    Loader {
+        id: historyLoader
+
+        anchors.fill: parent
+        active: surface.history && surface.notificationService !== null
+        visible: active
+
+        sourceComponent: Component {
+            NotificationHistoryView {
+                ownerEpoch: surface.ownerEpoch
+                service: surface.notificationService
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
     }
 
     Loader {

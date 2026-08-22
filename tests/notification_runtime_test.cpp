@@ -249,6 +249,8 @@ void testReplacementAndCloseReasons()
     attach(runtime, notification);
     const QVariantMap admitted = runtime.historySnapshot(0);
     const QString originalKey = admitted.value("firstAdmissionSequence").toString();
+    require(runtime.historyIndex(originalKey) == 0,
+            "history record key did not resolve to its view index");
 
     now = 500;
     notification.summary = QStringLiteral("Replacement");
@@ -289,6 +291,20 @@ void testReplacementAndCloseReasons()
     require(runtime.dismiss(dismissedKey) && dismissed.dismissCalls == 1
                 && runtime.liveCount() == 0 && runtime.historyCount() == 0,
             "service-mediated dismissal did not remove state immediately");
+
+    FakeNotification expired(10);
+    expired.expireTimeout = 1;
+    attach(runtime, expired);
+    const QString expiredKey = runtime.historySnapshot(0).value("firstAdmissionSequence").toString();
+    now += 1;
+    nagi::notifications::NotificationRuntimeTest::processDue(runtime);
+    require(runtime.historyCount() == 1 && runtime.liveCount() == 0
+                && runtime.historySnapshot(0).value("state").toString()
+                    == QStringLiteral("expired"),
+            "expiry fixture did not retain its text-only history row");
+    require(runtime.dismiss(expiredKey) && runtime.historyCount() == 0
+                && runtime.historyIndex(expiredKey) == -1 && !runtime.dismiss(expiredKey),
+            "local dismissal did not remove an expired row or reject its stale key");
 
     FakeNotification undefinedClose(9);
     attach(runtime, undefinedClose);

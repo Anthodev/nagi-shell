@@ -28,6 +28,10 @@ Scope {
         return NotificationRuntime.dismiss(recordKey);
     }
 
+    function historyIndex(recordKey) {
+        return NotificationRuntime.historyIndex(recordKey);
+    }
+
     function canAct(recordKey) {
         return false;
     }
