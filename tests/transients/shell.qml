@@ -19,6 +19,31 @@ ShellRoot {
     function run() {
         surfaceToken = {};
         require(coordinator.attachSurface(surfaceToken, 1), "transient surface attaches");
+        workspace.confirmedWorkspaceChanged("workspace-current", 1, 1);
+        require(coordinator.ownerName === "workspace" && coordinator.ownerSourceRevision === 1,
+                "confirmed workspace change routes once to the fallback surface");
+        const workspaceEpoch = coordinator.ownerEpoch;
+        for (let revision = 2; revision <= 20; revision += 1) {
+            workspace.confirmedWorkspaceChanged("workspace-current", 1, revision);
+        }
+        require(coordinator.ownerName === "workspace" && coordinator.ownerEpoch === workspaceEpoch
+                && coordinator.ownerSourceRevision === 20 && coordinator.pendingTransientCount === 0,
+                "workspace burst coalesces in place without queue growth");
+
+        brightness.confirmedBrightnessChanged("1:display0", 1, 1, null);
+        require(coordinator.ownerName === "brightness" && coordinator.restorationDepth === 1,
+                "external brightness preempts workspace through fallback routing");
+        workspace.confirmedWorkspaceInvalidated("workspace-current", 1);
+        require(coordinator.restorationDepth === 0,
+                "workspace generation loss removes its suspended feedback");
+        const brightnessEpoch = coordinator.ownerEpoch;
+        brightness.confirmedBrightnessChanged("1:display0", 1, 2, surfaceToken);
+        require(coordinator.ownerEpoch === brightnessEpoch && coordinator.ownerSourceRevision === 2
+                && coordinator.pendingTransientCount === 0,
+                "local brightness confirmation coalesces without a parallel routing path");
+        brightness.confirmedBrightnessInvalidated("1:display0", 1);
+        require(coordinator.ownerName === "idle",
+                "brightness display removal invalidates visible feedback");
 
         audio.confirmedOutputChanged("audio-output-1", 1, 1);
         require(coordinator.ownerName === "volume" && coordinator.ownerSourceRevision === 1,
@@ -85,6 +110,21 @@ ShellRoot {
     }
 
     QtObject {
+        id: workspace
+
+        signal confirmedWorkspaceChanged(string sourceToken, int sourceGeneration, int revision)
+        signal confirmedWorkspaceInvalidated(string sourceToken, int sourceGeneration)
+    }
+
+    QtObject {
+        id: brightness
+
+        signal confirmedBrightnessChanged(string sourceToken, int sourceGeneration, int revision,
+                                          var initiatingSurfaceToken)
+        signal confirmedBrightnessInvalidated(string sourceToken, int sourceGeneration)
+    }
+
+    QtObject {
         id: audio
 
         signal confirmedOutputChanged(string sourceToken, int sourceGeneration, int revision)
@@ -108,6 +148,8 @@ ShellRoot {
     TransientCoordinatorBridge {
         coordinator: coordinator
         surfaceToken: test.surfaceToken
+        workspaceSource: workspace
+        brightnessSource: brightness
         audioSource: audio
         notificationSource: notifications
     }

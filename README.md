@@ -120,6 +120,8 @@ Nagi Shell targets a modern KDE Wayland desktop first:
 
 Initial support targets one primary display while keeping the architecture open to future multi-monitor support.
 
+Brightness state and writes use PowerDevil's per-display `ScreenBrightness` API. Levels are PowerDevil-confirmed logical state, not physical hardware acknowledgement. Nagi-originated writes suppress Plasma's indicator; brightness keys and other clients may still produce both Plasma's OSD and Nagi's fallback transient because the public change signal exposes neither a surface identity nor the original indicator hint.
+
 ## Architecture
 
 The implementation is intended to remain modular and state-driven:

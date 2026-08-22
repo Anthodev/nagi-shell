@@ -30,6 +30,11 @@ ShellRoot {
         id: audio
         bridgePath: Quickshell.shellPath("build/nagi-pipewire-audio")
     }
+    BrightnessAdapter {
+        id: brightness
+        helperPath: Quickshell.shellPath("build/nagi-brightness")
+    }
+
     ConnectivityAdapter {
         id: connectivity
         helperPath: Quickshell.shellPath("build/nagi-connectivity")
@@ -93,6 +98,8 @@ ShellRoot {
         media: media
         sessionService: session
         notificationService: notifications
+        workspaceTransientSource: virtualDesktops
+        brightnessTransientSource: brightness
         volumeTransientSource: audio
         notificationTransientSource: notifications
         reducedMotion: motion.active
@@ -103,6 +110,8 @@ ShellRoot {
     TransientCoordinatorBridge {
         coordinator: islandState
         surfaceToken: islandHost.surfaceToken
+        workspaceSource: virtualDesktops
+        brightnessSource: brightness
         audioSource: audio
         notificationSource: notifications
     }
