@@ -22,6 +22,7 @@ CONNECTIVITY_HELPER := $(BUILD_DIR)/nagi-connectivity
 CONNECTIVITY_MOC := $(BUILD_DIR)/connectivity/main.moc
 CONNECTIVITY_DBUS_TEST := $(BUILD_DIR)/connectivity-dbus-test
 CONNECTIVITY_DBUS_TEST_MOC := $(BUILD_DIR)/connectivity_dbus_test.moc
+APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
@@ -33,14 +34,19 @@ AUDIO_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/audio-live-write-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
+APPLICATION_TEST := $(BUILD_DIR)/applications-helper-test
+APPLICATION_QML_TEST_DIR := $(BUILD_DIR)/applications-test
 HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
 AUDIO_HELPER_HEADERS := src/pipewire-audio/protocol.h src/pipewire-audio/volume.h
+APPLICATION_HELPER_SOURCE := src/applications/main.cpp
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
 QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus)
 PIPEWIRE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpipewire-0.3)
 PIPEWIRE_LIBS := $(shell $(PKG_CONFIG) --libs libpipewire-0.3)
+GIO_CFLAGS := $(shell $(PKG_CONFIG) --cflags gio-unix-2.0)
+GIO_LIBS := $(shell $(PKG_CONFIG) --libs gio-unix-2.0)
 NATIVE_CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -Wpedantic
 AUDIO_NATIVE_CXXFLAGS := -std=gnu++20 -O2 -Wall -Wextra -Wno-sfinae-incomplete
 
@@ -50,7 +56,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain helper audio-helper connectivity-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain helper audio-helper connectivity-helper application-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-adapter test-coordinator test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-idle test-surface-state test-ui-primitives check-nondisplay launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 
 help:
 	@printf '%s\n' \
@@ -58,11 +64,13 @@ help:
 		'make helper          Build the KWin virtual desktop helper' \
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
+		'make application-helper  Build desktop-entry and persistence bridge' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
+		'make test-applications  Test desktop discovery and persistence bridge' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-surface-state  Exercise coordinator in the actual island surface' \
@@ -90,11 +98,12 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native builds: C++20, Qt 6 Core/DBus, and libpipewire 0.3 development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s pipewire-devel glib2-devel\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus, libpipewire 0.3, and GIO Unix development files\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
+	@$(MAKE) --no-print-directory check-application-toolchain
 
 prepare:
 	@touch .qmlls.ini
@@ -105,6 +114,9 @@ check-helper-toolchain:
 
 check-audio-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core libpipewire-0.3
+
+check-application-toolchain:
+	@$(PKG_CONFIG) --exists Qt6Core gio-unix-2.0
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -146,11 +158,36 @@ $(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_
 $(CONNECTIVITY_DBUS_TEST): tests/connectivity_dbus_test.cpp $(CONNECTIVITY_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/connectivity_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
 
+$(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) $(GIO_CFLAGS) $(APPLICATION_HELPER_SOURCE) -o $@ $(LDFLAGS) $(QT_LIBS) $(GIO_LIBS)
+
+$(APPLICATION_TEST): tests/applications_helper_test.cpp | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) tests/applications_helper_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 helper: check-helper-toolchain $(HELPER)
 
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
+
+application-helper: check-application-toolchain $(APPLICATION_HELPER)
+
+test-applications: check-application-toolchain $(APPLICATION_HELPER) $(APPLICATION_TEST)
+	$(APPLICATION_TEST) $(abspath $(APPLICATION_HELPER))
+	rm -rf $(APPLICATION_QML_TEST_DIR)
+	mkdir -p $(APPLICATION_QML_TEST_DIR)/qml $(APPLICATION_QML_TEST_DIR)/empty-data
+	cp -R tests/applications/fixtures/. $(APPLICATION_QML_TEST_DIR)/
+	chmod 0700 $(APPLICATION_QML_TEST_DIR)/config/nagi-shell $(APPLICATION_QML_TEST_DIR)/state/nagi-shell
+	chmod 0600 $(APPLICATION_QML_TEST_DIR)/config/nagi-shell/application-pins.json $(APPLICATION_QML_TEST_DIR)/state/nagi-shell/application-recency.json
+	cp tests/applications/shell.qml $(APPLICATION_QML_TEST_DIR)/shell.qml
+	cp qml/ApplicationModel.qml qml/ApplicationBridge.qml $(APPLICATION_QML_TEST_DIR)/qml/
+	XDG_DATA_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/data' XDG_DATA_DIRS='$(abspath $(APPLICATION_QML_TEST_DIR))/empty-data' XDG_CONFIG_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/config' XDG_STATE_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/state' HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/home' XDG_CURRENT_DESKTOP='KDE' NAGI_APPLICATION_HELPER='$(abspath $(APPLICATION_HELPER))' NAGI_APPLICATION_TEST_PHASE='mutate' $(QS) -p $(APPLICATION_QML_TEST_DIR) --no-duplicate
+	XDG_DATA_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/data' XDG_DATA_DIRS='$(abspath $(APPLICATION_QML_TEST_DIR))/empty-data' XDG_CONFIG_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/config' XDG_STATE_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/state' HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/home' XDG_CURRENT_DESKTOP='KDE' NAGI_APPLICATION_HELPER='$(abspath $(APPLICATION_HELPER))' NAGI_APPLICATION_TEST_PHASE='restart' $(QS) -p $(APPLICATION_QML_TEST_DIR) --no-duplicate
+	chmod 0644 $(APPLICATION_QML_TEST_DIR)/config/nagi-shell/application-pins.json
+	XDG_DATA_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/data' XDG_DATA_DIRS='$(abspath $(APPLICATION_QML_TEST_DIR))/empty-data' XDG_CONFIG_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/config' XDG_STATE_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/state' HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/home' XDG_CURRENT_DESKTOP='KDE' NAGI_APPLICATION_HELPER='$(abspath $(APPLICATION_HELPER))' NAGI_APPLICATION_TEST_PHASE='unsafe' $(QS) -p $(APPLICATION_QML_TEST_DIR) --no-duplicate
+	rm -rf $(APPLICATION_QML_TEST_DIR)/default-home
+	mkdir -p $(APPLICATION_QML_TEST_DIR)/default-home
+	XDG_DATA_HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/data' XDG_DATA_DIRS='$(abspath $(APPLICATION_QML_TEST_DIR))/empty-data' XDG_CONFIG_HOME='relative-config' XDG_STATE_HOME='relative-state' HOME='$(abspath $(APPLICATION_QML_TEST_DIR))/default-home' XDG_CURRENT_DESKTOP='KDE' NAGI_APPLICATION_HELPER='$(abspath $(APPLICATION_HELPER))' NAGI_APPLICATION_TEST_PHASE='defaults' $(QS) -p $(APPLICATION_QML_TEST_DIR) --no-duplicate
 
 test-native: check-helper-toolchain $(HELPER_TEST)
 	$(HELPER_TEST)
@@ -255,10 +292,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper
+launch: check-quickshell prepare helper audio-helper connectivity-helper application-helper
 	$(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper application-helper
 	$(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -305,6 +342,6 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper application-helper test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-applications test-adapter test-coordinator test-weather test-media test-audio test-connectivity test-idle
 clean:
 	rm -rf $(BUILD_DIR)

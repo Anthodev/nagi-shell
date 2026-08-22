@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Fixture 1
+Exec=/usr/bin/true
+Icon=fixture-one
+Keywords=one;fixture;
