@@ -19,6 +19,41 @@ ShellRoot {
         }
         return true;
     }
+    function findObjects(item, objectName, matches) {
+        if (item === null || item === undefined) {
+            return;
+        }
+        if (item.objectName === objectName) {
+            matches.push(item);
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; ++index) {
+            findObjects(children[index], objectName, matches);
+        }
+    }
+    function directChild(item, objectName) {
+        const children = item === null || item === undefined ? [] : item.children ?? [];
+        for (let index = 0; index < children.length; ++index) {
+            if (children[index].objectName === objectName) {
+                return children[index];
+            }
+        }
+        return null;
+    }
+    function requireResultLayout(count) {
+        const visibleCount = Math.min(count, launcher.maximumVisibleResults);
+        const expectedHeight = count === 0 ? Theme.size.controlHeightMd : visibleCount
+                                             * launcher.resultRowExtent + Math.max(0, visibleCount
+                                                                                   - 1) * launcher.resultRowSpacing;
+        return require(launcher.resultCount === count,
+                       "launcher did not render the requested result count " + count) && require(
+                    launcher.resultViewportHeight === expectedHeight,
+                    "launcher viewport height was not exact for " + count + " results") && require(
+                    launcher.resultScrollVisible === (count > launcher.maximumVisibleResults),
+                    "launcher scrollbar threshold was wrong for " + count + " results") && require(
+                    launcher.resultScrollBarActive === (count > launcher.maximumVisibleResults),
+                    "launcher scrollbar policy was wrong for " + count + " results");
+    }
 
     QtObject {
         id: coordinator
@@ -50,7 +85,7 @@ ShellRoot {
                 "id": "pin-one.desktop",
                 "name": "Pinned One",
                 "keywords": ["common"],
-                "icon": "",
+                "icon": "system-file-manager",
                 "nameOrder": 0,
                 "idOrder": 3
             },
@@ -72,7 +107,7 @@ ShellRoot {
             },
             {
                 "id": "alpha.desktop",
-                "name": "Alpha",
+                "name": "Alpha Application With A Deliberately Long Descriptive Name",
                 "keywords": ["common"],
                 "icon": "",
                 "nameOrder": 3,
@@ -176,19 +211,67 @@ ShellRoot {
         interval: 0
         running: true
         onTriggered: {
+            const allApplications = fakeModel.applications.slice();
+            launcher.query = "common";
+            fakeModel.applications = [];
+            if (!test.requireResultLayout(0)) {
+                return;
+            }
+            fakeModel.applications = allApplications.slice(0, 1);
+            if (!test.requireResultLayout(1)) {
+                return;
+            }
+            fakeModel.applications = allApplications.slice(0, 5);
+            if (!test.requireResultLayout(5)) {
+                return;
+            }
+            fakeModel.applications = allApplications.slice(0, 6);
+            if (!test.requireResultLayout(6) || !test.require(launcher.contentWidth
+                                                              === Theme.spacing.xxl * 15
+                                                              && launcher.implicitWidth
+                                                              === launcher.contentWidth
+                                                              + Theme.spacing.lg * 2,
+                                                              "launcher uses the exact 480 px content lane and 512 px surface")
+                    || !test.require(launcher.searchFieldItem.width === launcher.contentWidth
+                                     && launcher.resultViewportItem.width === launcher.contentWidth
+                                     && launcher.resultListItem.width === launcher.contentWidth,
+                                     "search, results, and empty-state viewport fill the natural width")) {
+                return;
+            }
+            fakeModel.applications = allApplications;
+            launcher.query = "";
+
             if (!test.require(JSON.stringify(launcher.rows.map(row => row.application.id))
                               === JSON.stringify(["pin-two.desktop", "pin-one.desktop",
-                                                 "recent-one.desktop"]),
+                                                  "recent-one.desktop"]),
                               "empty query did not expose pins then deduplicated recents")) {
+                return;
+            }
+            const applicationIcons = [];
+            test.findObjects(launcher, "launcherApplicationIcon", applicationIcons);
+            const validIcon = applicationIcons.find(icon => icon.applicationName === "Pinned One");
+            const invalidIcon = applicationIcons.find(icon => icon.applicationName
+                                                              === "Pinned Two");
+            if (!test.require(applicationIcons.length === 3 && validIcon !== undefined
+                              && validIcon.meaning === "application" && validIcon.resolvedKind
+                              === "application" && !validIcon.tinted && validIcon.resolvedSource
+                              === Quickshell.iconPath("system-file-manager")
+                              && validIcon.accessibleName === "Pinned One",
+                              "valid launcher artwork routes through the untinted application semantic path")
+                    || !test.require(invalidIcon !== undefined && invalidIcon.meaning
+                                     === "application" && invalidIcon.showingFallback
+                                     && invalidIcon.resolvedKind === "placeholder"
+                                     && invalidIcon.rawSource === IconResolver.placeholderSource,
+                                     "missing launcher artwork resolves to the neutral semantic fallback")) {
                 return;
             }
 
             launcher.query = "COMMON";
             if (!test.require(launcher.resultCount === 8, "search result bound was not enforced")
-                    || !test.require(JSON.stringify(launcher.rows.slice(0, 3).map(
-                                                                           row => row.application.id))
+                    || !test.require(JSON.stringify(launcher.rows.slice(0, 3).map(row
+                                                                                  => row.application.id))
                                      === JSON.stringify(["pin-two.desktop", "pin-one.desktop",
-                                                        "recent-one.desktop"]),
+                                                         "recent-one.desktop"]),
                                      "search tie-breaks did not prioritize pin and MRU order")) {
                 return;
             }
@@ -201,10 +284,42 @@ ShellRoot {
 
             launcher.query = "alpha";
             launcher.restoreSelection();
-            if (!test.require(!launcher.toggleSelectedPin()
-                              && launcher.pinStatus === "The eight-pin limit is full.",
-                              "ninth-pin rejection was not visible") || !test.require(
-                        test.pinCalls === 1, "pin action was not dispatched exactly once")) {
+            laneTimer.start();
+        }
+    }
+
+    Timer {
+        id: laneTimer
+
+        interval: 0
+        onTriggered: {
+            if (!test.require(!launcher.toggleSelectedPin() && launcher.pinStatus
+                              === "The eight-pin limit is full.",
+                              "ninth-pin rejection was not visible") || !test.require(test.pinCalls
+                                                                                      === 1, "pin action was not dispatched exactly once")) {
+                return;
+            }
+            const alphaRow = launcher.resultListItem.currentItem;
+            if (!test.require(alphaRow !== null && alphaRow.labelLaneWidth > Theme.spacing.xxl * 8
+                              && alphaRow.primaryLabelWidth === alphaRow.labelLaneWidth
+                              && alphaRow.metadataLabelWidth === alphaRow.labelLaneWidth,
+                              "long application names and metadata receive the wider label lane")
+                    || !test.require(Math.abs(alphaRow.pinActionRightEdge - (alphaRow.width
+                                                                             - Theme.spacing.sm))
+                                     <= 1, "Pin remains aligned to the widened row trailing edge: "
+                                     + alphaRow.pinActionRightEdge + " vs " + (alphaRow.width
+                                                                               - Theme.spacing.sm))) {
+                return;
+            }
+            const resultFocusRing = test.directChild(alphaRow, "islandFocusRing");
+            const resultBackground = alphaRow.children[0];
+            alphaRow.forceActiveFocus(Qt.TabFocusReason);
+            if (!test.require(resultFocusRing !== null && resultFocusRing.visible
+                              && resultBackground.radius === Theme.radius.md
+                              && resultFocusRing.controlRadius === resultBackground.radius
+                              && resultFocusRing.radius === resultBackground.radius
+                              + Theme.size.focusRingGap,
+                              "launcher result keyboard focus ring follows its medium owner curve")) {
                 return;
             }
 

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
-import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 
@@ -21,26 +20,71 @@ Item {
     property bool reducedMotion: false
 
     readonly property bool notification: kind === "notification"
-    readonly property string iconName: normalizedIconName(presentation.iconName)
-    readonly property string primaryText: boundedText(presentation.primary, 256, "")
-    readonly property string detailText: boundedText(presentation.detail, 512, "")
-    readonly property string valueText: boundedText(presentation.value, 64, "")
+    readonly property bool workspace: kind === "workspace"
+    readonly property string primaryText: validatedText(presentation.primary, 256, "")
+    readonly property string detailText: validatedText(presentation.detail, 1024, "")
+    readonly property string bodyText: notification ? validatedText(presentation.body, 4096, "") :
+                                                      ""
+    readonly property string valueText: validatedText(presentation.value, 64, "")
+    readonly property string appIconName: notification ? validatedText(presentation.appIconName, 512,
+                                                                       "") : ""
     readonly property real progressValue: normalizedProgress(presentation.progress)
     readonly property bool showProgress: (kind === "volume" || kind === "brightness")
                                          && progressValue >= 0
+    readonly property bool showValue: valueText !== "" && (!showProgress || progressValue >= 0) &&
+                                      !workspace
+    readonly property int workspacePosition: workspacePart(false)
+    readonly property int workspaceCount: workspacePart(true)
+    readonly property int workspaceProjectedPosition: workspacePosition > 0 ? workspacePosition :
+                                                                              workspaceNamePosition(
+                                                                                  )
+    readonly property string workspaceDisplayText: workspaceProjectedPosition > 0 ? twoDigitPosition(
+                                                                                        workspaceProjectedPosition) :
+                                                                                    workspaceFallbackName(
+                                                                                        )
+    readonly property bool workspaceUsesCustomName: workspace && workspacePosition === 0
+                                                    && workspaceProjectedPosition === 0
+                                                    && workspaceDisplayText !== "Workspace"
+    readonly property string iconMeaning: notification ? "notificationApplication" : kind
+                                                         === "brightness" ? "brightness" :
+                                                                            progressValue <= 0
+                                                                            ? "volumeMuted" :
+                                                                              progressValue <= 0.33
+                                                                              ? "volumeLow" :
+                                                                                "volumeHigh"
+    readonly property string applicationIconSource: resolveApplicationIcon(appIconName)
     readonly property bool committed: state.committed
     readonly property bool entryAnimationRunning: entryAnimation.running
+    readonly property bool semanticIconLoaded: semanticIconLoader.item !== null
+    readonly property bool semanticIconTinted: semanticIconLoader.item !== null
+                                               && semanticIconLoader.item.tinted
+    readonly property bool semanticIconFallback: semanticIconLoader.item !== null
+                                                 && semanticIconLoader.item.showingFallback
+    readonly property real contentCenterX: contentLayout.x + contentColumn.x + (
+                                               workspaceBadge.visible ? workspaceBadge.x
+                                                                        + workspaceBadge.width / 2 :
+                                                                        primaryLabel.x
+                                                                        + primaryLabel.width / 2)
+    readonly property real workspaceIndicatorCenterX: contentLayout.x + contentColumn.x
+                                                      + workspaceIndicator.x
+                                                      + workspaceIndicator.width / 2
+    readonly property alias workspaceBadgeItem: workspaceBadge
+    readonly property real compactNaturalWidth: contentLayout.implicitWidth + Theme.spacing.lg * 2
 
     signal visiblyCommitted(int surfaceGeneration, real ownerEpoch, real ownerRevision)
 
-    implicitWidth: notification ? Theme.size.islandTransientNotificationWidth :
-                                  Theme.size.islandTransientCompactWidth
-    implicitHeight: notification ? Theme.size.islandTransientNotificationHeight :
+    implicitWidth: notification ? Theme.size.islandTransientNotificationWidth : Math.min(
+                                      Theme.size.islandTransientCompactWidth, Math.max(
+                                          Theme.size.islandTransientCompactMinimumWidth,
+                                          compactNaturalWidth))
+    implicitHeight: notification ? Math.max(Theme.size.islandTransientNotificationHeight,
+                                            contentLayout.implicitHeight + Theme.spacing.md * 2) :
                                    Theme.size.islandTransientCompactHeight
     visible: active
 
-    Accessible.role: Accessible.StaticText
-    Accessible.name: [primaryText, detailText, valueText].filter(text => text !== "").join(", ")
+    Accessible.name: workspace ? [workspaceDisplayText, detailText].filter(text => text !== "").join(
+                                     ", ") : [primaryText, detailText, bodyText, valueText].filter(
+                                     text => text !== "").join(", ")
 
     function beginEntry() {
         if (!state.componentReady) {
@@ -59,31 +103,11 @@ Item {
         entryAnimation.restart();
     }
 
-    function boundedText(value, maximumLength, fallback) {
-        if (typeof value !== "string" || value.length === 0) {
-            return fallback;
-        }
-        return value.slice(0, maximumLength);
-    }
-
-    function fallbackIconName() {
-        if (kind === "notification") {
-            return "preferences-desktop-notification-symbolic";
-        }
-        if (kind === "volume") {
-            return "audio-volume-high-symbolic";
-        }
-        if (kind === "brightness") {
-            return "display-brightness-symbolic";
-        }
-        return "preferences-desktop-virtual-symbolic";
-    }
-    function normalizedIconName(value) {
-        if (typeof value === "string" && value.length > 0 && value.length <= 128 &&
-                /^[A-Za-z0-9._+-]+$/.test(value)) {
-            return value;
-        }
-        return fallbackIconName();
+    // Producers own truncation. The view rejects an over-bound projection
+    // rather than copying it into a second presentation payload.
+    function validatedText(value, maximumLength, fallback) {
+        return typeof value === "string" && value.length > 0 && value.length <= maximumLength
+                ? value : fallback;
     }
 
     function finishEntry(serial) {
@@ -101,6 +125,76 @@ Item {
             return -1;
         }
         return Math.min(1, Math.max(0, value));
+    }
+    function resolveApplicationIcon(value) {
+        if (value === "") {
+            return "";
+        }
+        if (value.startsWith("/")) {
+            return "file://" + value;
+        }
+        if (value.startsWith("file:")) {
+            return value;
+        }
+        return Quickshell.iconPath(value, true);
+    }
+
+    function workspacePart(countPart) {
+        if (!workspace || valueText === "") {
+            return 0;
+        }
+
+        let position = 0;
+        let count = 0;
+        let parsingCount = false;
+        let positionDigits = false;
+        let countDigits = false;
+        for (let index = 0; index < valueText.length; index += 1) {
+            const code = valueText.charCodeAt(index);
+            if (code === 47 && !parsingCount && positionDigits) {
+                parsingCount = true;
+            } else if (code >= 48 && code <= 57) {
+                if (parsingCount) {
+                    count = count * 10 + code - 48;
+                    countDigits = true;
+                } else {
+                    position = position * 10 + code - 48;
+                    positionDigits = true;
+                }
+            } else if (code !== 32 && code !== 9) {
+                return 0;
+            }
+        }
+        if (!positionDigits || !countDigits || position < 1 || count < 1 || position > count
+                || count > 32) {
+            return 0;
+        }
+        return countPart ? count : position;
+    }
+
+    function workspaceNamePosition() {
+        if (!workspace || primaryText === "") {
+            return 0;
+        }
+
+        const match = /^Desktop\s+(\d+)$/.exec(primaryText);
+        if (match === null) {
+            return 0;
+        }
+
+        const position = Number(match[1]);
+        return Number.isInteger(position) && position >= 1 && position <= 32 ? position : 0;
+    }
+
+    function twoDigitPosition(position) {
+        return position < 10 ? "0" + position : String(position);
+    }
+
+    function workspaceFallbackName() {
+        if (!workspace || primaryText === "") {
+            return "Workspace";
+        }
+        return /^Desktop\s+\d+$/.test(primaryText) ? "Workspace" : primaryText;
     }
 
     onActiveChanged: beginEntry()
@@ -124,6 +218,8 @@ Item {
     }
 
     RowLayout {
+        id: contentLayout
+
         anchors.fill: parent
         anchors.leftMargin: Theme.spacing.lg
         anchors.rightMargin: Theme.spacing.lg
@@ -131,23 +227,84 @@ Item {
         anchors.bottomMargin: view.notification ? Theme.spacing.md : Theme.spacing.sm
         spacing: Theme.spacing.md
 
-        IconImage {
-            Layout.preferredWidth: Theme.size.iconSizeLg
-            Layout.preferredHeight: Theme.size.iconSizeLg
-            source: Quickshell.iconPath(view.iconName)
-            implicitSize: Theme.size.iconSizeLg
+        Loader {
+            id: semanticIconLoader
+
+            Layout.preferredWidth: active ? Theme.size.iconSizeLg : 0
+            Layout.preferredHeight: active ? Theme.size.iconSizeLg : 0
+            active: view.active && !view.workspace
+            visible: active
+
+            sourceComponent: Component {
+                IslandIcon {
+                    meaning: view.iconMeaning
+                    size: "lg"
+                    applicationSource: view.notification ? view.applicationIconSource : ""
+                    applicationName: view.notification ? view.primaryText : ""
+                }
+            }
         }
 
         ColumnLayout {
-            Layout.fillWidth: true
+            id: contentColumn
+
+            Layout.fillWidth: !view.workspace
+            Layout.alignment: view.workspace ? Qt.AlignHCenter | Qt.AlignVCenter : Qt.AlignVCenter
+            Layout.maximumWidth: Math.max(0, view.width - Theme.spacing.lg * 2)
             spacing: Theme.spacing.xs
+
+            Item {
+                id: workspaceBadge
+
+                Layout.preferredWidth: Theme.size.islandWorkspaceIndicatorWidth
+                Layout.preferredHeight: Theme.size.islandWorkspaceIndicatorHeight
+                Layout.alignment: Qt.AlignHCenter
+                visible: view.workspace && view.workspaceProjectedPosition > 0
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radius.sm
+                    color: Theme.color.surfaceActive
+                }
+
+                IslandText {
+                    anchors.centerIn: parent
+                    text: view.workspaceDisplayText
+                    tone: "primary"
+                    size: "body"
+                    font.weight: Theme.type.weightMedium
+                }
+            }
+
+            IslandText {
+                id: primaryLabel
+                Layout.fillWidth: true
+                visible: !view.notification && !workspaceBadge.visible
+                text: view.workspace ? view.workspaceDisplayText : view.primaryText
+                textFormat: Text.PlainText
+                size: "body"
+                font.weight: Theme.type.weightMedium
+                elide: Text.ElideRight
+                horizontalAlignment: view.workspace ? Text.AlignHCenter : Text.AlignLeft
+            }
 
             IslandText {
                 Layout.fillWidth: true
+                visible: view.notification
                 text: view.primaryText
                 textFormat: Text.PlainText
-                size: view.notification ? "title" : "body"
-                font.weight: Theme.type.weightMedium
+                tone: "secondary"
+                size: "caption"
+                elide: Text.ElideRight
+            }
+
+            IslandText {
+                Layout.fillWidth: true
+                visible: view.notification && view.detailText !== ""
+                text: view.detailText
+                textFormat: Text.PlainText
+                size: "title"
+                font.weight: Theme.type.weightSemibold
                 elide: Text.ElideRight
             }
 
@@ -158,20 +315,52 @@ Item {
                 label: view.primaryText
             }
 
+            RowLayout {
+                id: workspaceIndicator
+                Layout.alignment: Qt.AlignHCenter
+                spacing: Theme.spacing.xs / 2
+
+                Repeater {
+                    model: view.workspaceCount
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        implicitWidth: Theme.spacing.sm
+                        implicitHeight: Theme.spacing.xs
+                        radius: Theme.radius.sm
+                        color: index + 1 === view.workspacePosition ? Theme.snapshot.accent :
+                                                                      Theme.color.surfaceActive
+                    }
+                }
+            }
+
             IslandText {
                 Layout.fillWidth: true
-                visible: view.detailText !== ""
+                visible: !view.notification && !view.workspace && view.detailText !== ""
                 text: view.detailText
                 textFormat: Text.PlainText
                 tone: "secondary"
-                size: view.notification ? "body" : "caption"
+                size: "caption"
+                elide: Text.ElideRight
+            }
+
+            IslandText {
+                Layout.fillWidth: true
+                visible: view.notification && view.bodyText !== ""
+                text: view.bodyText
+                textFormat: Text.PlainText
+                tone: "secondary"
+                size: "body"
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
         }
 
         IslandText {
             Layout.maximumWidth: Theme.size.islandTransientValueMaximumWidth
-            visible: view.valueText !== ""
+            visible: view.showValue
             text: view.valueText
             textFormat: Text.PlainText
             font.weight: Theme.type.weightSemibold
@@ -189,16 +378,16 @@ Item {
             from: 0
             to: 1
             duration: view.reducedMotion ? 0 : Theme.motion.durationNormal
-            easing.type: Theme.motion.easingStandard
+            easing.type: Theme.motion.easingExpansion
         }
 
         NumberAnimation {
             target: entryOffset
             property: "y"
-            from: -Theme.spacing.xs
+            from: view.reducedMotion ? 0 : -Theme.spacing.xs
             to: 0
             duration: view.reducedMotion ? 0 : Theme.motion.durationNormal
-            easing.type: Theme.motion.easingStandard
+            easing.type: Theme.motion.easingExpansion
         }
 
         onFinished: view.finishEntry(state.entrySerial)

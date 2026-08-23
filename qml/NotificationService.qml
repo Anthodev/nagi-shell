@@ -45,13 +45,15 @@ Scope {
         const normalized = NotificationRuntime.resolveTransient(sourceToken, sourceGeneration,
                                                                 revision);
         if (normalized === null || typeof normalized !== "object" || Array.isArray(normalized)
-                || typeof normalized.appName !== "string" || typeof normalized.summary
+                || typeof normalized.appName !== "string" || typeof normalized.summary !== "string"
+                || typeof normalized.body !== "string" || typeof normalized.appIconName
                 !== "string") {
             return null;
         }
         return {
+            "appIconName": normalized.appIconName,
+            "body": normalized.body,
             "detail": normalized.summary,
-            "iconName": "preferences-desktop-notification-symbolic",
             "primary": normalized.appName !== "" ? normalized.appName : "Notification",
             "value": ""
         };

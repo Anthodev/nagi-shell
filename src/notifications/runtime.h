@@ -141,6 +141,8 @@ private:
         QString transientSourceToken;
         QString transientAppName;
         QString transientSummary;
+        QString transientBody;
+        QString transientAppIconName;
         int transientSourceGeneration = 1;
         int transientRevision = 0;
         bool transientPresentationValid = false;

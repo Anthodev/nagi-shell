@@ -1,25 +1,58 @@
 pragma ComponentBehavior: Bound
 
-import Quickshell.Widgets
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import QtQuick.Window
 
-// Presentation-only tray row. It renders normalized snapshots and delegates
-// every platform action back to TrayAdapter.
+// Presentation-only normalized tray content inside the shared interactive frame.
 FocusScope {
     id: root
 
     required property var adapter
+    required property real ownerEpoch
+    property bool active: true
+    property bool reducedMotion: false
 
     readonly property int itemCount: adapter === null ? 0 : adapter.items.length
     readonly property bool empty: itemCount === 0
     readonly property int controlExtent: Theme.size.controlHeightMd
-    readonly property var currentItem: trayList.currentItem
+    readonly property int gridCellExtent: controlExtent + Theme.spacing.sm
+    readonly property int maximumGridColumns: 5
+    readonly property int maximumVisibleRows: 3
+    readonly property int maximumVisibleItems: maximumGridColumns * maximumVisibleRows
+    readonly property int gridColumns: Math.min(maximumGridColumns, Math.max(1, itemCount))
+    readonly property int gridRows: Math.max(1, Math.ceil(itemCount / gridColumns))
+    readonly property int visibleGridRows: Math.min(gridRows, maximumVisibleRows)
+    readonly property bool gridScrollVisible: gridRows > maximumVisibleRows
+    readonly property real gridViewportWidth: gridColumns * controlExtent + Math.max(0, gridColumns
+                                                                                     - 1) * Theme.spacing.sm
+    readonly property real gridViewportHeight: visibleGridRows * controlExtent + Math.max(0,
+                                                                                          visibleGridRows
+                                                                                          - 1) * Theme.spacing.sm
+    readonly property real contentWidth: empty ? Theme.spacing.xxl * 4 : gridViewportWidth
+    readonly property var currentItem: trayList.currentItem === null ? null :
+                                                                       trayList.currentItem.control
 
-    implicitHeight: empty ? 0 : column.implicitHeight
-    visible: !empty
+    readonly property bool trayFocused: trayList.activeFocus
+    readonly property bool backFocused: frame.backControl.activeFocus
+
+    implicitWidth: frame.implicitWidth
+    implicitHeight: frame.implicitHeight
+    visible: active
+
+    signal cancelled(real ownerEpoch)
+
+    function focusInitialControl() {
+        if (trayList.count > 0) {
+            trayList.currentIndex = Math.max(0, trayList.currentIndex);
+            const item = trayList.itemAtIndex(trayList.currentIndex);
+            if (item !== null) {
+                item.forceActiveFocus(Qt.ShortcutFocusReason);
+                return true;
+            }
+        }
+        return frame.focusInitialControl();
+    }
 
     function menuPosition(button) {
         return button.mapToItem(null, button.width / 2, button.height);
@@ -59,143 +92,183 @@ FocusScope {
         }
     }
 
-    ColumnLayout {
-        id: column
+    SubviewFrame {
+        id: frame
 
-        anchors.left: parent.left
-        anchors.right: parent.right
-        spacing: Theme.spacing.sm
+        anchors.fill: parent
+        active: root.active
+        title: "System tray"
+        reducedMotion: root.reducedMotion
+        initialFocusItem: root.currentItem
+        onBackRequested: root.cancelled(root.ownerEpoch)
+        onEscapePressed: root.cancelled(root.ownerEpoch)
 
-        IslandText {
-            text: "System tray"
-            tone: "secondary"
-            size: "caption"
-            font.weight: Font.Medium
-        }
+        Item {
+            id: gridContainer
 
-        ListView {
-            id: trayList
-
-            objectName: "trayItemList"
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.controlExtent
-            orientation: ListView.Horizontal
-            spacing: Theme.spacing.sm
+            implicitWidth: root.contentWidth
+            implicitHeight: root.gridViewportHeight
+            width: implicitWidth
+            height: implicitHeight
             clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            keyNavigationEnabled: false
-            model: root.adapter === null ? [] : root.adapter.items
 
-            delegate: AbstractButton {
-                id: button
+            // GridView counts whole cells, so its layout viewport includes one
+            // extra gap. Centering each control in that cell and clipping half
+            // a gap at both edges yields exact token gaps with no trailing blank.
+            GridView {
+                id: trayList
 
-                required property int index
-                required property var modelData
-                objectName: "trayItemButton"
-                width: root.controlExtent
-                height: root.controlExtent
-                focusPolicy: Qt.StrongFocus
-                hoverEnabled: true
-                Accessible.role: Accessible.Button
-                Accessible.name: modelData.label
-                Accessible.description: modelData.hasMenu
-                                        ? "System tray item; context menu available" :
-                                          "System tray item"
+                objectName: "trayItemList"
+                x: -Theme.spacing.sm / 2
+                y: -Theme.spacing.sm / 2
+                width: parent.width + Theme.spacing.sm
+                height: parent.height + Theme.spacing.sm
+                clip: false
+                interactive: root.gridScrollVisible
+                cellWidth: root.gridCellExtent
+                cellHeight: root.gridCellExtent
+                keyNavigationEnabled: false
+                model: root.adapter === null ? [] : root.adapter.items
 
-                onClicked: root.primaryAction(modelData, button)
+                delegate: FocusScope {
+                    id: cell
 
-                Keys.priority: Keys.BeforeItem
-                Keys.onLeftPressed: event => {
-                    root.moveFocus(index, -1);
-                    event.accepted = true;
-                }
-                Keys.onRightPressed: event => {
-                    root.moveFocus(index, 1);
-                    event.accepted = true;
-                }
-                Keys.onPressed: event => {
-                    if (modelData.hasMenu && (event.key === Qt.Key_Menu || (event.key
-                                                                            === Qt.Key_F10 && (
-                                                                                event.modifiers
-                                                                                & Qt.ShiftModifier)))) {
-                        root.openMenu(modelData.token, button);
-                        event.accepted = true;
+                    required property int index
+                    required property var modelData
+                    readonly property alias control: trayButton
+                    width: root.gridCellExtent
+                    height: root.gridCellExtent
+
+                    function forceActiveFocus(reason) {
+                        trayButton.forceActiveFocus(reason);
                     }
-                }
-                Keys.onTabPressed: {
-                    const next = button.nextItemInFocusChain(true);
-                    if (next !== null) {
-                        next.forceActiveFocus(Qt.TabFocusReason);
-                    }
-                }
-                Keys.onBacktabPressed: {
-                    const previous = button.nextItemInFocusChain(false);
-                    if (previous !== null) {
-                        previous.forceActiveFocus(Qt.BacktabFocusReason);
-                    }
-                }
 
-                background: IslandPanel {
-                    color: button.pressed ? Theme.color.controlFillPressed : button.hovered
-                                            ? Theme.color.controlFillHover : Theme.color.controlFill
-                    border.color: button.modelData.status === "needsAttention" ? Theme.color.accent :
-                                                                                 button.hovered
-                                                                                 ? Theme.color.surfaceBorderHover :
-                                                                                   Theme.color.surfaceBorder
-                }
+                    AbstractButton {
+                        id: trayButton
 
-                contentItem: Item {
-                    IslandText {
+                        readonly property bool attention: cell.modelData.status === "needsAttention"
+                        readonly property var modelData: cell.modelData
+                        objectName: "trayItemButton"
                         anchors.centerIn: parent
-                        visible: trayIcon.status !== Image.Ready
-                        text: button.modelData.label.slice(0, 1).toUpperCase()
-                        tone: "secondary"
-                        font.weight: Font.DemiBold
+                        width: root.controlExtent
+                        height: root.controlExtent
+                        focusPolicy: Qt.StrongFocus
+                        hoverEnabled: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: cell.modelData.label
+                        Accessible.description: cell.modelData.hasMenu
+                                                ? "System tray item; context menu available" :
+                                                  "System tray item"
+
+                        onClicked: root.primaryAction(cell.modelData, trayButton)
+
+                        Keys.priority: Keys.BeforeItem
+                        Keys.onLeftPressed: event => {
+                            root.moveFocus(cell.index, -1);
+                            event.accepted = true;
+                        }
+                        Keys.onRightPressed: event => {
+                            root.moveFocus(cell.index, 1);
+                            event.accepted = true;
+                        }
+                        Keys.onUpPressed: event => {
+                            root.moveFocus(cell.index, -root.gridColumns);
+                            event.accepted = true;
+                        }
+                        Keys.onDownPressed: event => {
+                            root.moveFocus(cell.index, root.gridColumns);
+                            event.accepted = true;
+                        }
+                        Keys.onPressed: event => {
+                            if (cell.modelData.hasMenu && (event.key === Qt.Key_Menu || (event.key
+                                                                                         === Qt.Key_F10
+                                                                                         && (event.modifiers
+                                                                                             & Qt.ShiftModifier)))) {
+                                root.openMenu(cell.modelData.token, trayButton);
+                                event.accepted = true;
+                            }
+                        }
+
+                        background: Rectangle {
+                            radius: Theme.radius.md
+                            color: trayButton.pressed ? Theme.color.surfaceActive :
+                                                        trayButton.hovered
+                                                        ? Theme.color.surfaceHover :
+                                                          trayButton.attention
+                                                          ? Theme.color.surfaceActive :
+                                                            "transparent"
+                        }
+
+                        contentItem: Item {
+                            IslandText {
+                                objectName: "trayApplicationFallbackLetter"
+                                anchors.centerIn: parent
+                                visible: trayIcon.showingFallback
+                                text: cell.modelData.label.slice(0, 1).toUpperCase()
+                                tone: "secondary"
+                                font.weight: Font.DemiBold
+                            }
+
+                            IslandIcon {
+                                id: trayIcon
+
+                                objectName: "trayApplicationIcon"
+                                anchors.centerIn: parent
+                                visible: !showingFallback
+                                meaning: "trayApplication"
+                                semanticState: "normal"
+                                size: "md"
+                                applicationSource: cell.modelData.iconSource
+                                applicationName: cell.modelData.label
+                            }
+
+                            Rectangle {
+                                objectName: "trayAttentionDot"
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.margins: Theme.spacing.xs
+                                width: 5
+                                height: 5
+                                radius: width / 2
+                                color: Theme.snapshot.accent
+                                visible: trayButton.attention
+                            }
+                        }
+
+                        IslandFocusRing {
+                            visible: trayButton.visualFocus
+                        }
+
+                        ToolTip.delay: Theme.motion.durationSlow
+                        ToolTip.visible: trayButton.hovered || trayButton.visualFocus
+                        ToolTip.text: cell.modelData.tooltip === "" ? cell.modelData.label :
+                                                                      cell.modelData.tooltip
+
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            enabled: cell.modelData.hasMenu
+                            onTapped: root.openMenu(cell.modelData.token, trayButton)
+                        }
+
+                        TapHandler {
+                            acceptedButtons: Qt.MiddleButton
+                            onTapped: root.secondaryAction(cell.modelData)
+                        }
                     }
-
-                    Image {
-                        id: trayIcon
-
-                        anchors.centerIn: parent
-                        width: Theme.size.iconSizeMd
-                        height: Theme.size.iconSizeMd
-                        asynchronous: true
-                        fillMode: Image.PreserveAspectFit
-                        source: button.modelData.iconSource
-                        sourceSize.width: Theme.size.iconSizeMd
-                        sourceSize.height: Theme.size.iconSizeMd
-                    }
-
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.margins: Theme.spacing.xs
-                        width: 5
-                        height: 5
-                        radius: width / 2
-                        color: Theme.color.accent
-                        visible: button.modelData.status === "needsAttention"
-                    }
                 }
 
-                IslandFocusRing {
-                    visible: button.visualFocus
+                ScrollBar.vertical: ScrollBar {
+                    objectName: "trayGridScrollBar"
+                    policy: root.gridScrollVisible ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                 }
+            }
 
-                ToolTip.delay: 500
-                ToolTip.visible: button.hovered
-                ToolTip.text: modelData.tooltip
-
-                TapHandler {
-                    acceptedButtons: Qt.RightButton
-                    enabled: button.modelData.hasMenu
-                    onTapped: root.openMenu(button.modelData.token, button)
-                }
-
-                TapHandler {
-                    acceptedButtons: Qt.MiddleButton
-                    onTapped: root.secondaryAction(button.modelData)
-                }
+            IslandText {
+                anchors.centerIn: parent
+                visible: root.empty
+                text: "No tray items"
+                textFormat: Text.PlainText
+                tone: "secondary"
             }
         }
     }

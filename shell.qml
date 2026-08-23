@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import Quickshell
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import "qml"
 
@@ -10,6 +11,11 @@ ShellRoot {
     KWinVirtualDesktopAdapter {
         id: virtualDesktops
         helperPath: Quickshell.shellPath("build/nagi-kwin-virtual-desktops")
+    }
+
+    WallpaperPaletteBridge {
+        helperPath: Quickshell.env("NAGI_WALLPAPER_HELPER") ?? Quickshell.shellPath(
+                        "build/wallpaper/nagi-wallpaper")
     }
 
     CompactClock {
@@ -90,8 +96,8 @@ ShellRoot {
         id: dashboardQuickControls
 
         DashboardQuickControls {
+            centerStatusInMainLane: !mediaAdapter.available
             connectivity: connectivityAdapter
-            audio: audioAdapter
             applicationModel: applicationModel
             tray: trayAdapter
         }
@@ -102,6 +108,7 @@ ShellRoot {
 
         DashboardAudio {
             audio: audioAdapter
+            onDeviceSelectionRequested: islandState.openAudio(islandHost.surfaceToken)
         }
     }
 
@@ -116,27 +123,86 @@ ShellRoot {
     Component {
         id: dashboardNavigation
 
-        RowLayout {
-            spacing: Theme.spacing.sm
+        Item {
+            implicitWidth: Math.max(navigationTopCluster.implicitWidth,
+                                    navigationSession.implicitWidth)
+            implicitHeight: navigationTopCluster.implicitHeight + Theme.spacing.xl
+                            + navigationSession.implicitHeight
 
-            LauncherEntry {
-                Layout.fillWidth: true
-                shortcutAvailable: launcherShortcut.available
-                activeShortcut: launcherShortcut.activeShortcut
-                preferredConflict: launcherShortcut.preferredConflict
-                onOpenRequested: islandState.openLauncher(islandHost.surfaceToken)
+            ColumnLayout {
+                id: navigationTopCluster
+                objectName: "dashboardNavigationTopCluster"
+                anchors.top: parent.top
+                anchors.right: parent.right
+                spacing: Theme.spacing.sm
+
+                RailButton {
+                    objectName: "dashboardTray"
+                    meaning: "tray"
+                    accessibleName: "System tray"
+                    onOpenRequested: islandState.openTray(islandHost.surfaceToken)
+                }
+
+                RailButton {
+                    objectName: "dashboardLauncher"
+                    meaning: "launcher"
+                    accessibleName: "Launcher"
+                    onOpenRequested: islandState.openLauncher(islandHost.surfaceToken)
+                }
+
+                RailButton {
+                    objectName: "dashboardHistory"
+                    meaning: "history"
+                    accessibleName: "Notification history"
+                    onOpenRequested: islandState.openHistory(islandHost.surfaceToken)
+                }
             }
 
-            NotificationHistoryEntry {
-                Layout.fillWidth: true
-                onOpenRequested: islandState.openHistory(islandHost.surfaceToken)
-            }
-
-            SessionEntry {
-                Layout.fillWidth: true
+            RailButton {
+                id: navigationSession
+                objectName: "dashboardSession"
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                meaning: "session"
+                accessibleName: "Session"
                 onOpenRequested: islandState.openSession(islandHost.surfaceToken)
             }
         }
+    }
+
+    component RailButton: AbstractButton {
+        id: control
+
+        required property string meaning
+        required property string accessibleName
+
+        signal openRequested
+
+        implicitWidth: Theme.size.controlHeightMd
+        implicitHeight: Theme.size.controlHeightMd
+        focusPolicy: Qt.StrongFocus
+        hoverEnabled: true
+        Accessible.role: Accessible.Button
+        Accessible.name: accessibleName
+        onClicked: openRequested()
+
+        background: Rectangle {
+            radius: Theme.radius.md
+            color: control.pressed ? Theme.color.surfaceActive : control.hovered ? Theme.color.surfaceHover :
+                                                                                   "transparent"
+        }
+        contentItem: Item {
+            IslandIcon {
+                anchors.centerIn: parent
+                meaning: control.meaning
+            }
+        }
+        IslandFocusRing {
+            visible: control.visualFocus
+        }
+        ToolTip.delay: Theme.motion.durationSlow
+        ToolTip.visible: hovered || visualFocus
+        ToolTip.text: accessibleName
     }
 
     ReducedMotion {
@@ -153,6 +219,8 @@ ShellRoot {
         sessionService: session
         notificationService: notificationService
         applicationModel: applicationModel
+        trayAdapter: trayAdapter
+        audioAdapter: audioAdapter
         workspaceTransientSource: virtualDesktops
         brightnessTransientSource: brightness
         volumeTransientSource: audioAdapter

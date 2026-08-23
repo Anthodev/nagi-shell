@@ -10,6 +10,7 @@ Text {
     property string tone: "primary"
     property string size: "body"
 
+    font.family: Theme.type.family
     font.pixelSize: size === "caption" ? Theme.type.caption : size === "title" ? Theme.type.title :
                                                                                  Theme.type.body
     color: tone === "secondary" ? Theme.color.textSecondary : tone === "muted"

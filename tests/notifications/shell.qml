@@ -12,6 +12,9 @@ ShellRoot {
         property string firstKey: ""
         property bool started: false
         property bool ownershipFailureReported: false
+        property string transientToken: ""
+        property int transientGeneration: 0
+        property int transientRevision: 0
 
         function fail(message) {
             console.error(`notification-harness-failure:${message}`);
@@ -73,10 +76,17 @@ ShellRoot {
                                       "firstAdmissionSequence", "firstAdmittedMonotonicMs",
                                       "historyCutoffMonotonicMs", "resident", "state", "summary",
                                       "urgency"];
+                const transient = service.resolveTransient(transientToken, transientGeneration,
+                                                           transientRevision);
                 if (!require(Object.keys(snapshot).sort().join(",") === expectedKeys.sort().join(","),
                              "snapshot-fields") || !require(snapshot.appName === "App�Name",
                                                             "app-normalization") || !require(
                             snapshot.body === "Bold linkALT", "body-normalization") || !require(
+                            transient !== null && transient.body === snapshot.body
+                            && transient.appIconName === snapshot.appIconName
+                            && transient.primary === snapshot.appName
+                            && transient.detail === snapshot.summary,
+                            "transient-normalized-projection") || !require(
                             snapshot.state === "live" && !service.actionsSupported &&
                             !service.canAct(snapshot.firstAdmissionSequence) && service.actionsFor(
                                 snapshot.firstAdmissionSequence).length === 0
@@ -163,6 +173,11 @@ ShellRoot {
 
     NotificationService {
         id: service
+        onTransientRequested: (sourceToken, sourceGeneration, revision) => {
+            test.transientToken = sourceToken;
+            test.transientGeneration = sourceGeneration;
+            test.transientRevision = revision;
+        }
 
         onServerOwnedChanged: {
             if (test.mode === "ownership" && serverOwned) {
@@ -176,8 +191,8 @@ ShellRoot {
     NotificationHistoryView {
         id: historyView
 
-        width: Theme.size.islandExpandedWidth
-        height: Theme.size.islandExpandedHeight
+        width: implicitWidth
+        height: implicitHeight
         service: service
         ownerEpoch: 1
     }

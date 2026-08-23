@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
-// Read-only recent projection. The service owns ordering, replacement, age,
-// retention, and the four-record bound; delegates retain no content copy.
+// The normalized service owns ordering, replacement, age, retention, and the
+// four-record dashboard bound; delegates retain no content copy.
 FocusScope {
     id: root
 
@@ -12,42 +12,23 @@ FocusScope {
 
     readonly property int rowCount: recentList.count
     readonly property bool empty: rowCount === 0
+    readonly property int rowHeight: Theme.size.controlHeightSm
 
-    implicitWidth: 300
-    implicitHeight: 92
-
-    IslandPanel {
-        anchors.fill: parent
-        radius: Theme.radius.lg
-        color: Theme.color.controlFill
-    }
+    implicitWidth: Theme.spacing.xxl * 18 + Theme.spacing.lg
+    implicitHeight: notificationsColumn.implicitHeight
+    Accessible.role: Accessible.Grouping
+    Accessible.name: "Recent notifications"
 
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.md
+        id: notificationsColumn
+
+        anchors.left: parent.left
+        anchors.right: parent.right
         spacing: Theme.spacing.xs
-
-        RowLayout {
-            Layout.fillWidth: true
-
-            IslandText {
-                Layout.fillWidth: true
-                text: "Recent notifications"
-                textFormat: Text.PlainText
-                font.weight: Theme.type.weightSemibold
-            }
-
-            IslandText {
-                text: root.empty ? "None" : String(root.rowCount)
-                textFormat: Text.PlainText
-                tone: "muted"
-                size: "caption"
-            }
-        }
 
         Item {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: root.empty ? root.rowHeight : recentList.contentHeight
 
             ListView {
                 id: recentList
@@ -67,8 +48,8 @@ FocusScope {
                     required property var model
 
                     width: ListView.view.width
-                    height: Math.max(Theme.type.body, summaryLabel.implicitHeight)
-                    spacing: Theme.spacing.xs
+                    height: root.rowHeight
+                    spacing: Theme.spacing.sm
                     Accessible.role: Accessible.ListItem
                     Accessible.name: String(model.summary)
 
@@ -80,12 +61,10 @@ FocusScope {
                         size: "caption"
                         font.weight: Theme.type.weightMedium
                         elide: Text.ElideRight
-                        Layout.maximumWidth: 92
+                        Layout.maximumWidth: Theme.spacing.xxl * 3
                     }
 
                     IslandText {
-                        id: summaryLabel
-
                         Layout.fillWidth: true
                         text: String(row.model.summary) !== "" ? String(row.model.summary) : String(
                                                                      row.model.body)
@@ -99,8 +78,7 @@ FocusScope {
             IslandText {
                 anchors.centerIn: parent
                 visible: root.empty
-                text: root.service !== null && !root.service.serverOwned
-                      ? "Notifications unavailable" : "No recent notifications"
+                text: "No notifications"
                 textFormat: Text.PlainText
                 tone: "muted"
                 size: "caption"

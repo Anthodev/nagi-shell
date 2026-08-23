@@ -35,20 +35,20 @@ AbstractButton {
             return Theme.color.controlFill;
         }
         if (variant === "accent") {
-            return pressed ? Theme.color.accentPressed : hovered ? Theme.color.accentHover :
-                                                                   Theme.color.accent;
+            return pressed ? Theme.snapshot.accentPressed : hovered ? Theme.snapshot.accentHover :
+                                                                      Theme.snapshot.accent;
         }
         if (variant === "danger") {
             return pressed ? Theme.color.dangerFillPressed : hovered ? Theme.color.dangerFillHover :
                                                                        Theme.color.dangerFill;
         }
-        return pressed ? Theme.color.controlFillPressed : hovered ? Theme.color.controlFillHover :
-                                                                    Theme.color.controlFill;
+        return pressed ? Theme.snapshot.controlFillPressed : hovered
+                         ? Theme.snapshot.controlFillHover : Theme.color.controlFill;
     }
 
     function contentColor() {
         if (variant === "accent") {
-            return Theme.color.accentForeground;
+            return Theme.snapshot.accentForeground;
         }
         if (variant === "danger") {
             return Theme.color.danger;
@@ -60,8 +60,8 @@ AbstractButton {
         if (variant !== "standard" || !enabled) {
             return "transparent";
         }
-        return pressed ? Theme.color.surfaceBorderPressed : hovered
-                         ? Theme.color.surfaceBorderHover : Theme.color.surfaceBorder;
+        return pressed ? Theme.snapshot.surfaceBorderPressed : hovered
+                         ? Theme.snapshot.surfaceBorderHover : Theme.color.surfaceBorder;
     }
 
     background: IslandPanel {

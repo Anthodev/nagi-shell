@@ -340,7 +340,8 @@ void testTransientPresentationContract()
     FakeNotification notification(20);
     notification.appName = QStringLiteral("Messages");
     notification.summary = QStringLiteral("Review requested");
-    notification.body = QStringLiteral("private body");
+    notification.body = QString(8192, QLatin1Char('b'));
+    notification.appIcon = QString(1024, QLatin1Char('i'));
     attach(runtime, notification);
 
     require(requestedTokens.size() == 1 && requestedGenerations.constFirst() == 1
@@ -350,11 +351,12 @@ void testTransientPresentationContract()
     const QString recordKey =
         runtime.historySnapshot(0).value("firstAdmissionSequence").toString();
     const QVariantMap initial = runtime.resolveTransient(sourceToken, 1, 1);
-    require(initial.size() == 2
+    require(initial.size() == 4
                 && initial.value("appName").toString() == QStringLiteral("Messages")
                 && initial.value("summary").toString() == QStringLiteral("Review requested")
-                && !initial.contains("body"),
-            "transient resolver exposed anything beyond bounded app name and summary");
+                && initial.value("body").toString().size() == 4096
+                && initial.value("appIconName").toString().size() == 512,
+            "transient resolver did not expose the bounded normalized presentation");
 
     notification.summary = QStringLiteral("Intermediate");
     runtime.updateNotification(&notification);
@@ -375,10 +377,19 @@ void testTransientPresentationContract()
     FakeNotification protocolTransient(21);
     protocolTransient.transient = true;
     protocolTransient.appName = QStringLiteral("Transient sender");
+    protocolTransient.body.clear();
+    protocolTransient.appIcon.clear();
     attach(runtime, protocolTransient);
     require(requestedTokens.size() == 3 && requestedTokens.constLast() != sourceToken
                 && runtime.historyCount() == 1,
             "independent protocol-transient notification was merged or admitted to history");
+    const QVariantMap protocolTransientProjection =
+        runtime.resolveTransient(requestedTokens.constLast(), 1, 1);
+    require(protocolTransientProjection.contains("body")
+                && protocolTransientProjection.value("body").toString().isEmpty()
+                && protocolTransientProjection.contains("appIconName")
+                && protocolTransientProjection.value("appIconName").toString().isEmpty(),
+            "missing notification body or icon did not preserve the empty fallback");
     const QString protocolTransientToken = requestedTokens.constLast();
     emit protocolTransient.closed(3);
     require(invalidatedTokens.contains(protocolTransientToken)

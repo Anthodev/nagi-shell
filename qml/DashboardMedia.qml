@@ -1,24 +1,32 @@
 pragma ComponentBehavior: Bound
 
-import Quickshell
-import Quickshell.Widgets
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
-// Expanded media presentation. It consumes only MediaAdapter's normalized
-// contract; artwork stays bounded and local to this card.
+// Expanded media consumes only the normalized adapter contract. Artwork and
+// reliable timing work disappear when the region is hidden or unsupported.
 FocusScope {
     id: root
 
     required property var media
 
-    readonly property bool timingVisible: media !== null && media.position !== null
-                                          && media.duration !== null
-    readonly property string artworkRequest: artwork.source.toString()
     readonly property bool controlsPending: media !== null && media.pendingAction !== "none"
+    readonly property bool timingReliable: media !== null && (typeof media.timingReliable
+                                                              === "boolean" ? media.timingReliable :
+                                                                              media.position
+                                                                              !== null
+                                                                              && media.duration
+                                                                              !== null)
+    readonly property bool timingVisible: timingReliable && typeof media.position === "number"
+                                          && Number.isFinite(media.position)
+                                          && typeof media.duration === "number" && Number.isFinite(
+                                              media.duration) && media.duration > 0
+    readonly property string artworkRequest: artwork.source.toString()
+    readonly property int artworkExtent: Theme.spacing.xxl * 3
 
-    implicitWidth: 340
-    implicitHeight: 132
+    implicitWidth: mediaRow.implicitWidth
+    implicitHeight: mediaRow.implicitHeight
 
     function formatTime(seconds) {
         if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
@@ -44,31 +52,18 @@ FocusScope {
         return media !== null && media.canNext && !controlsPending ? media.next() : "rejected";
     }
 
-    IslandPanel {
-        anchors.fill: parent
-        radius: Theme.radius.lg
-        color: Theme.color.controlFill
-    }
-
     RowLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.md
+        id: mediaRow
+
         spacing: Theme.spacing.md
 
         Rectangle {
-            Layout.preferredWidth: 92
-            Layout.preferredHeight: 92
+            Layout.preferredWidth: root.artworkExtent
+            Layout.preferredHeight: root.artworkExtent
             Layout.alignment: Qt.AlignVCenter
             radius: Theme.radius.md
-            color: Theme.color.progressTrack
+            color: Theme.color.surfaceActive
             clip: true
-
-            IconImage {
-                anchors.centerIn: parent
-                implicitSize: Theme.size.iconSizeLg
-                source: Quickshell.iconPath("audio-x-generic-symbolic")
-                visible: artwork.status !== Image.Ready
-            }
 
             Image {
                 id: artwork
@@ -84,8 +79,7 @@ FocusScope {
         }
 
         ColumnLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredWidth: Theme.spacing.xxl * 7
             spacing: Theme.spacing.xs
 
             IslandText {
@@ -111,48 +105,113 @@ FocusScope {
                 Layout.fillWidth: true
                 spacing: Theme.spacing.sm
 
-                IslandIconButton {
+                AbstractButton {
+                    id: previousButton
+
                     objectName: "dashboardMediaPrevious"
-                    size: "sm"
-                    source: Quickshell.iconPath("media-skip-backward-symbolic")
-                    label: "Previous track"
+                    implicitWidth: Theme.size.controlHeightMd
+                    implicitHeight: Theme.size.controlHeightMd
+                    focusPolicy: Qt.StrongFocus
+                    hoverEnabled: true
                     enabled: root.media !== null && root.media.canPrevious && !root.controlsPending
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Previous track"
                     onClicked: root.previous()
+
+                    background: Rectangle {
+                        radius: Theme.radius.md
+                        color: previousButton.pressed ? Theme.color.surfaceActive :
+                                                        previousButton.hovered
+                                                        ? Theme.color.surfaceHover : "transparent"
+                    }
+                    contentItem: Item {
+                        IslandIcon {
+                            anchors.centerIn: parent
+                            meaning: "mediaPrevious"
+                        }
+                    }
+                    IslandFocusRing {
+                        visible: previousButton.visualFocus
+                    }
+                    ToolTip.delay: Theme.motion.durationSlow
+                    ToolTip.visible: hovered || visualFocus
+                    ToolTip.text: "Previous track"
                 }
 
-                IslandIconButton {
-                    objectName: "dashboardMediaToggle"
-                    size: "sm"
-                    source: Quickshell.iconPath(root.media !== null && root.media.playbackState
-                                                === "playing" ? "media-playback-pause-symbolic" :
-                                                                "media-playback-start-symbolic")
-                    label: root.media !== null && root.media.playbackState === "playing" ? "Pause" :
-                                                                                           "Play"
+                AbstractButton {
+                    id: playbackButton
 
+                    objectName: "dashboardMediaToggle"
+                    implicitWidth: Theme.size.controlHeightMd
+                    implicitHeight: Theme.size.controlHeightMd
+                    focusPolicy: Qt.StrongFocus
+                    hoverEnabled: true
                     enabled: root.media !== null && root.media.canTogglePlayback &&
                              !root.controlsPending
+                    Accessible.role: Accessible.Button
+                    Accessible.name: root.media !== null && root.media.playbackState === "playing"
+                                     ? "Pause" : "Play"
                     onClicked: root.togglePlayback()
+
+                    background: Rectangle {
+                        radius: Theme.radius.md
+                        color: playbackButton.pressed ? Theme.color.surfaceActive :
+                                                        playbackButton.hovered
+                                                        ? Theme.color.surfaceHover : "transparent"
+                    }
+                    contentItem: Item {
+                        IslandIcon {
+                            anchors.centerIn: parent
+                            meaning: root.media !== null && root.media.playbackState === "playing"
+                                     ? "mediaPause" : "mediaPlay"
+                        }
+                    }
+                    IslandFocusRing {
+                        visible: playbackButton.visualFocus
+                    }
+                    ToolTip.delay: Theme.motion.durationSlow
+                    ToolTip.visible: hovered || visualFocus
+                    ToolTip.text: root.media !== null && root.media.playbackState === "playing"
+                                  ? "Pause" : "Play"
                 }
 
-                IslandIconButton {
+                AbstractButton {
+                    id: nextButton
+
                     objectName: "dashboardMediaNext"
-                    size: "sm"
-                    source: Quickshell.iconPath("media-skip-forward-symbolic")
-                    label: "Next track"
+                    implicitWidth: Theme.size.controlHeightMd
+                    implicitHeight: Theme.size.controlHeightMd
+                    focusPolicy: Qt.StrongFocus
+                    hoverEnabled: true
                     enabled: root.media !== null && root.media.canNext && !root.controlsPending
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Next track"
                     onClicked: root.next()
+
+                    background: Rectangle {
+                        radius: Theme.radius.md
+                        color: nextButton.pressed ? Theme.color.surfaceActive : nextButton.hovered
+                                                    ? Theme.color.surfaceHover : "transparent"
+                    }
+                    contentItem: Item {
+                        IslandIcon {
+                            anchors.centerIn: parent
+                            meaning: "mediaNext"
+                        }
+                    }
+                    IslandFocusRing {
+                        visible: nextButton.visualFocus
+                    }
+                    ToolTip.delay: Theme.motion.durationSlow
+                    ToolTip.visible: hovered || visualFocus
+                    ToolTip.text: "Next track"
                 }
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: root.controlsPending ? "Request pending" : root.media === null ? "" :
-                                                                                           root.media.playbackState
-                                                                                           === "playing"
-                                                                                           ? "Playing" :
-                                                                                             root.media.playbackState
-                                                                                             === "paused"
-                                                                                             ? "Paused" :
-                                                                                               "Stopped"
+                    text: root.controlsPending ? "Pending" : root.media === null ? "" :
+                                                                                   root.media.playbackState
+
                     textFormat: Text.PlainText
                     tone: root.controlsPending ? "secondary" : "muted"
                     size: "caption"
@@ -167,14 +226,14 @@ FocusScope {
 
                 IslandProgressBar {
                     Layout.fillWidth: true
-                    value: root.media === null || root.media.duration === null || root.media.duration
-                           <= 0 ? 0 : root.media.position / root.media.duration
+                    value: root.media.position / root.media.duration
                     label: "Playback position"
                 }
 
                 IslandText {
-                    text: root.formatTime(root.media === null ? null : root.media.position) + " / "
-                          + root.formatTime(root.media === null ? null : root.media.duration)
+                    text: root.formatTime(root.media.position) + " / " + root.formatTime(
+                              root.media.duration)
+
                     textFormat: Text.PlainText
                     tone: "muted"
                     size: "caption"

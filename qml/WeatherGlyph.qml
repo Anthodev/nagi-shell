@@ -21,16 +21,12 @@ Item {
     implicitWidth: Theme.size.iconSizeSm
     implicitHeight: Theme.size.iconSizeSm
 
-    Accessible.role: Accessible.Graphic
-    Accessible.name: conditionDescription()
+    // Weather is already conveyed by adjacent text; the glyph is decorative.
+    Accessible.ignored: true
 
     onConditionChanged: canvas.requestPaint()
     onDayPhaseChanged: canvas.requestPaint()
     onTintChanged: canvas.requestPaint()
-
-    function conditionDescription() {
-        return "Weather: " + condition + ", " + dayPhase;
-    }
 
     function paint(context) {
         context.reset();

@@ -21,6 +21,7 @@ Scope {
     property string bridgePath: ""
     property var confirmationBridge: null
     property var preferredSinkWriter: null
+    property var preferredSourceWriter: null
 
     readonly property int maximumLabelCharacters: 128
     readonly property int maximumNameCharacters: 256
@@ -59,13 +60,15 @@ Scope {
     readonly property bool inputMuted: engine.input.muted
 
     // Candidate entries contain only endpointKey, label, and isDefault.
-    readonly property var outputCandidates: engine.publicCandidates
+    readonly property var outputCandidates: engine.outputPublicCandidates
+    readonly property var inputCandidates: engine.inputPublicCandidates
 
     readonly property bool pendingOutputVolume: engine.pendingOutputVolume
     readonly property bool pendingInputVolume: engine.pendingInputVolume
     readonly property bool pendingOutputMute: engine.pendingOutputMute
     readonly property bool pendingInputMute: engine.pendingInputMute
-    readonly property bool pendingOutputSelection: engine.selectionTarget !== null
+    readonly property bool pendingOutputSelection: engine.outputSelectionTarget !== null
+    readonly property bool pendingInputSelection: engine.inputSelectionTarget !== null
     readonly property string failure: engine.failure
 
     // Bounded verification visibility; no backend object is exposed.
@@ -78,7 +81,8 @@ Scope {
                                                 inputVolumeRequestTimer.running ? 1 : 0) + (
                                                 outputMuteRequestTimer.running ? 1 : 0) + (
                                                 inputMuteRequestTimer.running ? 1 : 0) + (
-                                                selectionRequestTimer.running ? 1 : 0) + (
+                                                outputSelectionRequestTimer.running ? 1 : 0) + (
+                                                inputSelectionRequestTimer.running ? 1 : 0) + (
                                                 outputLabelTimer.running ? 1 : 0) + (
                                                 inputLabelTimer.running ? 1 : 0) + (
                                                 failureTimer.running ? 1 : 0)
@@ -108,7 +112,11 @@ Scope {
     }
 
     function requestOutputSelection(endpointKey) {
-        return engine.requestSelection(endpointKey);
+        return engine.requestSelection("output", endpointKey);
+    }
+
+    function requestInputSelection(endpointKey) {
+        return engine.requestSelection("input", endpointKey);
     }
 
     // Exact-latest resolution prevents a stale coordinator frame from reading
@@ -170,8 +178,8 @@ Scope {
         engine.muteDeadlineReached(role);
     }
 
-    function selectionDeadlineReached() {
-        engine.selectionDeadlineReached();
+    function selectionDeadlineReached(role) {
+        engine.selectionDeadlineReached(role === "input" ? "input" : "output");
     }
 
     function refreshLabelDeadlineReached(role) {
@@ -270,10 +278,17 @@ Scope {
     }
 
     Timer {
-        id: selectionRequestTimer
+        id: outputSelectionRequestTimer
 
         interval: root.requestTimeoutMs
-        onTriggered: root.selectionDeadlineReached()
+        onTriggered: root.selectionDeadlineReached("output")
+    }
+
+    Timer {
+        id: inputSelectionRequestTimer
+
+        interval: root.requestTimeoutMs
+        onTriggered: root.selectionDeadlineReached("input")
     }
 
     Timer {
@@ -315,6 +330,10 @@ Scope {
 
         function onPreferredDefaultAudioSinkChanged() {
             engine.handlePreferredSinkChanged();
+        }
+
+        function onPreferredDefaultAudioSourceChanged() {
+            engine.handlePreferredSourceChanged();
         }
     }
 
@@ -445,8 +464,10 @@ Scope {
         property string lastOutputMatchName: ""
         property string lastInputMatchName: ""
 
-        property var candidateRecords: []
-        property var publicCandidates: []
+        property var outputCandidateRecords: []
+        property var inputCandidateRecords: []
+        property var outputPublicCandidates: []
+        property var inputPublicCandidates: []
         property var trackedObjects: []
 
         property var queuedOutputVolume: null
@@ -460,7 +481,8 @@ Scope {
         property int pendingInputVolumeRequestId: 0
         property int pendingOutputMuteRequestId: 0
         property int pendingInputMuteRequestId: 0
-        property var selectionTarget: null
+        property var outputSelectionTarget: null
+        property var inputSelectionTarget: null
 
         readonly property var currentService: root.pipewireService !== null ? root.pipewireService :
                                                                               Pipewire
@@ -567,13 +589,15 @@ Scope {
         }
 
         function disposeCandidateRecords() {
-            for (let index = 0; index < candidateRecords.length; ++index) {
-                const watcher = candidateRecords[index].watcher;
+            const records = outputCandidateRecords.concat(inputCandidateRecords);
+            for (let index = 0; index < records.length; ++index) {
+                const watcher = records[index].watcher;
                 if (watcher !== null) {
                     watcher.destroy();
                 }
             }
-            candidateRecords = [];
+            outputCandidateRecords = [];
+            inputCandidateRecords = [];
         }
 
         function listValues(model) {
@@ -586,30 +610,26 @@ Scope {
             return values;
         }
 
-        function isOutputCandidate(node) {
-            return node !== null && !truthy(safeRead(node, "isStream", false)) && truthy(safeRead(node, "isSink",
-                                                                                                  false))
-                    && safeRead(node, "audio", null) !== null && nodeId(node) >= 0;
+        function isCandidate(role, node) {
+            if (node === null || truthy(safeRead(node, "isStream", false)) || safeRead(node, "audio",
+                                                                                       null) === null
+                    || nodeId(node) < 0) {
+                return false;
+            }
+            const sink = truthy(safeRead(node, "isSink", false));
+            return role === "output" ? sink : !sink;
         }
 
-        function rebuildCandidates() {
-            disposeCandidateRecords();
-            if (!serviceReady) {
-                publicCandidates = [];
-                return;
-            }
-
-            const values = listValues(currentNodesModel);
+        function rebuildRoleCandidates(role, values, confirmedDefault) {
             const records = [];
             for (let index = 0; index < values.length; ++index) {
                 const node = values[index];
-                if (!isOutputCandidate(node)) {
+                if (!isCandidate(role, node)) {
                     continue;
                 }
-
                 records.push({
                                  "node": node,
-                                 "endpointKey": endpointKey("output", node),
+                                 "endpointKey": endpointKey(role, node),
                                  "label": nodeLabel(node),
                                  "id": nodeId(node),
                                  "watcher": candidateWatcher.createObject(root, {
@@ -617,15 +637,12 @@ Scope {
                                                                           })
                              });
             }
-
-            const confirmedDefault = safeRead(currentService, "defaultAudioSink", null);
             records.sort((left, right) => {
                 const leftDefault = left.node === confirmedDefault;
                 const rightDefault = right.node === confirmedDefault;
                 if (leftDefault !== rightDefault) {
                     return leftDefault ? -1 : 1;
                 }
-
                 const leftLabel = left.label.toLowerCase();
                 const rightLabel = right.label.toLowerCase();
                 if (leftLabel < rightLabel) {
@@ -636,18 +653,42 @@ Scope {
                 }
                 return left.id - right.id;
             });
-            candidateRecords = records;
 
             const normalized = [];
-            for (let recordIndex = 0; recordIndex < records.length; ++recordIndex) {
+            for (let index = 0; index < records.length; ++index) {
                 normalized.push({
-                                    "endpointKey": records[recordIndex].endpointKey,
-                                    "label": records[recordIndex].label,
-                                    "isDefault": records[recordIndex].node === confirmedDefault
+                                    "endpointKey": records[index].endpointKey,
+                                    "label": records[index].label,
+                                    "isDefault": records[index].node === confirmedDefault
                                 });
             }
-            publicCandidates = normalized;
-            validateSelectionTarget();
+            return {
+                "records": records,
+                "publicCandidates": normalized
+            };
+        }
+
+        function rebuildCandidates() {
+            disposeCandidateRecords();
+            if (!serviceReady) {
+                outputPublicCandidates = [];
+                inputPublicCandidates = [];
+                return;
+            }
+
+            const values = listValues(currentNodesModel);
+            const outputResult = rebuildRoleCandidates("output", values, safeRead(currentService,
+                                                                                  "defaultAudioSink",
+                                                                                  null));
+            const inputResult = rebuildRoleCandidates("input", values, safeRead(currentService,
+                                                                                "defaultAudioSource",
+                                                                                null));
+            outputCandidateRecords = outputResult.records;
+            inputCandidateRecords = inputResult.records;
+            outputPublicCandidates = outputResult.publicCandidates;
+            inputPublicCandidates = inputResult.publicCandidates;
+            validateSelectionTarget("output");
+            validateSelectionTarget("input");
         }
 
         function updateTrackedObjects() {
@@ -680,7 +721,7 @@ Scope {
             const ready = truthy(safeRead(currentService, "ready", false));
             if (!ready) {
                 if (serviceReady || outputNode !== null || inputNode !== null
-                        || candidateRecords.length > 0) {
+                        || outputCandidateRecords.length > 0 || inputCandidateRecords.length > 0) {
                     hardReset(true);
                 }
                 serviceReady = false;
@@ -712,7 +753,8 @@ Scope {
             rebuildCandidates();
             updateRole("output");
             updateRole("input");
-            evaluateSelectionDefault();
+            evaluateSelectionDefault("output");
+            evaluateSelectionDefault("input");
             updateSyncState();
         }
 
@@ -1313,110 +1355,156 @@ Scope {
             }
         }
 
-        function candidateForKey(key) {
-            for (let index = 0; index < candidateRecords.length; ++index) {
-                if (candidateRecords[index].endpointKey === key) {
-                    return candidateRecords[index];
+        function candidateRecordsFor(role) {
+            return role === "output" ? outputCandidateRecords : inputCandidateRecords;
+        }
+
+        function candidateForKey(role, key) {
+            const records = candidateRecordsFor(role);
+            for (let index = 0; index < records.length; ++index) {
+                if (records[index].endpointKey === key) {
+                    return records[index];
                 }
             }
             return null;
         }
 
-        function requestSelection(key) {
-            if (!serviceReady || typeof key !== "string" || key.length === 0) {
+        function selectionTargetFor(role) {
+            return role === "output" ? outputSelectionTarget : inputSelectionTarget;
+        }
+
+        function setSelectionTarget(role, target) {
+            if (role === "output") {
+                outputSelectionTarget = target;
+            } else {
+                inputSelectionTarget = target;
+            }
+        }
+
+        function requestSelection(role, key) {
+            if ((role !== "output" && role !== "input") || !serviceReady || typeof key !== "string" || key.length
+                    === 0) {
                 setFailure(serviceReady ? "invalid-request" : "unavailable");
                 return false;
             }
 
-            const candidate = candidateForKey(key);
+            const candidate = candidateForKey(role, key);
             if (candidate === null) {
                 setFailure("removed");
                 return false;
             }
-            if (candidate.node === outputNode && output.available) {
-                clearSelection();
+            const currentNode = role === "output" ? outputNode : inputNode;
+            const currentState = role === "output" ? output : input;
+            if (candidate.node === currentNode && currentState.available) {
+                clearSelection(role);
                 return true;
             }
 
-            selectionTarget = {
-                "node": candidate.node,
-                "endpointKey": candidate.endpointKey,
-                "matchName": nodeName(candidate.node),
-                "startedDefault": safeRead(currentService, "defaultAudioSink", null)
-            };
-            selectionRequestTimer.restart();
+            setSelectionTarget(role, {
+                                   "node": candidate.node,
+                                   "endpointKey": candidate.endpointKey,
+                                   "matchName": nodeName(candidate.node),
+                                   "startedDefault": safeRead(currentService, role === "output"
+                                                              ? "defaultAudioSink" :
+                                                                "defaultAudioSource", null)
+                               });
+            if (role === "output") {
+                outputSelectionRequestTimer.restart();
+            } else {
+                inputSelectionRequestTimer.restart();
+            }
             try {
-                if (root.preferredSinkWriter !== null) {
-                    root.preferredSinkWriter(currentService, candidate.node);
+                if (role === "output") {
+                    if (root.preferredSinkWriter !== null) {
+                        root.preferredSinkWriter(currentService, candidate.node);
+                    } else {
+                        currentService.preferredDefaultAudioSink = candidate.node;
+                    }
+                } else if (root.preferredSourceWriter !== null) {
+                    root.preferredSourceWriter(currentService, candidate.node);
                 } else {
-                    currentService.preferredDefaultAudioSink = candidate.node;
+                    currentService.preferredDefaultAudioSource = candidate.node;
                 }
             } catch (error) {
-                failSelection("stale");
+                failSelection(role, "stale");
                 return false;
             }
             return true;
         }
 
-        function validateSelectionTarget() {
-            if (selectionTarget === null) {
+        function validateSelectionTarget(role) {
+            const target = selectionTargetFor(role);
+            if (target === null) {
                 return;
             }
-
-            let found = false;
-            for (let index = 0; index < candidateRecords.length; ++index) {
-                if (candidateRecords[index].node === selectionTarget.node) {
-                    found = true;
-                    break;
+            const records = candidateRecordsFor(role);
+            for (let index = 0; index < records.length; ++index) {
+                if (records[index].node === target.node) {
+                    return;
                 }
             }
-            if (!found) {
-                failSelection("removed");
-            }
+            failSelection(role, "removed");
         }
 
-        function evaluateSelectionDefault() {
-            if (selectionTarget === null) {
+        function evaluateSelectionDefault(role) {
+            const target = selectionTargetFor(role);
+            if (target === null) {
                 return;
             }
-
-            const confirmed = safeRead(currentService, "defaultAudioSink", null);
-            if (confirmed === selectionTarget.node) {
-                clearSelection();
+            const confirmed = safeRead(currentService, role === "output" ? "defaultAudioSink" :
+                                                                           "defaultAudioSource",
+                                       null);
+            if (confirmed === target.node) {
+                clearSelection(role);
                 failure = "none";
                 failureTimer.stop();
-            } else if (confirmed !== null && confirmed !== selectionTarget.startedDefault) {
-                failSelection("diverged");
+            } else if (confirmed !== null && confirmed !== target.startedDefault) {
+                failSelection(role, "diverged");
             }
         }
 
         function handlePreferredSinkChanged() {
-            if (selectionTarget === null) {
+            handlePreferredChanged("output");
+        }
+
+        function handlePreferredSourceChanged() {
+            handlePreferredChanged("input");
+        }
+
+        function handlePreferredChanged(role) {
+            const target = selectionTargetFor(role);
+            if (target === null) {
                 return;
             }
-
-            const preferred = safeRead(currentService, "preferredDefaultAudioSink", null);
-            if (preferred !== null && preferred !== selectionTarget.node) {
-                failSelection("rejected");
+            const preferred = safeRead(currentService, role === "output"
+                                       ? "preferredDefaultAudioSink" : "preferredDefaultAudioSource",
+                                       null);
+            if (preferred !== null && preferred !== target.node) {
+                failSelection(role, "rejected");
             }
         }
 
-        function clearSelection() {
-            selectionTarget = null;
-            selectionRequestTimer.stop();
+        function clearSelection(role) {
+            setSelectionTarget(role, null);
+            if (role === "output") {
+                outputSelectionRequestTimer.stop();
+            } else {
+                inputSelectionRequestTimer.stop();
+            }
         }
 
-        function failSelection(kind) {
-            clearSelection();
+        function failSelection(role, kind) {
+            clearSelection(role);
             setFailure(kind);
         }
 
         function clearRoleRequests(role) {
             clearVolumePending(role);
             clearMutePending(role);
-            if (role === "output" && selectionTarget !== null && selectionTarget.node
-                    === outputNode) {
-                failSelection("removed");
+            const target = selectionTargetFor(role);
+            const currentNode = role === "output" ? outputNode : inputNode;
+            if (target !== null && target.node === currentNode) {
+                failSelection(role, "removed");
             }
         }
 
@@ -1436,9 +1524,9 @@ Scope {
             }
         }
 
-        function selectionDeadlineReached() {
-            if (selectionTarget !== null) {
-                failSelection("timeout");
+        function selectionDeadlineReached(role) {
+            if (selectionTargetFor(role) !== null) {
+                failSelection(role, "timeout");
             }
         }
 
@@ -1477,9 +1565,11 @@ Scope {
             clearVolumePending("input");
             clearMutePending("output");
             clearMutePending("input");
-            clearSelection();
+            clearSelection("output");
+            clearSelection("input");
             disposeCandidateRecords();
-            publicCandidates = [];
+            outputPublicCandidates = [];
+            inputPublicCandidates = [];
             outputNode = null;
             inputNode = null;
             outputAudio = null;

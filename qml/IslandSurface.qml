@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Effects
 
 PanelWindow {
     id: surface
@@ -18,6 +19,8 @@ PanelWindow {
     property var polkitController: null
     property var notificationService: null
     property var applicationModel: null
+    property var trayAdapter: null
+    property var audioAdapter: null
     // Each source resolves only its own normalized payload for an exact opaque
     // token, source generation, and backend-confirmed revision.
     property var workspaceTransientSource: null
@@ -43,6 +46,8 @@ PanelWindow {
     readonly property bool launcher: ownerKind === coordinator.ownerLauncher
     readonly property bool session: ownerKind === coordinator.ownerSession
     readonly property bool history: ownerKind === coordinator.ownerHistory
+    readonly property bool tray: ownerKind === coordinator.ownerTray
+    readonly property bool audio: ownerKind === coordinator.ownerAudio
     readonly property bool polkitControllerReady: polkitController !== null && polkitController
                                                   !== undefined && polkitController.available
                                                   === true
@@ -58,19 +63,68 @@ PanelWindow {
                                            === coordinator.ownerVolume || ownerKind
                                            === coordinator.ownerNotification
     readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
-    readonly property bool largeContent: expanded || launcher || history || session || polkit
+    readonly property bool largeContent: expanded || launcher || history || tray || audio || session
+                                         || polkit
+    readonly property bool interactiveOwner: launcher || history || tray || audio || session
+                                             || polkit
+    property int previousOwnerKind: -1
+    property int exitingOwnerKind: -1
+    property var exitingLoader: null
+    property real interactiveExitOffset: 0
+    property bool focusPendingAfterExit: false
+    readonly property bool interactiveExitRunning: interactiveExitAnimation.running
+                                                   || exitingOwnerKind >= 0
+    readonly property real interactiveExitLoaderX: exitingLoader === null ? 0 : exitingLoader.x
+    readonly property real interactiveExitMappedX: interactiveExitOffset * 0 + (exitingLoader
+                                                                                === null ? 0 :
+                                                                                           exitingLoader.mapToItem(
+                                                                                               surface.contentItem,
+                                                                                               0, 0).x)
+    readonly property bool interactiveExitLoaderEnabled: exitingLoader !== null
+                                                         && exitingLoader.enabled
+    readonly property var interactiveExitItem: exitingLoader === null ? null : exitingLoader.item
+    readonly property int transientPreferredWidth: notificationTransient
+                                                   ? Theme.size.islandTransientNotificationWidth :
+                                                     transientLoader.item === null
+                                                     ? Theme.size.islandTransientCompactWidth :
+                                                       Math.min(Theme.size.islandTransientCompactWidth,
+                                                                transientLoader.item.implicitWidth)
+    readonly property Item interactiveContent: launcher ? launcherLoader.item : history
+                                                          ? historyLoader.item : tray
+                                                            ? trayLoader.item : audio
+                                                              ? audioLoader.item : session
+                                                                ? sessionLoader.item : polkit
+                                                                  ? polkitLoader.item : null
+    readonly property real interactivePreferredWidth: interactiveContent === null
+                                                      ? Theme.size.islandIdleWidth :
+                                                        interactiveContent.implicitWidth
+    readonly property real interactivePreferredHeight: interactiveContent === null
+                                                       ? Theme.size.islandIdleHeight :
+                                                         interactiveContent.implicitHeight
     readonly property int edgeInset: Theme.spacing.sm
-    readonly property int preferredWidth: largeContent ? Theme.size.islandExpandedWidth :
-                                                         transientOwner ? (notificationTransient
-                                                                           ? Theme.size.islandTransientNotificationWidth :
-                                                                             Theme.size.islandTransientCompactWidth) :
-                                                                          Math.max(Theme.size.islandIdleWidth,
-                                                                                   idleContentWidth)
-    readonly property int preferredHeight: largeContent ? Theme.size.islandExpandedHeight :
-                                                          transientOwner ? (notificationTransient
-                                                                            ? Theme.size.islandTransientNotificationHeight :
-                                                                              Theme.size.islandTransientCompactHeight) :
-                                                                           Theme.size.islandIdleHeight
+    readonly property int horizontalSlack: screen === null ? edgeInset * 2 : Math.max(edgeInset * 2,
+                                                                                      screen.width
+                                                                                      - width)
+    readonly property real settledPreferredWidth: expanded ? expandedContent.implicitWidth :
+                                                             largeContent
+                                                             ? interactivePreferredWidth :
+                                                               transientOwner
+                                                               ? transientPreferredWidth : Math.max(
+                                                                     Theme.size.islandIdleWidth,
+                                                                     idleContentWidth)
+    readonly property real settledPreferredHeight: expanded ? expandedContent.implicitHeight :
+                                                              largeContent
+                                                              ? interactivePreferredHeight :
+                                                                transientOwner
+                                                                ? transientLoader.item === null ? (
+                                                                                                      notificationTransient
+                                                                                                      ? Theme.size.islandTransientNotificationHeight :
+                                                                                                        Theme.size.islandTransientCompactHeight) :
+                                                                                                  transientLoader.item.implicitHeight :
+                                                                                                  Theme.size.islandIdleHeight
+    readonly property real preferredWidth: settledPreferredWidth
+    readonly property real preferredHeight: settledPreferredHeight
+    readonly property int interactiveExitDuration: reducedMotion ? 0 : Theme.motion.durationNormal
     readonly property int idleContentWidth: idleContent.visible ? idleContent.implicitWidth :
                                                                   Theme.size.islandIdleWidth
     readonly property bool transientCommitted: transientLoader.item !== null
@@ -81,17 +135,42 @@ PanelWindow {
                                                                                    transientLoader.item.primaryText
     readonly property string transientDetailText: transientLoader.item === null ? "" :
                                                                                   transientLoader.item.detailText
-    readonly property int geometryAnimationDuration: reducedMotion ? 0 : Theme.motion.durationSlow
+    readonly property int geometryAnimationDuration: reducedMotion ? 0 :
+                                                                     Theme.motion.durationExpansion
+    readonly property bool geometryAnimationRunning: geometryHeightAnimation.running
+                                                     || geometryWidthAnimation.running
+    readonly property point backgroundMappedTopLeft: surfaceBackground.mapToItem(surface.contentItem,
+                                                                                 0, 0)
+    readonly property point backgroundMappedBottomRight: surfaceBackground.mapToItem(
+                                                             surface.contentItem,
+                                                             surfaceBackground.width,
+                                                             surfaceBackground.height)
+    readonly property bool backgroundCoversSurface: backgroundMappedTopLeft.x === 0
+                                                    && backgroundMappedTopLeft.y === 0
+                                                    && backgroundMappedBottomRight.x
+                                                    === surface.width
+                                                    && backgroundMappedBottomRight.y
+                                                    === surface.height
+    readonly property real backgroundRadius: surfaceBackground.radius
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
+    readonly property bool launcherLoaded: launcherLoader.item !== null
     readonly property bool launcherFocused: launcherLoader.item !== null
                                             && launcherLoader.item.searchFocused
     readonly property int launcherResultCount: launcherLoader.item === null ? 0 :
                                                                               launcherLoader.item.resultCount
+    readonly property bool launcherResultScrollVisible: launcherLoader.item !== null
+                                                        && launcherLoader.item.resultScrollBarActive
     readonly property string launcherSelectedId: launcherLoader.item === null ? "" :
                                                                                 launcherLoader.item.selectedId
     readonly property bool sessionFocused: sessionLoader.item !== null
                                            && sessionLoader.item.activeFocus
+    readonly property bool historyLoaded: historyLoader.item !== null
+    readonly property bool trayLoaded: trayLoader.item !== null
+    readonly property bool sessionLoaded: sessionLoader.item !== null
+    readonly property bool trayFocused: trayLoader.item !== null && trayLoader.item.activeFocus
+    readonly property bool audioLoaded: audioLoader.item !== null
+    readonly property bool audioFocused: audioLoader.item !== null && audioLoader.item.activeFocus
     readonly property bool polkitLoaded: polkitLoader.item !== null
     readonly property bool polkitFocused: polkitLoader.item !== null
                                           && polkitLoader.item.activeFocus
@@ -116,6 +195,73 @@ PanelWindow {
     property real sessionRequestOwnerEpoch: 0
     property int launcherRequestId: 0
     property real launcherRequestOwnerEpoch: 0
+
+    function isInteractiveKind(kind) {
+        return kind === coordinator.ownerLauncher || kind === coordinator.ownerHistory || kind
+                === coordinator.ownerTray || kind === coordinator.ownerAudio || kind
+                === coordinator.ownerSession || kind === coordinator.ownerPolkitModal;
+    }
+
+    function loaderForKind(kind) {
+        if (kind === coordinator.ownerLauncher) {
+            return launcherLoader;
+        }
+        if (kind === coordinator.ownerHistory) {
+            return historyLoader;
+        }
+        if (kind === coordinator.ownerTray) {
+            return trayLoader;
+        }
+        if (kind === coordinator.ownerAudio) {
+            return audioLoader;
+        }
+        if (kind === coordinator.ownerSession) {
+            return sessionLoader;
+        }
+        if (kind === coordinator.ownerPolkitModal) {
+            return polkitLoader;
+        }
+        return null;
+    }
+
+    function completeInteractiveExit() {
+        interactiveExitAnimation.stop();
+        const loader = exitingLoader;
+        interactiveExitOffset = 0;
+        if (loader !== null) {
+            loader.opacity = 1;
+        }
+        exitingOwnerKind = -1;
+        exitingLoader = null;
+        if (focusPendingAfterExit) {
+            focusPendingAfterExit = false;
+            queueOwnerFocus();
+        }
+        queuePresentationAcknowledgement();
+    }
+
+    function beginInteractiveExit(kind) {
+        if (!isInteractiveKind(kind)) {
+            return;
+        }
+        if (exitingOwnerKind >= 0) {
+            completeInteractiveExit();
+        }
+
+        const loader = loaderForKind(kind);
+        if (loader === null || loader.item === null) {
+            return;
+        }
+        exitingOwnerKind = kind;
+        exitingLoader = loader;
+        interactiveExitOffset = 0;
+        loader.opacity = 1;
+        if (reducedMotion) {
+            completeInteractiveExit();
+            return;
+        }
+        interactiveExitAnimation.restart();
+    }
 
     function sourceForTransient(kind) {
         if (kind === coordinator.ownerWorkspace) {
@@ -165,11 +311,16 @@ PanelWindow {
               !== null && launcherLoader.item.visible;
         const sessionVisible = ownerKind === coordinator.ownerSession && sessionLoader.item
               !== null && sessionLoader.item.visible;
+        const trayVisible = ownerKind === coordinator.ownerTray && trayLoader.item !== null
+              && trayLoader.item.visible;
+        const audioVisible = ownerKind === coordinator.ownerAudio && audioLoader.item !== null
+              && audioLoader.item.visible;
         const polkitVisible = polkit && polkitLoader.item !== null && polkitLoader.item.visible;
         const transientVisible = transientOwner && transientLoader.item !== null
               && transientLoader.item.visible && transientLoader.item.committed;
         if (!idleVisible && !dashboardVisible && !launcherVisible && !historyVisible &&
-                !sessionVisible && !polkitVisible && !transientVisible) {
+                !trayVisible && !audioVisible && !sessionVisible && !polkitVisible &&
+                !transientVisible) {
             return;
         }
 
@@ -206,6 +357,10 @@ PanelWindow {
     }
 
     function queueOwnerFocus() {
+        if (interactiveExitRunning) {
+            focusPendingAfterExit = true;
+            return;
+        }
         const generation = hostSurfaceGeneration;
         const epoch = ownerEpoch;
         const serial = focusRequestSerial;
@@ -214,7 +369,10 @@ PanelWindow {
                     || serial !== surface.focusRequestSerial) {
                 return;
             }
-
+            if (surface.interactiveExitRunning) {
+                surface.focusPendingAfterExit = true;
+                return;
+            }
             let target = null;
             if (surface.focusTarget === surface.coordinator.focusExpandedDashboard
                     && surface.expanded) {
@@ -228,6 +386,12 @@ PanelWindow {
             } else if (surface.focusTarget === surface.coordinator.focusSessionActions
                        && surface.session && sessionLoader.item !== null) {
                 target = sessionLoader.item;
+            } else if (surface.focusTarget === surface.coordinator.focusTray && surface.tray
+                       && trayLoader.item !== null) {
+                target = trayLoader.item;
+            } else if (surface.focusTarget === surface.coordinator.focusAudio && surface.audio
+                       && audioLoader.item !== null) {
+                target = audioLoader.item;
             } else if (surface.focusTarget === surface.coordinator.focusPolkitModal
                        && surface.polkit && polkitLoader.item !== null) {
                 target = polkitLoader.item;
@@ -266,8 +430,44 @@ PanelWindow {
 
         return Math.min(preferredSize, Math.max(1, screenSize - edgeInset * 2));
     }
+    function syncDashboardReveal() {
+        dashboardReveal.stop();
+        if (!expanded) {
+            expandedContent.opacity = 0;
+            dashboardRevealOffset.y = 0;
+            return;
+        }
+        if (reducedMotion) {
+            expandedContent.opacity = 1;
+            dashboardRevealOffset.y = 0;
+            return;
+        }
 
-    Component.onCompleted: queuePresentationAcknowledgement()
+        expandedContent.opacity = 0;
+        dashboardRevealOffset.y = -Theme.spacing.xs;
+        dashboardReveal.restart();
+    }
+
+    onExpandedChanged: syncDashboardReveal()
+    onReducedMotionChanged: {
+        syncDashboardReveal();
+        if (reducedMotion && exitingOwnerKind >= 0) {
+            completeInteractiveExit();
+        }
+    }
+
+    Component.onCompleted: {
+        previousOwnerKind = ownerKind;
+        syncDashboardReveal();
+        queuePresentationAcknowledgement();
+    }
+    onOwnerKindChanged: {
+        const outgoingKind = previousOwnerKind;
+        previousOwnerKind = ownerKind;
+        if (outgoingKind !== ownerKind) {
+            beginInteractiveExit(outgoingKind);
+        }
+    }
     onHostSurfaceGenerationChanged: {
         queuePresentationAcknowledgement();
         if (hostSurfaceGeneration > 0 && hoverHandler.hovered) {
@@ -338,49 +538,87 @@ PanelWindow {
     }
 
     // Leave screen unassigned at creation so Qt selects the startup primary/default output.
+    // Explicit top/left anchoring requests a width-derived margin on every
+    // layer-shell commit instead of relying on an unanchored compositor edge.
     anchors.top: true
+    anchors.left: true
     color: "transparent"
     exclusiveZone: 0
-    focusable: focusedOwnerEpoch === ownerEpoch && appliedFocusRequestSerial === focusRequestSerial
-               && ((expanded && focusTarget === coordinator.focusExpandedDashboard) || (launcher
-                                                                                        && focusTarget
-                                                                                        === coordinator.focusLauncherSearch)
-                   || (history && focusTarget === coordinator.focusNotificationHistory) || (session
-                                                                                            && focusTarget
-                                                                                            === coordinator.focusSessionActions)
-                   || (polkit && focusTarget === coordinator.focusPolkitModal))
+    focusable: !interactiveExitRunning && focusedOwnerEpoch === ownerEpoch
+               && appliedFocusRequestSerial === focusRequestSerial && ((expanded && focusTarget
+                                                                        === coordinator.focusExpandedDashboard)
+                                                                       || (launcher && focusTarget
+                                                                           === coordinator.focusLauncherSearch)
+                                                                       || (history && focusTarget
+                                                                           === coordinator.focusNotificationHistory)
+                                                                       || (tray && focusTarget
+                                                                           === coordinator.focusTray)
+                                                                       || (audio && focusTarget
+                                                                           === coordinator.focusAudio)
+                                                                       || (session && focusTarget
+                                                                           === coordinator.focusSessionActions)
+                                                                       || (polkit && focusTarget
+                                                                           === coordinator.focusPolkitModal))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
     implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
 
     Behavior on implicitHeight {
+        enabled: !surface.reducedMotion
+
         NumberAnimation {
-            duration: surface.geometryAnimationDuration
-            easing.type: Theme.motion.easingEmphasized
+            id: geometryHeightAnimation
+
+            duration: Theme.motion.durationExpansion
+            easing.type: Theme.motion.easingExpansion
         }
     }
 
     Behavior on implicitWidth {
+        enabled: !surface.reducedMotion
+
         NumberAnimation {
-            duration: surface.geometryAnimationDuration
-            easing.type: Theme.motion.easingEmphasized
+            id: geometryWidthAnimation
+
+            duration: Theme.motion.durationExpansion
+            easing.type: Theme.motion.easingExpansion
         }
     }
 
     margins.top: edgeInset
+    margins.left: Math.round(horizontalSlack / 2)
 
-    IslandPanel {
-        id: islandPanel
+    // Keep the fill out of the resize-time effect texture. The direct rectangle
+    // tracks the PanelWindow every frame; only the one-pixel silhouette feeds
+    // the shadow effect, and that work is suspended during the geometry morph.
+    Rectangle {
+        id: shadowOutline
 
         anchors.fill: parent
-        radius: surface.notificationTransient ? Theme.radius.lg : surface.largeContent
-                                                ? Theme.radius.xl : Theme.radius.pill
+        radius: Theme.radius.outer
+        color: "transparent"
+        border.color: Theme.color.surface
+        border.width: Theme.size.hairlineWidth
+        visible: surface.visible && !surface.geometryAnimationRunning
 
-        Behavior on radius {
-            NumberAnimation {
-                duration: surface.geometryAnimationDuration
-                easing.type: Theme.motion.easingEmphasized
-            }
+        layer.enabled: visible
+        layer.effect: MultiEffect {
+            autoPaddingEnabled: false
+            blurMax: Theme.elevation.shadowRadius
+            shadowBlur: 1
+            shadowColor: Theme.elevation.shadowColor
+            shadowEnabled: true
+            shadowHorizontalOffset: 0
+            shadowOpacity: Theme.opacity.shadow
+            shadowVerticalOffset: Theme.elevation.shadowVerticalOffset
         }
+    }
+
+    IslandPanel {
+        id: surfaceBackground
+
+        objectName: "surfaceBackground"
+        anchors.fill: parent
+        radius: Theme.radius.outer
     }
 
     Loader {
@@ -422,8 +660,14 @@ PanelWindow {
     ExpandedDashboard {
         id: expandedContent
 
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: implicitWidth
+        height: implicitHeight
         visible: surface.expanded
+        transform: Translate {
+            id: dashboardRevealOffset
+        }
         mediaContent: surface.dashboardMediaContent
         clockContent: surface.dashboardClockContent
         quickControlsContent: surface.dashboardQuickControlsContent
@@ -433,15 +677,71 @@ PanelWindow {
         onCloseRequested: surface.cancelDashboard()
     }
 
+    SequentialAnimation {
+        id: dashboardReveal
+
+        PauseAnimation {
+            duration: Theme.motion.durationFast
+        }
+
+        ParallelAnimation {
+            NumberAnimation {
+                target: expandedContent
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: Theme.motion.durationNormal
+                easing.type: Theme.motion.easingExpansion
+            }
+
+            NumberAnimation {
+                target: dashboardRevealOffset
+                property: "y"
+                from: -Theme.spacing.xs
+                to: 0
+                duration: Theme.motion.durationNormal
+                easing.type: Theme.motion.easingExpansion
+            }
+        }
+    }
+
+    ParallelAnimation {
+        id: interactiveExitAnimation
+
+        NumberAnimation {
+            target: surface
+            property: "interactiveExitOffset"
+            from: 0
+            to: Theme.spacing.xl
+            duration: surface.interactiveExitDuration
+            easing.type: Theme.motion.easingStandard
+        }
+        NumberAnimation {
+            target: surface.exitingLoader
+            property: "opacity"
+            to: 0
+            duration: surface.interactiveExitDuration
+            easing.type: Theme.motion.easingStandard
+        }
+        onFinished: surface.completeInteractiveExit()
+    }
+
     Loader {
         id: launcherLoader
 
         anchors.fill: parent
-        active: surface.launcher && surface.applicationModel !== null
+        active: (surface.launcher || surface.exitingOwnerKind
+                 === surface.coordinator.ownerLauncher) && surface.applicationModel !== null
         visible: active
+        enabled: surface.launcher
+        transform: Translate {
+            x: launcherLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
 
         sourceComponent: Component {
             LauncherView {
+                active: launcherLoader.visible
+                reducedMotion: surface.reducedMotion
                 applicationModel: surface.applicationModel
                 ownerEpoch: surface.ownerEpoch
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
@@ -460,13 +760,76 @@ PanelWindow {
         id: historyLoader
 
         anchors.fill: parent
-        active: surface.history && surface.notificationService !== null
+        active: (surface.history || surface.exitingOwnerKind === surface.coordinator.ownerHistory)
+                && surface.notificationService !== null
         visible: active
+        enabled: surface.history
+        transform: Translate {
+            x: historyLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
 
         sourceComponent: Component {
             NotificationHistoryView {
+                active: historyLoader.visible
+                reducedMotion: surface.reducedMotion
                 ownerEpoch: surface.ownerEpoch
                 service: surface.notificationService
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
+    }
+
+    Loader {
+        id: trayLoader
+
+        anchors.fill: parent
+        active: (surface.tray || surface.exitingOwnerKind === surface.coordinator.ownerTray)
+                && surface.trayAdapter !== null
+        visible: active
+        enabled: surface.tray
+        transform: Translate {
+            x: trayLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
+
+        sourceComponent: Component {
+            TrayView {
+                active: trayLoader.visible
+                adapter: surface.trayAdapter
+                ownerEpoch: surface.ownerEpoch
+                reducedMotion: surface.reducedMotion
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
+    }
+
+    Loader {
+        id: audioLoader
+
+        anchors.fill: parent
+        active: (surface.audio || surface.exitingOwnerKind === surface.coordinator.ownerAudio)
+                && surface.audioAdapter !== null
+        visible: active
+        enabled: surface.audio
+        transform: Translate {
+            x: audioLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
+
+        sourceComponent: Component {
+            AudioSelectionView {
+                active: audioLoader.visible
+                adapter: surface.audioAdapter
+                ownerEpoch: surface.ownerEpoch
+                reducedMotion: surface.reducedMotion
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
             }
         }
@@ -481,11 +844,17 @@ PanelWindow {
         id: polkitLoader
 
         anchors.fill: parent
-        active: surface.polkit
+        active: surface.polkit || surface.exitingOwnerKind === surface.coordinator.ownerPolkitModal
         visible: active
+        enabled: surface.polkit
+        transform: Translate {
+            x: polkitLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
 
         sourceComponent: Component {
             PolkitView {
+                active: polkitLoader.visible
+                reducedMotion: surface.reducedMotion
                 controller: surface.polkitController
                 ownerEpoch: surface.ownerEpoch
                 ownerRevision: surface.ownerRevision
@@ -502,11 +871,18 @@ PanelWindow {
         id: sessionLoader
 
         anchors.fill: parent
-        active: surface.session && surface.sessionService !== null
+        active: (surface.session || surface.exitingOwnerKind === surface.coordinator.ownerSession)
+                && surface.sessionService !== null
         visible: active
+        enabled: surface.session
+        transform: Translate {
+            x: sessionLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
 
         sourceComponent: Component {
             SessionView {
+                active: sessionLoader.visible
+                reducedMotion: surface.reducedMotion
                 ownerEpoch: surface.ownerEpoch
                 service: surface.sessionService
                 onActionDispatched: (requestId, epoch) => surface.trackSessionRequest(requestId,

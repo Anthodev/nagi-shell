@@ -27,40 +27,157 @@ ShellRoot {
         }
     }
 
+    function requireDisplayOnly(item) {
+        require(item.focus !== true, "idle item unexpectedly requests focus");
+        if ("activeFocusOnTab" in item) {
+            require(item.activeFocusOnTab !== true, "idle item unexpectedly enters tab focus");
+        }
+        const visualChildren = item.children;
+        for (let index = 0; index < visualChildren.length; index += 1) {
+            requireDisplayOnly(visualChildren[index]);
+        }
+    }
+
+    function horizontalCenter(item, island) {
+        return item.mapToItem(island, item.width / 2, 0).x;
+    }
+
+    function requireEdgeSymmetry(island, trailingBoundary, trailingBlock, label) {
+        const leadingRuleCenter = horizontalCenter(island.workspaceBoundary, island);
+        const expectedWorkspaceCenter = leadingRuleCenter / 2;
+        require(Math.abs(horizontalCenter(island.workspaceBlock, island) - expectedWorkspaceCenter)
+                <= 1, label + " workspace center is midway between the left edge and first rule");
+
+        const trailingRuleCenter = horizontalCenter(trailingBoundary, island);
+        const expectedTrailingCenter = (trailingRuleCenter + island.implicitWidth) / 2;
+        require(Math.abs(horizontalCenter(trailingBlock, island) - expectedTrailingCenter) <= 1,
+                label + " trailing content center is midway between the last rule and right edge");
+    }
+
     // Settled instances: order, width math, collapse geometry, stale
     // preservation, bounded overflow, and the reduced-motion fallback.
     function phaseOne() {
         require(typeof Theme.size.islandIdleMediaMaximumWidth === "number", "idle tokens resolve");
-
+        require(outerSilhouette.radius === Theme.radius.outer && outerSilhouette.border.width === 0,
+                "Idle outer surface uses the shared soft rectangle without an outline");
+        require(islandFull.implicitHeight >= 44 && islandFull.implicitHeight <= 48,
+                "font-metric idle height stays within 44–48 logical pixels");
+        require(islandFull.implicitHeight === islandFull.resolvedHeight
+                && islandFull.resolvedHeight >= Theme.size.islandIdleHeight
+                && islandFull.derivedContentHeight === Math.max(44, Math.min(48,
+                                                                             islandFull.metricsContentHeight
+                                                                             + islandFull.verticalPadding
+                                                                             * 2)), "idle height follows the documented metric and semantic-padding formula");
+        require(islandFull.contentPadding === Theme.spacing.xl && islandFull.contentGap
+                === Theme.spacing.xl && islandFull.boundaryWidth === 48 + Theme.size.hairlineWidth
+                && islandFull.boundaryWidth === islandFull.contentGap * 2
+                + Theme.size.hairlineWidth && islandFull.boundaryHeight
+                === Theme.size.islandSeparatorHeight && islandFull.workspaceIndicatorWidth
+                === Theme.size.islandWorkspaceIndicatorWidth && islandFull.workspaceIndicatorHeight
+                === Theme.size.islandWorkspaceIndicatorHeight && islandFull.weatherGap
+                === Theme.spacing.sm && islandFull.weatherLabelGap === Theme.spacing.xs,
+                "Idle groups use shared workspace and separator geometry tokens");
+        require(islandFull.workspaceLabelItem.font.pixelSize === Theme.type.body
+                && islandFull.workspaceLabelItem.font.weight === Theme.type.weightMedium
+                && islandFull.clockBlock.font.pixelSize === Theme.type.body
+                && islandFull.clockBlock.font.weight === Theme.type.weightMedium
+                && islandFull.temperatureBlock.font.pixelSize === Theme.type.body
+                && islandFull.temperatureBlock.font.weight === Theme.type.weightMedium,
+                "primary Idle values use the body/medium typography hierarchy");
+        require(islandFull.weatherConditionBlock.font.pixelSize === Theme.type.caption
+                && islandFull.weatherConditionBlock.font.weight === Theme.type.weightRegular,
+                "secondary weather context uses caption/regular typography");
+        require(islandFull.weatherIcon.Accessible.ignored,
+                "the restrained weather glyph stays decorative");
+        requireDisplayOnly(islandFull);
         require(islandFull.workspaceBlock.visible, "workspace renders when available");
-        require(islandFull.workspaceText === "Work", "workspace renders the current desktop name");
+        require(islandFull.workspaceText === "02" && islandFull.workspaceLabelItem.text === "02"
+                && islandFull.workspaceLabelItem.text !== fullDesktops.currentName,
+                "workspace renders a two-digit position indicator, never the desktop name");
+        require(islandFull.workspaceBlock.width === islandFull.workspaceIndicatorWidth
+                && islandFull.workspaceBlock.height === islandFull.workspaceIndicatorHeight,
+                "workspace position uses the compact rectangular indicator geometry");
+        require(islandFull.clockBlock.text === "13:45", "clock renders normalized time text");
         require(islandFull.temperatureText === "24°", "temperature renders rounded Celsius");
+        require(islandFull.weatherCaptionText === "Clear · Day",
+                "weather renders normalized condition and day phase context");
         require(islandFull.mediaSummary === "Artist — Track", "media renders the selected summary");
-        require(islandFull.workspaceBlock.x < islandFull.clockBlock.x
-                && islandFull.clockBlock.x < islandFull.weatherBlock.x
-                && islandFull.weatherBlock.x < islandFull.mediaBlock.x,
-                "idle content keeps workspace, time, weather, media order");
+        require(islandFull.workspaceBlock.x < islandFull.workspaceBoundary.x
+                && islandFull.workspaceBoundary.x < islandFull.clockBlock.x
+                && islandFull.clockBlock.x < islandFull.clockBoundary.x
+                && islandFull.clockBoundary.x < islandFull.weatherBlock.x
+                && islandFull.weatherBlock.x < islandFull.weatherBoundary.x
+                && islandFull.weatherBoundary.x < islandFull.mediaBlock.x,
+                "idle content keeps workspace, time, weather, media order with visible boundaries");
+        require(islandFull.workspaceBoundary.visible && islandFull.clockBoundary.visible
+                && islandFull.weatherBoundary.visible,
+                "each visible group transition renders one restrained separator");
+        const firstEdge = islandFull.workspaceBlock.mapToItem(islandFull, 0, 0).x;
+        const lastEdge = islandFull.mediaBlock.mapToItem(islandFull, islandFull.mediaBlock.width,
+                                                         0).x;
+        require(islandFull.contentPadding === Theme.spacing.xl && firstEdge
+                === islandFull.contentPadding && islandFull.implicitWidth - lastEdge
+                === islandFull.contentPadding, "Idle content uses balanced 24 px edge padding");
+        requireEdgeSymmetry(islandFull, islandFull.weatherBoundary, islandFull.mediaBlock,
+                            "full Idle");
         require(islandFull.implicitWidth === islandFull.contentPadding * 2
                 + islandFull.workspaceBlock.width + islandFull.clockBlock.width
                 + islandFull.weatherBlock.width + islandFull.mediaBlock.width
-                + islandFull.contentGap * 3,
-                "idle width follows the visible content exactly");
+                + islandFull.boundaryWidth * 3,
+                "idle width follows groups, boundaries, and symmetric edge padding exactly");
         require(islandFull.implicitHeight === Theme.size.islandIdleHeight,
-                "idle height stays on the compact pill token");
-        require(!islandFull.mediaBlock.overflowing, "fitting media stays static");
+                "current font metrics preserve the published Idle height token");
+        require(!islandFull.mediaBlock.overflowing && !islandFull.mediaBlock.marqueeEligible,
+                "fitting media stays settled with no marquee work");
 
         require(!islandNoWeather.weatherBlock.visible, "unavailable weather collapses");
         require(islandFull.implicitWidth - islandNoWeather.implicitWidth
-                === islandFull.weatherBlock.width + islandFull.contentGap,
-                "collapsed weather frees its block and one gap");
-        require(islandNoWeather.mediaBlock.x === islandNoWeather.clockBlock.x
-                + islandNoWeather.clockBlock.width + islandNoWeather.contentGap,
-                "media closes up behind the clock with no reserved gap");
+                === islandFull.weatherBlock.width + islandFull.boundaryWidth,
+                "collapsed weather frees its block and one boundary");
+        require(islandNoWeather.clockBoundary.visible && !islandNoWeather.weatherBoundary.visible
+                && islandNoWeather.mediaBlock.x === islandNoWeather.clockBoundary.x
+                + islandNoWeather.clockBoundary.width,
+                "media follows the clock with one boundary and no orphan weather separator");
+        require(islandNoWeather.implicitWidth === islandNoWeather.contentPadding * 2
+                + islandNoWeather.workspaceBlock.width + islandNoWeather.clockBlock.width
+                + islandNoWeather.mediaBlock.width + islandNoWeather.boundaryWidth * 2,
+                "weather-free geometry contains exactly three groups and two boundaries");
+        requireEdgeSymmetry(islandNoWeather, islandNoWeather.clockBoundary,
+                            islandNoWeather.mediaBlock, "weather-free Idle");
 
         require(!islandNoMedia.mediaBlock.visible, "unavailable media collapses");
         require(islandFull.implicitWidth - islandNoMedia.implicitWidth
-                === islandFull.mediaBlock.width + islandFull.contentGap,
-                "collapsed media frees its block and one gap");
+                === islandFull.mediaBlock.width + islandFull.boundaryWidth,
+                "collapsed media frees its block and trailing boundary");
+        require(!islandNoMedia.weatherBoundary.visible,
+                "missing media leaves no orphan separator after weather");
+        require(islandNoMedia.implicitWidth === islandNoMedia.contentPadding * 2
+                + islandNoMedia.workspaceBlock.width + islandNoMedia.clockBlock.width
+                + islandNoMedia.weatherBlock.width + islandNoMedia.boundaryWidth * 2,
+                "media-free geometry contains exactly three groups and two boundaries");
+        requireEdgeSymmetry(islandNoMedia, islandNoMedia.clockBoundary, islandNoMedia.weatherBlock,
+                            "media-free Idle");
+
+        require(!islandNoWeatherNoMedia.weatherBlock.visible &&
+                !islandNoWeatherNoMedia.mediaBlock.visible,
+                "weather and media collapse together when both are unavailable");
+        require(islandNoWeatherNoMedia.workspaceBoundary.visible &&
+                !islandNoWeatherNoMedia.clockBoundary.visible &&
+                !islandNoWeatherNoMedia.weatherBoundary.visible,
+                "only the required workspace/time boundary survives optional collapse");
+        require(islandNoWeatherNoMedia.implicitWidth === islandNoWeatherNoMedia.contentPadding * 2
+                + islandNoWeatherNoMedia.workspaceBlock.width
+                + islandNoWeatherNoMedia.clockBlock.width + islandNoWeatherNoMedia.boundaryWidth,
+                "collapsing optional groups leaves required groups and one boundary");
+        require(islandNoWeatherNoMedia.clockBlock.x === islandNoWeatherNoMedia.workspaceBoundary.x
+                + islandNoWeatherNoMedia.workspaceBoundary.width,
+                "required groups preserve order without optional-content residue");
+        requireEdgeSymmetry(islandNoWeatherNoMedia, islandNoWeatherNoMedia.workspaceBoundary,
+                            islandNoWeatherNoMedia.clockBlock, "required-only Idle");
+        require(islandFull.implicitHeight === islandNoWeather.implicitHeight
+                && islandFull.implicitHeight === islandNoMedia.implicitHeight
+                && islandFull.implicitHeight === islandNoWeatherNoMedia.implicitHeight,
+                "Idle height is stable across optional-content combinations");
 
         // Stale weather keeps the last valid content without churn.
         pendingStaleWidth = islandFull.implicitWidth;
@@ -89,34 +206,38 @@ ShellRoot {
     function collapsedStage() {
         require(!islandMediaLifecycle.mediaBlock.visible, "stopped media collapses");
         require(islandMediaLifecycle.mediaSummary === "", "stopped media clears its summary");
-        require(!islandMediaLifecycle.mediaBlock.marqueeRunning,
+        require(!islandMediaLifecycle.mediaBlock.marqueeEligible &&
+                !islandMediaLifecycle.mediaBlock.marqueeRunning,
                 "cleared media performs no marquee work");
+        require(islandMediaLifecycle.implicitHeight === Theme.size.islandIdleHeight,
+                "content changes do not alter the font-derived Idle height");
         require(pendingWithMedia - islandMediaLifecycle.implicitWidth === pendingMediaWidth
-                + islandMediaLifecycle.contentGap,
-                "stopped media frees its space");
+                + islandMediaLifecycle.boundaryWidth,
+                "stopped media frees its content and boundary");
         lifecycleMedia.available = true;
         recoveryTimer.start();
     }
 
     function recoveredStage() {
-        require(islandMediaLifecycle.mediaBlock.visible
-                && islandMediaLifecycle.implicitWidth === pendingWithMedia,
-                "recovered media restores its space");
+        require(islandMediaLifecycle.mediaBlock.visible && islandMediaLifecycle.implicitWidth
+                === pendingWithMedia, "recovered media restores its space");
 
         // Bounded overflow: the island width caps and the marquee arms.
         require(islandOverflow.mediaBlock.overflowing, "long media reports overflow");
         require(islandOverflow.implicitWidth <= islandOverflow.contentPadding * 2
                 + islandOverflow.workspaceBlock.width + islandOverflow.clockBlock.width
-                + islandOverflow.weatherBlock.width
-                + Theme.size.islandIdleMediaMaximumWidth + islandOverflow.contentGap * 3,
+                + islandOverflow.weatherBlock.width + Theme.size.islandIdleMediaMaximumWidth
+                + islandOverflow.boundaryWidth * 3,
                 "overflowing media stays inside the island width cap");
-        require(!islandOverflow.reducedMotion, "motion is allowed before the factor says otherwise");
+        require(!islandOverflow.reducedMotion,
+                "motion is allowed before the factor says otherwise");
         require(islandOverflow.mediaBlock.labelItem.elide === Text.ElideNone,
                 "moving media does not elide");
 
         // Reduced-motion media renders a static ellipsis with no marquee.
         require(islandStatic.mediaBlock.overflowing, "static scenario overflows too");
-        require(!islandStatic.mediaBlock.marqueeRunning, "reduced motion keeps the marquee stopped");
+        require(!islandStatic.mediaBlock.marqueeRunning,
+                "reduced motion keeps the marquee stopped");
         require(islandStatic.mediaBlock.labelItem.elide === Text.ElideRight,
                 "reduced motion renders a static ellipsis");
 
@@ -130,12 +251,14 @@ ShellRoot {
                 "overflowing visible media marquees after the delay");
 
         islandOverflow.reducedMotion = true;
-        require(!islandOverflow.mediaBlock.marqueeRunning, "reduced motion stops a running marquee");
+        require(!islandOverflow.mediaBlock.marqueeRunning,
+                "reduced motion stops a running marquee");
         require(islandOverflow.mediaBlock.labelItem.x === 0, "stopped marquee resets its offset");
         islandOverflow.reducedMotion = false;
 
         islandOverflow.visible = false;
-        require(!islandOverflow.mediaBlock.marqueeRunning, "hidden media performs no marquee work");
+        require(!islandOverflow.mediaBlock.marqueeEligible &&
+                !islandOverflow.mediaBlock.marqueeRunning, "hidden media performs no marquee work");
         islandOverflow.visible = true;
 
         // The watched reduced-motion preference drives the same fallback.
@@ -207,7 +330,8 @@ ShellRoot {
 
         interval: 50
         repeat: false
-        onTriggered: test.pendingMotionStage === "reduced" ? test.motionReducedStage() : test.motionRestoredStage()
+        onTriggered: test.pendingMotionStage === "reduced" ? test.motionReducedStage() :
+                                                             test.motionRestoredStage()
     }
 
     component FakeClock: QtObject {
@@ -216,8 +340,8 @@ ShellRoot {
 
     component FakeDesktops: QtObject {
         property bool available: true
-        property string currentName: "Work"
-        property int currentPosition: 0
+        property string currentName: "Desktop 2"
+        property int currentPosition: 1
     }
 
     component FakeWeather: QtObject {
@@ -305,6 +429,19 @@ ShellRoot {
     }
 
     IdleIsland {
+        id: islandNoWeatherNoMedia
+
+        virtualDesktops: fullDesktops
+        clock: FakeClock {}
+        weather: FakeWeather {
+            available: false
+        }
+        media: FakeMedia {
+            available: false
+        }
+    }
+
+    IdleIsland {
         id: islandMediaLifecycle
 
         virtualDesktops: fullDesktops
@@ -330,6 +467,13 @@ ShellRoot {
         weather: FakeWeather {}
         media: overflowMedia
         reducedMotion: true
+    }
+
+    IslandPanel {
+        id: outerSilhouette
+
+        radius: Theme.radius.outer
+        visible: false
     }
 
     IdleIsland {

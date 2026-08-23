@@ -1,21 +1,22 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
-// Quick controls consume only normalized adapters and the shared eligible-pin
-// projection. No backend discovery, reconciliation, or presentation copy lives here.
+// Connectivity uses backend-confirmed state. A bounded active/attention tray
+// projection is mirrored here; menus remain in the Tray view.
 FocusScope {
     id: root
 
     required property var connectivity
-    required property var audio
     required property var applicationModel
     required property var tray
 
-    readonly property int outputCount: audio === null ? 0 : audio.outputCandidates.length
     readonly property int pinCount: applicationModel === null ? 0 :
                                                                 applicationModel.pinnedApplications.length
+    readonly property var statusItems: projectTrayItems(tray === null ? [] : tray.items)
+    property bool centerStatusInMainLane: false
     readonly property string wifiState: connectivity === null || !connectivity.wifiAvailable
                                         ? "Unavailable" : connectivity.wifiEnabled ? "On" : "Off"
     readonly property string bluetoothState: connectivity === null ||
@@ -26,8 +27,62 @@ FocusScope {
                                                !== "none"
     readonly property bool bluetoothFailureVisible: connectivity !== null
                                                     && connectivity.bluetoothFailure !== "none"
+    readonly property string wifiSemanticState: connectivity === null ||
+                                                !connectivity.wifiAvailable ? "disabled" :
+                                                                              connectivity.wifiPending
+                                                                              ? "pending" :
+                                                                                wifiFailureVisible
+                                                                                ? "error" :
+                                                                                  connectivity.wifiEnabled
+                                                                                  ? "active" : "off"
+    readonly property string bluetoothSemanticState: connectivity === null ||
+                                                     !connectivity.bluetoothAvailable ? "disabled" :
+                                                                                        connectivity.bluetoothPending
+                                                                                        ? "pending" :
+                                                                                          bluetoothFailureVisible
+                                                                                          ? "error" :
+                                                                                            connectivity.bluetoothEnabled
+                                                                                            ? "active" :
+                                                                                              "off"
 
-    implicitHeight: 100
+    implicitWidth: controlsColumn.implicitWidth
+    implicitHeight: controlsColumn.implicitHeight
+
+    function projectTrayItems(items) {
+        const projected = [];
+        const includedTokens = {};
+        const statuses = ["needsAttention", "active"];
+        for (let statusIndex = 0; statusIndex < statuses.length && projected.length < 4; statusIndex
+             += 1) {
+            const status = statuses[statusIndex];
+            for (let itemIndex = 0; itemIndex < items.length && projected.length < 4; itemIndex
+                 += 1) {
+                const item = items[itemIndex];
+                const tokenKey = typeof item.token + ":" + String(item.token);
+                if (item.status === status && includedTokens[tokenKey] !== true) {
+                    includedTokens[tokenKey] = true;
+                    projected.push(item);
+                }
+            }
+        }
+        return Object.freeze(projected);
+    }
+
+    function surfaceForState(state) {
+        if (state === "error") {
+            return Theme.color.dangerFill;
+        }
+        if (state === "pending") {
+            return Theme.color.surfaceHover;
+        }
+        if (state === "active") {
+            return Theme.color.surfaceActive;
+        }
+        if (state === "off") {
+            return Theme.color.controlFill;
+        }
+        return Theme.color.surface;
+    }
 
     function toggleWifi() {
         return connectivity !== null && connectivity.wifiAvailable && !connectivity.wifiPending
@@ -39,13 +94,8 @@ FocusScope {
                 !connectivity.bluetoothPending && connectivity.toggleBluetooth();
     }
 
-    function selectOutput(index) {
-        if (audio === null || !audio.isSynchronized || audio.pendingOutputSelection || index < 0
-                || index >= audio.outputCandidates.length) {
-            return false;
-        }
-        const candidate = audio.outputCandidates[index];
-        return candidate.isDefault ? true : audio.requestOutputSelection(candidate.endpointKey);
+    function activateStatusItem(token) {
+        return tray !== null && tray.activate(token);
     }
 
     function reveal(flickable, item) {
@@ -55,6 +105,7 @@ FocusScope {
             flickable.contentX = item.x + item.width - flickable.width;
         }
     }
+
     function launchPin(index) {
         if (applicationModel === null || applicationModel.launchPending || index < 0 || index
                 >= applicationModel.pinnedApplications.length) {
@@ -63,99 +114,178 @@ FocusScope {
         return applicationModel.dispatchLaunch(applicationModel.pinnedApplications[index].id);
     }
 
-    IslandPanel {
-        anchors.fill: parent
-        radius: Theme.radius.lg
-        color: Theme.color.controlFill
-    }
-
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.md
+        id: controlsColumn
+
+        anchors.left: parent.left
+        anchors.right: parent.right
         spacing: Theme.spacing.sm
 
         RowLayout {
+            id: quickRow
+            objectName: "dashboardQuickControlRow"
             Layout.fillWidth: true
             spacing: Theme.spacing.sm
 
-            IslandButton {
+            AbstractButton {
+                id: wifiButton
+
+                readonly property color restingColor: root.surfaceForState(root.wifiSemanticState)
+
                 objectName: "dashboardWifi"
-                label: "Wi-Fi · " + root.wifiState + (root.connectivity !== null
-                                                      && root.connectivity.wifiPending
-                                                      ? " · Pending" : root.wifiFailureVisible
-                                                        ? " · Failed" : "")
+                implicitWidth: Theme.size.controlHeightLg
+                implicitHeight: Theme.size.controlHeightLg
+                focusPolicy: Qt.StrongFocus
+                hoverEnabled: true
                 enabled: root.connectivity !== null && root.connectivity.wifiAvailable &&
                          !root.connectivity.wifiPending
+                Accessible.role: Accessible.Button
+                Accessible.name: "Wi-Fi"
                 Accessible.description: "Toggle Wi-Fi. Confirmed state " + root.wifiState + (
                                             root.wifiFailureVisible ? ". Last request failed." : "")
                 onClicked: root.toggleWifi()
+
+                background: Rectangle {
+                    radius: Theme.radius.lg
+                    color: wifiButton.pressed ? Theme.color.surfaceActive : wifiButton.hovered
+                                                ? Theme.color.surfaceHover : wifiButton.restingColor
+                }
+                contentItem: Item {
+                    IslandIcon {
+                        objectName: "dashboardWifiIcon"
+                        anchors.centerIn: parent
+                        meaning: "wifi"
+                        semanticState: root.wifiSemanticState
+                        size: "lg"
+                    }
+                }
+                IslandFocusRing {
+                    controlRadius: Theme.radius.lg
+                    visible: wifiButton.visualFocus
+                }
+                ToolTip.delay: Theme.motion.durationSlow
+                ToolTip.visible: hovered || visualFocus
+                ToolTip.text: "Wi-Fi · " + root.wifiState
             }
 
-            IslandButton {
+            AbstractButton {
+                id: bluetoothButton
+
+                readonly property color restingColor: root.surfaceForState(
+                                                          root.bluetoothSemanticState)
+
                 objectName: "dashboardBluetooth"
-                label: "Bluetooth · " + root.bluetoothState + (root.connectivity !== null
-                                                               && root.connectivity.bluetoothPending
-                                                               ? " · Pending" :
-                                                                 root.bluetoothFailureVisible
-                                                                 ? " · Failed" : "")
+                implicitWidth: Theme.size.controlHeightLg
+                implicitHeight: Theme.size.controlHeightLg
+                focusPolicy: Qt.StrongFocus
+                hoverEnabled: true
                 enabled: root.connectivity !== null && root.connectivity.bluetoothAvailable &&
                          !root.connectivity.bluetoothPending
+                Accessible.role: Accessible.Button
+                Accessible.name: "Bluetooth"
                 Accessible.description: "Toggle Bluetooth. Confirmed state " + root.bluetoothState
                                         + (root.bluetoothFailureVisible ? ". Last request failed." :
                                                                           "")
                 onClicked: root.toggleBluetooth()
+
+                background: Rectangle {
+                    radius: Theme.radius.lg
+                    color: bluetoothButton.pressed ? Theme.color.surfaceActive :
+                                                     bluetoothButton.hovered
+                                                     ? Theme.color.surfaceHover :
+                                                       bluetoothButton.restingColor
+                }
+                contentItem: Item {
+                    IslandIcon {
+                        objectName: "dashboardBluetoothIcon"
+                        anchors.centerIn: parent
+                        meaning: "bluetooth"
+                        semanticState: root.bluetoothSemanticState
+                        size: "lg"
+                    }
+                }
+                IslandFocusRing {
+                    controlRadius: Theme.radius.lg
+                    visible: bluetoothButton.visualFocus
+                }
+                ToolTip.delay: Theme.motion.durationSlow
+                ToolTip.visible: hovered || visualFocus
+                ToolTip.text: "Bluetooth · " + root.bluetoothState
             }
 
-            IslandText {
-                text: root.audio !== null && root.audio.pendingOutputSelection ? "Output · Pending" :
-                                                                                 "Output"
-                textFormat: Text.PlainText
-                tone: root.audio !== null && root.audio.pendingOutputSelection ? "secondary" :
-                                                                                 "muted"
-                size: "caption"
-            }
-
-            Flickable {
-                id: outputFlickable
-
+            Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.size.controlHeightMd
-                contentWidth: outputRow.implicitWidth
-                contentHeight: height
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.HorizontalFlick
-                Accessible.role: Accessible.List
-                Accessible.name: "Audio outputs"
+            }
 
-                Row {
-                    id: outputRow
+            Item {
+                id: statusLane
 
-                    height: parent.height
+                objectName: "dashboardStatusLane"
+                visible: root.statusItems.length > 0
+                Layout.preferredWidth: Theme.spacing.xxl * 6
+                Layout.preferredHeight: statusGroup.implicitHeight
+                readonly property real centeredX: Math.max(bluetoothButton.x
+                                                           + bluetoothButton.width
+                                                           + Theme.spacing.sm, (quickRow.width
+                                                                                - width) / 2)
+
+                transform: Translate {
+                    x: root.centerStatusInMainLane ? statusLane.centeredX - statusLane.x : 0
+                }
+
+                RowLayout {
+                    id: statusGroup
+
+                    objectName: "dashboardStatusItems"
+                    anchors.centerIn: parent
+                    width: implicitWidth
+                    height: implicitHeight
                     spacing: Theme.spacing.sm
+                    Accessible.role: Accessible.List
+                    Accessible.name: "Active and attention applications"
 
                     Repeater {
-                        model: root.audio === null ? [] : root.audio.outputCandidates
+                        model: root.statusItems
 
-                        delegate: IslandButton {
-                            required property int index
+                        delegate: AbstractButton {
+                            id: statusButton
+
                             required property var modelData
-                            objectName: "dashboardOutputCandidate"
 
-                            width: Math.min(180, implicitWidth)
-                            label: modelData.label + (modelData.isDefault ? " · Current" : "")
-                            enabled: root.audio !== null && root.audio.isSynchronized &&
-                                     !root.audio.pendingOutputSelection && !modelData.isDefault
-                            Accessible.description: modelData.isDefault ? modelData.label
-                                                                          + ", confirmed current output" :
-                                                                          "Select "
-                                                                          + modelData.label
-                            onActiveFocusChanged: {
-                                if (activeFocus) {
-                                    root.reveal(outputFlickable, this);
+                            objectName: "dashboardStatusItem"
+                            implicitWidth: Theme.size.controlHeightMd
+                            implicitHeight: Theme.size.controlHeightMd
+                            focusPolicy: Qt.StrongFocus
+                            hoverEnabled: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.label
+                            Accessible.description: modelData.tooltip
+                            onClicked: root.activateStatusItem(modelData.token)
+
+                            background: Rectangle {
+                                radius: Theme.radius.md
+                                color: statusButton.pressed ? Theme.color.surfaceActive :
+                                                              statusButton.hovered
+                                                              ? Theme.color.surfaceHover :
+                                                                "transparent"
+                            }
+                            contentItem: Item {
+                                IslandIcon {
+                                    objectName: "dashboardStatusIcon"
+                                    anchors.centerIn: parent
+                                    meaning: "application"
+                                    semanticState: statusButton.modelData.status
+                                                   === "needsAttention" ? "attention" : "active"
+                                    applicationSource: statusButton.modelData.iconSource
+                                    applicationName: statusButton.modelData.label
                                 }
                             }
-                            onClicked: root.selectOutput(index)
+                            IslandFocusRing {
+                                visible: statusButton.visualFocus
+                            }
+                            ToolTip.delay: Theme.motion.durationSlow
+                            ToolTip.visible: hovered || visualFocus
+                            ToolTip.text: modelData.tooltip
                         }
                     }
                 }
@@ -163,11 +293,10 @@ FocusScope {
         }
 
         RowLayout {
-            Layout.fillWidth: true
+            visible: root.pinCount > 0
             spacing: Theme.spacing.sm
 
             IslandText {
-                visible: root.pinCount > 0
                 text: "Pinned"
                 textFormat: Text.PlainText
                 tone: "muted"
@@ -177,8 +306,7 @@ FocusScope {
             Flickable {
                 id: pinFlickable
 
-                visible: root.pinCount > 0
-                Layout.fillWidth: visible
+                Layout.preferredWidth: Math.min(pinRow.implicitWidth, Theme.spacing.xxl * 12)
                 Layout.preferredHeight: Theme.size.controlHeightMd
                 contentWidth: pinRow.implicitWidth
                 contentHeight: height
@@ -203,7 +331,7 @@ FocusScope {
                             required property var modelData
                             objectName: "dashboardPinnedApplication"
 
-                            width: Math.min(180, implicitWidth)
+                            width: Math.min(Theme.spacing.xxl * 6, implicitWidth)
                             label: modelData.name
                             enabled: root.applicationModel !== null &&
                                      !root.applicationModel.launchPending
@@ -217,14 +345,6 @@ FocusScope {
                         }
                     }
                 }
-            }
-
-            TrayView {
-                Layout.preferredWidth: visible && root.tray !== null ? Math.min(220,
-                                                                                root.tray.itemCount
-                                                                                * 40 + Theme.spacing.sm) :
-                                                                       0
-                adapter: root.tray
             }
         }
     }

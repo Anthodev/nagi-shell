@@ -35,7 +35,7 @@ Item {
                                    * bar.effectiveValue
         x: bar.indeterminate ? (bar.width + width) * bar.phase - width : 0
         radius: height / 2
-        color: Theme.color.accent
+        color: Theme.snapshot.accent
         visible: bar.indeterminate || bar.effectiveValue > 0
 
         NumberAnimation {
