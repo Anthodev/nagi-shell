@@ -6,6 +6,7 @@ build/
 
 docs/
 
+.agents/
 AGENTS.md
 SPECIFICATIONS.md
 DESIGN_SYSTEM.md

@@ -19,6 +19,8 @@ Scope {
     readonly property int ownerSession: 8
     readonly property int ownerPolkitModal: 9
     readonly property int ownerHistory: 10
+    readonly property int ownerTray: 11
+    readonly property int ownerAudio: 12
 
     readonly property int focusNone: 0
     readonly property int focusLauncherSearch: 1
@@ -26,6 +28,8 @@ Scope {
     readonly property int focusExpandedDashboard: 3
     readonly property int focusSessionActions: 4
     readonly property int focusNotificationHistory: 5
+    readonly property int focusTray: 6
+    readonly property int focusAudio: 7
 
     readonly property int surfaceGeneration: reducer.surfaceGeneration
     readonly property var surfaceToken: reducer.surfaceToken
@@ -77,6 +81,12 @@ Scope {
 
     function openHistory(initiatingSurfaceToken) {
         return reducer.openHistory(initiatingSurfaceToken);
+    }
+    function openTray(initiatingSurfaceToken) {
+        return reducer.openTray(initiatingSurfaceToken);
+    }
+    function openAudio(initiatingSurfaceToken) {
+        return reducer.openAudio(initiatingSurfaceToken);
     }
 
     function openSession(initiatingSurfaceToken) {
@@ -407,6 +417,12 @@ Scope {
             if (kind === root.ownerHistory) {
                 return root.focusNotificationHistory;
             }
+            if (kind === root.ownerTray) {
+                return root.focusTray;
+            }
+            if (kind === root.ownerAudio) {
+                return root.focusAudio;
+            }
             if (kind === root.ownerPolkitModal) {
                 return root.focusPolkitModal;
             }
@@ -479,9 +495,8 @@ Scope {
         }
 
         function isInteractiveKind(kind) {
-            return kind === root.ownerLauncher || kind === root.ownerHistory || kind
-                    === root.ownerSession;
-
+            return kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray || kind
+                    === root.ownerAudio || kind === root.ownerSession;
         }
         function isTransient(kind) {
             return kind === root.ownerWorkspace || kind === root.ownerBrightness || kind === root.ownerVolume || kind
@@ -567,6 +582,61 @@ Scope {
             schedule(now);
             return true;
         }
+        function openTray(initiatingSurfaceToken) {
+            const now = currentTime();
+            expireDue(now);
+
+            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
+                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
+                                         !== root.ownerTray)) {
+                schedule(now);
+                return false;
+            }
+
+            if (ownerKind === root.ownerTray) {
+                if (presentationVisible) {
+                    focusRequestSerial += 1;
+                } else {
+                    focusPending = true;
+                }
+                schedule(now);
+                return true;
+            }
+
+            captureCurrent(now);
+            enterOwner(root.ownerTray, null, null, now);
+            schedule(now);
+            return true;
+        }
+
+        function openAudio(initiatingSurfaceToken) {
+            const now = currentTime();
+            expireDue(now);
+
+            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
+                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
+                                         !== root.ownerAudio)) {
+                schedule(now);
+                return false;
+            }
+
+            if (ownerKind === root.ownerAudio) {
+                if (presentationVisible) {
+                    focusRequestSerial += 1;
+                } else {
+                    focusPending = true;
+                }
+                schedule(now);
+                return true;
+            }
+
+            captureCurrent(now);
+            enterOwner(root.ownerAudio, null, null, now);
+            schedule(now);
+            return true;
+        }
 
         function openSession(initiatingSurfaceToken) {
             const now = currentTime();
@@ -615,6 +685,12 @@ Scope {
             }
             if (kind === root.ownerHistory) {
                 return "history";
+            }
+            if (kind === root.ownerTray) {
+                return "tray";
+            }
+            if (kind === root.ownerAudio) {
+                return "audio";
             }
             if (kind === root.ownerPolkitModal) {
                 return "polkitModal";
@@ -672,6 +748,12 @@ Scope {
                 return 6;
             }
             if (kind === root.ownerHistory) {
+                return 6;
+            }
+            if (kind === root.ownerTray) {
+                return 6;
+            }
+            if (kind === root.ownerAudio) {
                 return 6;
             }
             if (kind === root.ownerSession) {

@@ -23,7 +23,6 @@ runs:
         dbus-daemon
         dejavu-sans-fonts
         diffutils
-        cage
 
     - name: 'Enable the stable Quickshell COPR'
       shell: bash
@@ -38,6 +37,6 @@ runs:
     - name: 'Report installed tool versions'
       shell: bash
       run: |
-        for tool in cmake qmlformat-qt6 qmllint-qt6 qtpaths6 dbus-run-session cage; do
+        for tool in cmake qmlformat-qt6 qmllint-qt6 qtpaths6 dbus-run-session; do
           command -v "$tool"
         done

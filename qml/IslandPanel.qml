@@ -1,16 +1,15 @@
 import QtQuick
 
-// Surface primitive: the rounded card every island region renders on. All
-// visuals come from Theme tokens; consumers may override `radius` for nested
-// cards but must keep using tokens.
+// Semantic surface primitive. Inner controls use the medium radius by default;
+// outer island surfaces opt into the outer radius explicitly.
 Rectangle {
     id: panel
 
     implicitWidth: Theme.size.islandIdleWidth
     implicitHeight: Theme.size.islandIdleHeight
-    radius: Theme.radius.pill
+    radius: Theme.radius.md
     color: Theme.color.surface
 
-    border.color: Theme.color.surfaceBorder
-    border.width: Theme.size.hairlineWidth
+    border.color: "transparent"
+    border.width: border.color.a > 0 ? Theme.size.hairlineWidth : 0
 }

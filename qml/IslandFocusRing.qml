@@ -7,12 +7,14 @@ import QtQuick
 Rectangle {
     id: ring
 
+    objectName: "islandFocusRing"
+    property real controlRadius: Theme.radius.md
     anchors.fill: parent
     anchors.margins: -(Theme.size.focusRingGap)
-    radius: Theme.radius.pill
+    radius: controlRadius + Theme.size.focusRingGap
     color: "transparent"
 
-    border.color: Theme.color.focusRing
+    border.color: Theme.snapshot.focusRing
     border.width: Theme.size.focusRingWidth
     visible: false
 }

@@ -17,6 +17,8 @@ Scope {
     property var polkitController: null
     property var notificationService: null
     property var applicationModel: null
+    property var trayAdapter: null
+    property var audioAdapter: null
     property var workspaceTransientSource: null
     property var brightnessTransientSource: null
     property var volumeTransientSource: null
@@ -37,10 +39,24 @@ Scope {
     readonly property int surfaceHeight: ownership.liveSurface === null ? 0 :
                                                                           ownership.liveSurface.height
 
+    // Requested layer-shell geometry is observable on Wayland even though the
+    // compositor does not publish a trustworthy global QWindow position.
+    readonly property int surfaceScreenWidth: ownership.liveSurface === null
+                                              || ownership.liveSurface.screen === null ? 0 :
+                                                                                         ownership.liveSurface.screen.width
+    readonly property int surfaceLeftMargin: ownership.liveSurface === null ? 0 :
+                                                                              ownership.liveSurface.margins.left
+    readonly property int surfaceTopMargin: ownership.liveSurface === null ? 0 :
+                                                                             ownership.liveSurface.margins.top
+
     readonly property int surfacePreferredWidth: ownership.liveSurface === null ? 0 :
                                                                                   ownership.liveSurface.preferredWidth
     readonly property int surfacePreferredHeight: ownership.liveSurface === null ? 0 :
                                                                                    ownership.liveSurface.preferredHeight
+    readonly property bool backgroundCoversSurface: ownership.liveSurface !== null
+                                                    && ownership.liveSurface.backgroundCoversSurface
+    readonly property real backgroundRadius: ownership.liveSurface === null ? 0 :
+                                                                              ownership.liveSurface.backgroundRadius
 
     readonly property bool surfaceFocusable: ownership.liveSurface !== null
                                              && ownership.liveSurface.focusable
@@ -48,14 +64,42 @@ Scope {
                                              && ownership.liveSurface.dashboardFocused
     readonly property int loadedDashboardRegionCount: ownership.liveSurface === null ? 0 :
                                                                                        ownership.liveSurface.loadedDashboardRegionCount
+    readonly property bool interactiveExitRunning: ownership.liveSurface !== null
+                                                   && ownership.liveSurface.interactiveExitRunning
+    readonly property int interactiveExitDuration: ownership.liveSurface === null ? 0 :
+                                                                                    ownership.liveSurface.interactiveExitDuration
+    readonly property real interactiveExitOffset: ownership.liveSurface === null ? 0 :
+                                                                                   ownership.liveSurface.interactiveExitOffset
+    readonly property real interactiveExitLoaderX: ownership.liveSurface === null ? 0 :
+                                                                                    ownership.liveSurface.interactiveExitLoaderX
+    readonly property real interactiveExitMappedX: ownership.liveSurface === null ? 0 :
+                                                                                    ownership.liveSurface.interactiveExitMappedX
+    readonly property bool interactiveExitLoaderEnabled: ownership.liveSurface !== null
+                                                         && ownership.liveSurface.interactiveExitLoaderEnabled
+    readonly property var interactiveExitItem: ownership.liveSurface === null ? null :
+                                                                                ownership.liveSurface.interactiveExitItem
+    readonly property bool launcherLoaded: ownership.liveSurface !== null
+                                           && ownership.liveSurface.launcherLoaded
     readonly property bool launcherFocused: ownership.liveSurface !== null
                                             && ownership.liveSurface.launcherFocused
     readonly property int launcherResultCount: ownership.liveSurface === null ? 0 :
                                                                                 ownership.liveSurface.launcherResultCount
+    readonly property bool launcherResultScrollVisible: ownership.liveSurface !== null
+                                                        && ownership.liveSurface.launcherResultScrollVisible
     readonly property string launcherSelectedId: ownership.liveSurface === null ? "" :
                                                                                   ownership.liveSurface.launcherSelectedId
+    readonly property bool sessionLoaded: ownership.liveSurface !== null
+                                          && ownership.liveSurface.sessionLoaded
     readonly property bool sessionFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.sessionFocused
+    readonly property bool trayLoaded: ownership.liveSurface !== null
+                                       && ownership.liveSurface.trayLoaded
+    readonly property bool trayFocused: ownership.liveSurface !== null
+                                        && ownership.liveSurface.trayFocused
+    readonly property bool audioLoaded: ownership.liveSurface !== null
+                                        && ownership.liveSurface.audioLoaded
+    readonly property bool audioFocused: ownership.liveSurface !== null
+                                         && ownership.liveSurface.audioFocused
     readonly property bool polkitLoaded: ownership.liveSurface !== null
                                          && ownership.liveSurface.polkitLoaded
     readonly property bool polkitFocused: ownership.liveSurface !== null
@@ -66,6 +110,8 @@ Scope {
                                                                                 ownership.liveSurface.polkitIdentityCount
     readonly property bool polkitResponseFieldVisible: ownership.liveSurface !== null
                                                        && ownership.liveSurface.polkitResponseFieldVisible
+    readonly property bool historyLoaded: ownership.liveSurface !== null
+                                          && ownership.liveSurface.historyLoaded
     readonly property bool historyFocused: ownership.liveSurface !== null
                                            && ownership.liveSurface.historyFocused
     readonly property int historyRowCount: ownership.liveSurface === null ? 0 :
@@ -74,6 +120,8 @@ Scope {
                                                      && ownership.liveSurface.historyEmptyStateVisible
     readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
                                                                                       ownership.liveSurface.geometryAnimationDuration
+    readonly property bool geometryAnimationRunning: ownership.liveSurface !== null
+                                                     && ownership.liveSurface.geometryAnimationRunning
     readonly property bool transientCommitted: ownership.liveSurface !== null
                                                && ownership.liveSurface.transientCommitted
     readonly property bool transientEntryAnimationRunning: ownership.liveSurface !== null
@@ -222,6 +270,8 @@ Scope {
             polkitController: host.polkitController
             notificationService: host.notificationService
             applicationModel: host.applicationModel
+            trayAdapter: host.trayAdapter
+            audioAdapter: host.audioAdapter
             workspaceTransientSource: host.workspaceTransientSource
             brightnessTransientSource: host.brightnessTransientSource
             volumeTransientSource: host.volumeTransientSource

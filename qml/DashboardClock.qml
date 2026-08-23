@@ -1,29 +1,23 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Minute-precision clock/date presentation. CompactClock remains the single
-// clock source, so Expanded adds no timer or duplicate time state.
+// CompactClock remains the sole minute/date source, so Expanded adds no timer.
 FocusScope {
     id: root
 
     required property var clock
 
-    implicitWidth: 300
-    implicitHeight: 132
-
-    IslandPanel {
-        anchors.fill: parent
-        radius: Theme.radius.lg
-        color: Theme.color.controlFill
-    }
+    implicitWidth: clockColumn.implicitWidth
+    implicitHeight: clockColumn.implicitHeight
 
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.lg
+        id: clockColumn
+
         spacing: Theme.spacing.xs
 
         IslandText {
-            Layout.fillWidth: true
+            objectName: "dashboardTime"
+            Layout.preferredWidth: Theme.spacing.xxl * 6
             text: root.clock === null ? "" : root.clock.text
             textFormat: Text.PlainText
             font.pixelSize: Theme.type.display
@@ -32,6 +26,7 @@ FocusScope {
         }
 
         IslandText {
+            objectName: "dashboardDate"
             Layout.fillWidth: true
             text: root.clock === null ? "" : root.clock.dateText
             textFormat: Text.PlainText
@@ -39,15 +34,6 @@ FocusScope {
             font.weight: Theme.type.weightMedium
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            text: root.clock === null ? "" : root.clock.weekText
-            textFormat: Text.PlainText
-            tone: "muted"
-            size: "caption"
-            horizontalAlignment: Text.AlignHCenter
         }
     }
 }

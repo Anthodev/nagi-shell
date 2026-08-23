@@ -200,6 +200,55 @@ ShellRoot {
                 "stale completion is rejected");
         require(coordinator.cancelInteractive(launcherEpoch), "Escape cancels current launcher");
         require(coordinator.ownerName === "expanded", "Escape restores the predecessor");
+        require(!coordinator.openTray(null),
+                "tray requires the current dashboard surface entry point");
+        require(coordinator.openTray(token), "visible dashboard tray intent opens");
+        const trayEpoch = coordinator.ownerEpoch;
+        require(coordinator.ownerName === "tray", "tray owns the island as an Interactive task");
+        require(coordinator.acknowledgeVisible(generation, trayEpoch, coordinator.revision),
+                "matching tray presentation is acknowledged");
+        const trayFocus = coordinator.focusRequestSerial;
+        require(trayFocus > 0 && coordinator.focusTarget === coordinator.focusTray,
+                "visible tray requests item focus");
+        require(coordinator.openTray(token) && coordinator.ownerEpoch === trayEpoch
+                && coordinator.focusRequestSerial === trayFocus + 1,
+                "repeated tray intent preserves its epoch and renews focus");
+        require(!coordinator.openHistory(token),
+                "equal-rank history cannot replace active tray");
+        require(coordinator.cancelInteractive(trayEpoch),
+                "tray Back accepts its current owner epoch");
+        require(coordinator.ownerName === "expanded",
+                "tray Back atomically restores its dashboard predecessor");
+
+        require(!coordinator.openAudio(null),
+                "audio requires the current dashboard surface entry point");
+        require(coordinator.openAudio(token), "visible dashboard audio intent opens");
+        const audioEpoch = coordinator.ownerEpoch;
+        require(coordinator.ownerName === "audio"
+                && coordinator.focusTarget === coordinator.focusAudio,
+                "audio mirrors tray ownership and focus rank");
+        require(coordinator.acknowledgeVisible(generation, audioEpoch, coordinator.revision),
+                "matching audio presentation is acknowledged");
+        const audioFocus = coordinator.focusRequestSerial;
+        require(coordinator.openAudio(token) && coordinator.ownerEpoch === audioEpoch
+                && coordinator.focusRequestSerial === audioFocus + 1,
+                "repeated audio intent preserves its epoch and renews focus");
+        require(!coordinator.openTray(token),
+                "equal-rank tray cannot replace active audio");
+        const audioRevisionBeforeModal = coordinator.revision;
+        require(coordinator.syncPolkitModal(true, true, 2),
+                "Modal can suspend the active audio task");
+        require(!coordinator.openAudio(token), "audio is rejected during Modal");
+        require(coordinator.syncPolkitModal(false, false, 0),
+                "Modal cleanup restores the audio task");
+        require(coordinator.ownerName === "audio" && coordinator.ownerEpoch === audioEpoch
+                && coordinator.revision > audioRevisionBeforeModal,
+                "audio restoration preserves epoch and advances revision");
+        require(coordinator.cancelInteractive(audioEpoch),
+                "audio Back accepts its restored owner epoch");
+        require(coordinator.ownerName === "expanded",
+                "audio Back atomically restores its dashboard predecessor");
+
 
         require(!coordinator.openHistory(null),
                 "history requires the current dashboard surface entry point");
@@ -261,6 +310,8 @@ ShellRoot {
         const modalFocus = coordinator.focusRequestSerial;
         require(!coordinator.openLauncher(null), "launcher is rejected during Modal");
         require(!coordinator.openHistory(token), "history is rejected during Modal");
+        require(!coordinator.openTray(token), "tray is rejected during Modal");
+        require(!coordinator.openAudio(token), "audio is rejected during Modal");
         require(!coordinator.openSession(token), "session is rejected during Modal");
         require(coordinator.ownerName === "polkitModal" && coordinator.focusRequestSerial
                 === modalFocus, "lower requests cannot steal Modal ownership or focus");

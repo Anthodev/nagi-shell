@@ -1,8 +1,11 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
-// Confirmed PipeWire default controls. Requests never replace the values shown
-// by this view; pending state remains explicit until AudioAdapter confirms it.
+// Two aligned channel blocks keep confirmed audio state authoritative. Device
+// buttons enter the dedicated selection subview.
 FocusScope {
     id: root
 
@@ -11,17 +14,23 @@ FocusScope {
     readonly property bool outputWritable: audio !== null && audio.available
                                            && audio.outputAvailable
     readonly property bool inputWritable: audio !== null && audio.available && audio.inputAvailable
-    readonly property string outputStatus: audio === null ? "Audio unavailable" :
-                                                            audio.outputAvailable
-                                                            ? "Current output · "
-                                                              + audio.outputLabel :
-                                                              audio.outputDisplayLabel !== ""
-                                                              ? "Refreshing · last confirmed "
-                                                                + audio.outputDisplayLabel :
-                                                                "Audio output unavailable"
+    readonly property string outputDeviceName: audio === null ? "Unavailable" :
+                                                                audio.outputAvailable
+                                                                ? audio.outputLabel :
+                                                                  audio.outputDisplayLabel !== ""
+                                                                  ? audio.outputDisplayLabel :
+                                                                    "Unavailable"
+    readonly property string inputDeviceName: audio === null ? "Unavailable" : audio.inputAvailable
+                                                               ? audio.inputLabel :
+                                                                 audio.inputDisplayLabel !== ""
+                                                                 ? audio.inputDisplayLabel :
+                                                                   "Unavailable"
 
-    implicitWidth: 340
-    implicitHeight: 92
+    implicitWidth: audioRow.implicitWidth
+    implicitHeight: audioRow.implicitHeight
+    Accessible.role: Accessible.Grouping
+    Accessible.name: "Audio"
+    signal deviceSelectionRequested
 
     function requestVolume(role, value, finalValue) {
         if (audio === null) {
@@ -46,59 +55,182 @@ FocusScope {
                                                  false;
     }
 
-    IslandPanel {
-        anchors.fill: parent
-        radius: Theme.radius.lg
-        color: Theme.color.controlFill
+    RowLayout {
+        id: audioRow
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        spacing: Theme.spacing.lg
+
+        ChannelBlock {
+            objectName: "dashboardOutputSection"
+            Layout.fillWidth: true
+            Layout.preferredWidth: Theme.spacing.xxl * 9
+            role: "output"
+            deviceName: root.outputDeviceName
+            writable: root.outputWritable
+            volume: root.audio === null ? null : root.audio.outputVolume
+            muted: root.audio !== null && root.audio.outputMuted
+            overamplified: root.audio !== null && root.audio.outputOveramplified
+            pendingVolume: root.audio !== null && root.audio.pendingOutputVolume
+            pendingMute: root.audio !== null && root.audio.pendingOutputMute
+            pendingSelection: root.audio !== null && root.audio.pendingOutputSelection
+        }
+
+        ChannelBlock {
+            objectName: "dashboardInputSection"
+            Layout.fillWidth: true
+            Layout.preferredWidth: Theme.spacing.xxl * 9
+            role: "input"
+            deviceName: root.inputDeviceName
+            writable: root.inputWritable
+            volume: root.audio === null ? null : root.audio.inputVolume
+            muted: root.audio !== null && root.audio.inputMuted
+            overamplified: root.audio !== null && root.audio.inputOveramplified
+            pendingVolume: root.audio !== null && root.audio.pendingInputVolume
+            pendingMute: root.audio !== null && root.audio.pendingInputMute
+            pendingSelection: root.audio !== null && root.audio.pendingInputSelection
+        }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.md
-        spacing: Theme.spacing.xs
+    component ChannelBlock: ColumnLayout {
+        id: channel
 
-        IslandText {
+        required property string role
+        required property string deviceName
+        required property bool writable
+        required property var volume
+        required property bool muted
+        required property bool overamplified
+        required property bool pendingVolume
+        required property bool pendingMute
+        required property bool pendingSelection
+
+        readonly property string channelLabel: role === "output" ? "Output" : "Input"
+        readonly property string muteMeaning: role === "input" ? (muted ? "microphoneMuted" :
+                                                                          "microphone") : (muted
+                                                                                           ? "volumeMuted" :
+                                                                                             "volumeHigh")
+        readonly property string muteState: !writable ? "disabled" : pendingMute ? "pending" : muted
+                                                                                   ? "off" : "normal"
+
+        spacing: Theme.spacing.xs
+        Accessible.role: Accessible.Grouping
+        Accessible.name: channelLabel + " audio"
+
+        RowLayout {
             Layout.fillWidth: true
-            text: root.outputStatus
+            objectName: channel.role === "output" ? "dashboardOutputChannelRow" :
+                                                    "dashboardInputChannelRow"
+            spacing: Theme.spacing.sm
+
+            DeviceButton {
+                objectName: channel.role === "output" ? "dashboardOutputDeviceName" :
+                                                        "dashboardInputDeviceName"
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                label: channel.channelLabel + " · " + channel.deviceName
+                pending: channel.pendingSelection
+                onClicked: root.deviceSelectionRequested()
+            }
+
+            IslandText {
+                objectName: channel.role === "output" ? "dashboardOutputPercentage" :
+                                                        "dashboardInputPercentage"
+                Layout.alignment: Qt.AlignVCenter
+                text: volumeControl.percentageText
+                textFormat: Text.PlainText
+                tone: channel.pendingVolume || channel.pendingMute ? "secondary" : "muted"
+                size: "caption"
+                Accessible.name: channel.channelLabel + " confirmed volume " + text
+            }
+
+            AbstractButton {
+                id: muteButton
+
+                objectName: channel.role === "output" ? "dashboardOutputMute" : "dashboardInputMute"
+                Layout.alignment: Qt.AlignVCenter
+                implicitWidth: Theme.size.controlHeightMd
+                implicitHeight: Theme.size.controlHeightMd
+                focusPolicy: Qt.StrongFocus
+                hoverEnabled: true
+                enabled: channel.writable && !channel.pendingMute
+                Accessible.role: Accessible.Button
+                Accessible.name: (channel.muted ? "Unmute " : "Mute ")
+                                 + channel.channelLabel.toLowerCase()
+                onClicked: root.toggleMute(channel.role)
+
+                background: Rectangle {
+                    radius: Theme.radius.md
+                    color: muteButton.pressed ? Theme.color.surfaceActive : muteButton.hovered
+                                                ? Theme.color.surfaceHover : "transparent"
+                }
+                contentItem: Item {
+                    IslandIcon {
+                        objectName: channel.role === "output" ? "dashboardOutputMuteIcon" :
+                                                                "dashboardInputMuteIcon"
+                        anchors.centerIn: parent
+                        meaning: channel.muteMeaning
+                        semanticState: channel.muteState
+                    }
+                }
+                IslandFocusRing {
+                    visible: muteButton.visualFocus
+                }
+                ToolTip.delay: Theme.motion.durationSlow
+                ToolTip.visible: hovered || visualFocus
+                ToolTip.text: Accessible.name
+            }
+        }
+
+        DashboardVolumeControl {
+            id: volumeControl
+
+            objectName: channel.role === "output" ? "dashboardOutputVolume" : "dashboardInputVolume"
+            Layout.fillWidth: true
+            label: channel.channelLabel
+            available: channel.writable
+            volume: channel.volume
+            muted: channel.muted
+            overamplified: channel.overamplified
+            pendingVolume: channel.pendingVolume
+            onVolumeRequested: (value, finalValue) => root.requestVolume(channel.role, value,
+                                                                         finalValue)
+        }
+    }
+
+    component DeviceButton: AbstractButton {
+        id: control
+
+        required property string label
+        required property bool pending
+
+        implicitHeight: Theme.size.controlHeightMd
+        focusPolicy: Qt.StrongFocus
+        hoverEnabled: true
+        enabled: root.audio !== null && root.audio.available
+        Accessible.role: Accessible.Button
+        Accessible.name: label
+        Accessible.description: "Open audio device selection"
+
+        background: Rectangle {
+            radius: Theme.radius.md
+            color: control.pressed ? Theme.color.surfaceActive : control.hovered ? Theme.color.surfaceHover :
+                                                                                   "transparent"
+        }
+
+        contentItem: IslandText {
+            horizontalAlignment: Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+            text: control.label
             textFormat: Text.PlainText
-            tone: root.audio !== null && root.audio.pendingOutputSelection ? "secondary" : "muted"
+            tone: control.pending ? "secondary" : "muted"
             size: "caption"
             elide: Text.ElideRight
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.md
-
-            DashboardVolumeControl {
-                objectName: "dashboardOutputVolume"
-                Layout.fillWidth: true
-                label: "Output"
-                available: root.outputWritable
-                volume: root.audio === null ? null : root.audio.outputVolume
-                muted: root.audio !== null && root.audio.outputMuted
-                overamplified: root.audio !== null && root.audio.outputOveramplified
-                pendingVolume: root.audio !== null && root.audio.pendingOutputVolume
-                pendingMute: root.audio !== null && root.audio.pendingOutputMute
-                onVolumeRequested: (value, finalValue) => root.requestVolume("output", value,
-                                                                             finalValue)
-                onMuteRequested: muted => root.toggleMute("output")
-            }
-
-            DashboardVolumeControl {
-                objectName: "dashboardInputVolume"
-                Layout.fillWidth: true
-                label: "Input"
-                available: root.inputWritable
-                volume: root.audio === null ? null : root.audio.inputVolume
-                muted: root.audio !== null && root.audio.inputMuted
-                overamplified: root.audio !== null && root.audio.inputOveramplified
-                pendingVolume: root.audio !== null && root.audio.pendingInputVolume
-                pendingMute: root.audio !== null && root.audio.pendingInputMute
-                onVolumeRequested: (value, finalValue) => root.requestVolume("input", value,
-                                                                             finalValue)
-                onMuteRequested: muted => root.toggleMute("input")
-            }
+        IslandFocusRing {
+            visible: control.visualFocus
         }
     }
 }

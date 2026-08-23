@@ -7,6 +7,7 @@ ShellRoot {
     id: test
 
     property var calls: []
+    property real cancelledEpoch: 0
 
     function require(condition, message) {
         if (!condition) {
@@ -40,6 +41,74 @@ ShellRoot {
             }
         }
         return null;
+    }
+    function findObject(item, objectName) {
+        if (item === null || item === undefined) {
+            return null;
+        }
+        if (item.objectName === objectName) {
+            return item;
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; ++index) {
+            const found = findObject(children[index], objectName);
+            if (found !== null) {
+                return found;
+            }
+        }
+        return null;
+    }
+    function trayCell(index) {
+        const list = findObject(trayView, "trayItemList");
+        require(list !== null, "tray GridView exists");
+        list.forceLayout();
+        return list.itemAtIndex(index);
+    }
+
+    function trayButton(index) {
+        return findObject(trayCell(index), "trayItemButton");
+    }
+    function requireTrayLayout(count, columns, rows, scrollVisible) {
+        require(trayView.itemCount === count && trayView.gridColumns === columns
+                && trayView.gridRows === rows, "tray grid geometry was wrong for " + count
+                + " items");
+        const list = findObject(trayView, "trayItemList");
+        require(list !== null, "tray GridView exists for " + count + " items");
+        list.forceLayout();
+        const visibleRows = Math.min(rows, trayView.maximumVisibleRows);
+        require(trayView.gridViewportWidth === columns * trayView.controlExtent + Math.max(0,
+                                                                                           columns - 1)
+                * Theme.spacing.sm && trayView.gridViewportHeight === visibleRows
+                * trayView.controlExtent + Math.max(0, visibleRows - 1) * Theme.spacing.sm,
+                "tray viewport extents were not content-sized for " + count + " items");
+        require(trayView.gridScrollVisible === scrollVisible,
+                "tray scrollbar threshold was wrong for " + count + " items");
+        if (count > 0) {
+            require(Math.abs(list.contentHeight - rows * trayView.gridCellExtent) < 0.5,
+                    "tray content height includes every row for " + count + " items");
+            let checkedDelegates = 0;
+            for (let index = 0; index < count; ++index) {
+                const cell = list.itemAtIndex(index);
+                if (cell === null) {
+                    continue;
+                }
+                const button = findObject(cell, "trayItemButton");
+                const expectedX = index % columns * trayView.gridCellExtent;
+                const expectedY = Math.floor(index / columns) * trayView.gridCellExtent;
+                require(button !== null && Math.abs(list.x + cell.x + button.x - expectedX) < 0.5
+                        && Math.abs(list.y + cell.y + button.y - expectedY) < 0.5,
+                        "tray delegate position was wrong at index " + index + " for " + count
+                        + " items");
+                checkedDelegates += 1;
+            }
+            require(checkedDelegates >= Math.min(count, trayView.maximumVisibleItems),
+                    "tray instantiates and positions every visible delegate for " + count
+                    + " items");
+        }
+        if (count === 0) {
+            require(trayView.contentWidth === Theme.spacing.xxl * 4,
+                    "empty tray width did not fit its compact state");
+        }
     }
 
     Component {
@@ -139,6 +208,54 @@ ShellRoot {
                 === "image://icon/alpha-updated" && updated.status === "needsAttention"
                 && updated.onlyMenu,
                 "live tooltip, icon, status, and behavior changes publish together");
+        const beeper = makeItem({
+                                    "title": "Beeper",
+                                    "icon": "image://icon/beeper",
+                                    "status": Status.Active
+                                });
+        setItems([beeper, alpha, beta]);
+        require(Object.isFrozen(quickControls.statusItems) && quickControls.statusItems.map(item
+                                                                                            => item.label).join(
+                    ",") === "Attention,Beeper",
+                "Dashboard projection prioritizes attention before active adapter snapshots and excludes passive snapshots");
+        const projected = quickControls.projectTrayItems([
+                                                             {
+                                                                 "token": 20,
+                                                                 "status": "active"
+                                                             },
+                                                             {
+                                                                 "token": 10,
+                                                                 "status": "needsAttention"
+                                                             },
+                                                             {
+                                                                 "token": 30,
+                                                                 "status": "passive"
+                                                             },
+                                                             {
+                                                                 "token": 11,
+                                                                 "status": "needsAttention"
+                                                             },
+                                                             {
+                                                                 "token": 10,
+                                                                 "status": "active"
+                                                             },
+                                                             {
+                                                                 "token": 21,
+                                                                 "status": "active"
+                                                             },
+                                                             {
+                                                                 "token": 22,
+                                                                 "status": "active"
+                                                             }
+                                                         ]);
+        require(Object.isFrozen(projected) && projected.map(item => item.token).join(",") === "10,11,20,21",
+                "Dashboard projection is stable, deduplicated by lifecycle token, and capped at four");
+        calls = [];
+        require(quickControls.activateStatusItem(itemByLabel("Beeper").token) === "dispatched"
+                && calls.length === 1 && calls[0].name === "Beeper" && calls[0].action
+                === "activate", "Dashboard projection forwards only the selected activation token");
+        setItems([alpha, beta]);
+        beeper.destroy();
 
         setItems([beta]);
         require(tray.itemCount === 1 && tray.trackedItemCount === 1 && itemByLabel("Attention")
@@ -147,6 +264,71 @@ ShellRoot {
         require(itemByLabel("Attention").token !== alphaToken,
                 "a returning backend object receives a fresh lifecycle token");
 
+        Qt.callLater(function () {
+            test.runViewStage(alpha, beta);
+        });
+    }
+
+    function runViewStage(alpha, beta) {
+        console.warn("tray: shared subview frame stage");
+        const title = findObject(trayView, "subviewTitle");
+        const back = findObject(trayView, "subviewBackButton");
+        require(trayView.itemCount === 2 && title !== null && title.text === "System tray",
+                "dedicated tray content mounts inside the shared titled frame");
+        require(trayView.gridColumns === 2 && trayView.gridRows === 1,
+                "tray items render as a compact bounded icon grid");
+
+        setItems([]);
+        requireTrayLayout(0, 1, 1, false);
+        setItems([alpha]);
+        requireTrayLayout(1, 1, 1, false);
+        const layoutItems = [alpha, beta];
+        for (let index = 2; index < trayView.maximumVisibleItems + 1; ++index) {
+            layoutItems.push(makeItem({
+                                          "title": "Layout " + index,
+                                          "icon": "image://icon/layout-" + index,
+                                          "status": Status.Active
+                                      }));
+        }
+        setItems(layoutItems.slice(0, 2));
+        requireTrayLayout(2, 2, 1, false);
+        setItems(layoutItems.slice(0, 5));
+        requireTrayLayout(5, 5, 1, false);
+        setItems(layoutItems.slice(0, 6));
+        requireTrayLayout(6, 5, 2, false);
+        setItems(layoutItems.slice(0, 15));
+        requireTrayLayout(15, 5, 3, false);
+        setItems(layoutItems);
+        requireTrayLayout(16, 5, 4, true);
+        setItems([alpha, beta]);
+        const applicationIcon = findObject(trayCell(0), "trayApplicationIcon");
+        require(applicationIcon !== null && applicationIcon.meaning === "trayApplication"
+                && applicationIcon.applicationSource === itemByLabel("Attention").iconSource
+                && applicationIcon.applicationName === "Attention" && applicationIcon.resolvedKind
+                === "application" && !applicationIcon.tinted,
+                "tray application identity routes through the untinted semantic icon path");
+        const attentionDot = findObject(trayCell(0), "trayAttentionDot");
+        require(attentionDot !== null && attentionDot.visible,
+                "attention tray items retain their independent status dot");
+        for (let index = 2; index < layoutItems.length; ++index) {
+            layoutItems[index].destroy();
+        }
+
+        trayView.focusInitialControl();
+        require(trayWindow.activeFocusItem !== null && trayWindow.activeFocusItem.objectName
+                === "trayItemButton", "tray frame enters the first normalized item");
+        const focusedTrayButton = trayButton(0);
+        const trayFocusRing = findObject(focusedTrayButton, "islandFocusRing");
+        require(trayFocusRing !== null && trayFocusRing.visible
+                && focusedTrayButton.background.radius === Theme.radius.md
+                && trayFocusRing.controlRadius === focusedTrayButton.background.radius
+                && trayFocusRing.radius === focusedTrayButton.background.radius
+                + Theme.size.focusRingGap,
+                "tray item keyboard focus ring follows its medium owner curve");
+        require(back !== null && back.Accessible.name === "Back",
+                "tray frame exposes the shared iconographic Back action");
+        back.clicked();
+        require(cancelledEpoch === 42, "tray Back emits the current owner epoch");
         runActionStage(alpha, beta);
     }
 
@@ -192,6 +374,11 @@ ShellRoot {
         const snapshot = itemByLabel("Failing");
         require(snapshot !== null && snapshot.iconSource === "" && tray.itemCount === 3,
                 "one malformed icon falls back without hiding healthy items");
+        const fallbackIcon = findObject(trayCell(1), "trayApplicationIcon");
+        const fallbackLetter = findObject(trayCell(1), "trayApplicationFallbackLetter");
+        require(fallbackIcon !== null && fallbackIcon.showingFallback && !fallbackIcon.visible
+                && fallbackLetter !== null && fallbackLetter.visible && fallbackLetter.text === "F",
+                "invalid tray artwork uses the centralized fallback lifecycle and app letter");
         require(tray.activate(snapshot.token) === "rejected" && tray.secondaryActivate(
                     snapshot.token) === "rejected" && tray.openMenu(snapshot.token, test, 0, 0)
                 === "rejected", "one throwing item cannot escape or block the adapter");
@@ -206,6 +393,53 @@ ShellRoot {
         failing.destroy();
         console.warn("tray adapter tests passed");
         Qt.exit(0);
+    }
+
+    QtObject {
+        id: connectivity
+
+        property bool wifiAvailable: true
+        property bool wifiEnabled: true
+        property bool wifiPending: false
+        property string wifiFailure: "none"
+        property bool bluetoothAvailable: true
+        property bool bluetoothEnabled: true
+        property bool bluetoothPending: false
+        property string bluetoothFailure: "none"
+    }
+
+    QtObject {
+        id: applications
+
+        property var pinnedApplications: []
+        property bool launchPending: false
+    }
+
+    Window {
+        id: trayWindow
+
+        visible: true
+        width: Theme.spacing.xxl * 10
+        height: Theme.spacing.xxl * 5
+
+        TrayView {
+            id: trayView
+
+            anchors.fill: parent
+            active: true
+            adapter: tray
+            ownerEpoch: 42
+            reducedMotion: true
+            onCancelled: epoch => test.cancelledEpoch = epoch
+        }
+        DashboardQuickControls {
+            id: quickControls
+
+            visible: false
+            connectivity: connectivity
+            applicationModel: applications
+            tray: tray
+        }
     }
 
     Component.onCompleted: Qt.callLater(test.runLifecycleStage)

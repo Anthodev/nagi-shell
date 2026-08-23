@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtTest
 import "qml"
 
 ShellRoot {
@@ -12,12 +13,39 @@ ShellRoot {
     property int focusSerialBeforeRestore: 0
     property real sessionEpoch: 0
     property real historyEpoch: 0
+    property real trayEpoch: 0
+    property real audioEpoch: 0
+    property bool audioVerified: false
+    property bool trayVerified: false
     property var initialSurfaceToken: null
     property int initialSurfaceGeneration: 0
     property int compactTransientWidth: 0
     property int compactTransientHeight: 0
     property real modalRevisionBeforeReplacement: 0
+    property real launcherExitAnchorX: 0
+    property real launcherExitMappedX: 0
+    property bool launcherExitTransformObserved: false
     readonly property int maximumRetryAttempts: 500
+    readonly property int testRegionImplicitWidth: 120
+    readonly property int testRegionImplicitHeight: 72
+    readonly property int maximumGeometryDurationMs: 5000
+    property string geometryDirection: ""
+    property int geometrySampleCount: 0
+    property real geometryStartTimeMs: 0
+    property int geometryStableSamples: 0
+    property int widthStartSample: -1
+    property int heightStartSample: -1
+    property real geometryScreenWidth: 0
+    property real geometryStartTopMargin: 0
+    property real geometryStartWidth: 0
+    property real geometryStartHeight: 0
+    property real geometryLastWidth: 0
+    property real geometryLastHeight: 0
+    property real geometryTargetWidth: 0
+    property real geometryTargetHeight: 0
+    property real maximumCenteringError: 0
+    property real maximumTopMarginDelta: 0
+    property bool geometryMonotonic: true
     readonly property string polkitVisualState: Quickshell.env("NAGI_POLKIT_VISUAL_STATE") ?? ""
 
     function advance() {
@@ -42,6 +70,117 @@ ShellRoot {
             Qt.exit(1);
             throw new Error(message);
         }
+    }
+    function findObject(root, name) {
+        if (root === null || root === undefined) {
+            return null;
+        }
+        if (root.objectName === name) {
+            return root;
+        }
+        const children = root.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            const match = findObject(children[index], name);
+            if (match !== null) {
+                return match;
+            }
+        }
+        return null;
+    }
+    function surfaceMatches(reference) {
+        return Math.abs(host.surfacePreferredWidth - reference.implicitWidth) <= 1
+                && Math.abs(host.surfacePreferredHeight - reference.implicitHeight) <= 1
+                && Math.abs(host.surfaceWidth - reference.implicitWidth) <= 1
+                && Math.abs(host.surfaceHeight - reference.implicitHeight) <= 1;
+    }
+
+    function requireSurfaceMatches(reference, label) {
+        console.warn(label + " geometry: " + host.surfaceWidth + "x" + host.surfaceHeight
+                     + " (natural " + reference.implicitWidth + "x" + reference.implicitHeight
+                     + ")");
+        require(surfaceMatches(reference),
+                label + " PanelWindow geometry must equal the view's natural implicit size");
+    }
+
+    function startGeometrySampling(direction, transition) {
+        geometryDirection = direction;
+        geometrySampleCount = 0;
+        geometryStartTimeMs = Date.now();
+        geometryStableSamples = 0;
+        widthStartSample = -1;
+        heightStartSample = -1;
+        geometryScreenWidth = host.surfaceScreenWidth;
+        geometryStartTopMargin = host.surfaceTopMargin;
+        geometryStartWidth = host.surfaceWidth;
+        geometryStartHeight = host.surfaceHeight;
+        geometryLastWidth = geometryStartWidth;
+        geometryLastHeight = geometryStartHeight;
+        maximumCenteringError = 0;
+        maximumTopMarginDelta = 0;
+        geometryMonotonic = true;
+        require(transition(), direction + " geometry transition was rejected");
+        geometryTargetWidth = host.surfacePreferredWidth;
+        geometryTargetHeight = host.surfacePreferredHeight;
+    }
+
+    function sampleGeometry() {
+        geometrySampleCount += 1;
+        // Headless compositors can render frames faster than wall-clock animation time.
+        require(Date.now() - geometryStartTimeMs <= maximumGeometryDurationMs,
+                geometryDirection + " geometry morph timed out");
+
+        const width = host.surfaceWidth;
+        const height = host.surfaceHeight;
+        const expectedLeftMargin = (geometryScreenWidth - width) / 2;
+        maximumCenteringError = Math.max(maximumCenteringError,
+                                         Math.abs(host.surfaceLeftMargin
+                                                  - expectedLeftMargin));
+        maximumTopMarginDelta = Math.max(maximumTopMarginDelta,
+                                         Math.abs(host.surfaceTopMargin
+                                                  - geometryStartTopMargin));
+
+        const expanding = geometryDirection === "expanding";
+        geometryMonotonic = geometryMonotonic
+                && (expanding ? width >= geometryLastWidth && height >= geometryLastHeight
+                              : width <= geometryLastWidth && height <= geometryLastHeight);
+        if (widthStartSample < 0 && width !== geometryStartWidth) {
+            widthStartSample = geometrySampleCount;
+        }
+        if (heightStartSample < 0 && height !== geometryStartHeight) {
+            heightStartSample = geometrySampleCount;
+        }
+        geometryLastWidth = width;
+        geometryLastHeight = height;
+
+        const atTarget = Math.abs(width - geometryTargetWidth) <= 1
+                && Math.abs(height - geometryTargetHeight) <= 1;
+        geometryStableSamples = atTarget ? geometryStableSamples + 1 : 0;
+        if (geometryStableSamples < 3) {
+            return;
+        }
+
+        console.warn(geometryDirection + " geometry: " + geometryStartWidth + "x"
+                     + geometryStartHeight + " -> " + width + "x" + height
+                     + ", max centering error " + maximumCenteringError
+                     + "px, max top-margin delta " + maximumTopMarginDelta + "px, starts "
+                     + widthStartSample + "/" + heightStartSample);
+        require(maximumCenteringError <= 1,
+                geometryDirection + " must request horizontal centering within one pixel");
+        require(maximumTopMarginDelta <= 1,
+                geometryDirection + " must preserve the top margin within one pixel");
+        require(geometryMonotonic,
+                geometryDirection + " width and height must remain monotonic");
+        require(widthStartSample >= 0 && heightStartSample >= 0
+                && Math.abs(widthStartSample - heightStartSample) <= 1,
+                geometryDirection + " width and height must start together");
+        require(Math.abs(width - geometryTargetWidth) <= 1
+                && Math.abs(height - geometryTargetHeight) <= 1,
+                geometryDirection + " must reach its preferred end geometry");
+
+        const completedDirection = geometryDirection;
+        geometryDirection = "";
+        step = completedDirection === "expanding" ? 1 : 5;
+        advance();
     }
 
     function configurePolkitVisualState() {
@@ -90,16 +229,24 @@ ShellRoot {
             return;
         }
         if (step === 0) {
-            if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible,
-                            "actual surface did not acknowledge Idle within five seconds")) {
+            if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible
+                            && host.loadedDashboardRegionCount === 6,
+                            "actual surface and pre-warmed dashboard did not settle within five seconds")) {
                 return;
             }
             require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
             require(!host.surfaceFocusable, "Idle never takes keyboard focus");
+            require(host.backgroundRadius === Theme.radius.outer
+                    && defaultPanelReference.radius === Theme.radius.md,
+                    "surface keeps the outer radius override while standard panels default to md");
             initialSurfaceToken = host.surfaceToken;
             initialSurfaceGeneration = host.surfaceGeneration;
-            require(coordinator.setHover(host.surfaceGeneration, true),
-                    "pointer hover intent expands locally");
+            require(mountedRegionCount === 6,
+                    "all dashboard regions mount before expansion starts");
+            startGeometrySampling("expanding", function () {
+                return coordinator.setHover(host.surfaceGeneration, true);
+            });
+            return;
         } else if (step === 1) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.loadedDashboardRegionCount === 6,
@@ -110,9 +257,21 @@ ShellRoot {
                     "hover expansion never steals keyboard focus");
             require(host.surfaceToken === initialSurfaceToken && host.surfaceGeneration
                     === initialSurfaceGeneration, "expansion preserves the one live surface");
-            require(host.surfaceWidth <= Theme.size.islandExpandedWidth && host.surfaceHeight
-                    <= Theme.size.islandExpandedHeight,
-                    "expanded geometry stays within its logical bounds");
+            const expectedWidth = Theme.spacing.xl * 2 + 120 + Theme.spacing.lg + 120
+                                  + Theme.spacing.lg + 120;
+            require(host.backgroundCoversSurface,
+                    "expanded background geometry equals the surface geometry");
+            const expectedHeight = Theme.spacing.xl * 2
+                                   + Math.max(testRegionImplicitHeight, testRegionImplicitHeight)
+                                   + testRegionImplicitHeight * 3 + Theme.spacing.lg * 3;
+            require(host.surfacePreferredWidth === expectedWidth
+                    && host.surfacePreferredHeight === expectedHeight && host.surfaceWidth
+                    <= expectedWidth && host.surfaceHeight <= expectedHeight,
+                    "expanded geometry derives from mounted row content");
+            require(host.geometryAnimationDuration === Theme.motion.durationExpansion
+                    && host.geometryAnimationDuration >= 280
+                    && host.geometryAnimationDuration <= 320,
+                    "expanded geometry uses the mandated calm 280–320 ms interpolation");
             hoverExpandedEpoch = coordinator.ownerEpoch;
             require(coordinator.setExplicitExpanded(host.surfaceGeneration, true),
                     "deliberate keyboard intent joins the visible dashboard");
@@ -131,31 +290,71 @@ ShellRoot {
             if (!awaitState(coordinator.ownerName === "launcher"
                             && coordinator.presentationVisible && host.surfaceFocusable
                             && host.launcherFocused && host.launcherResultCount === 1
-                            && host.loadedDashboardRegionCount === 0,
+                            && !host.launcherResultScrollVisible && surfaceMatches(launcherReference)
+                            && host.loadedDashboardRegionCount === 6,
                             "launcher state: owner=" + coordinator.ownerName + " visible="
                             + coordinator.presentationVisible + " focusable="
                             + host.surfaceFocusable + " focused=" + host.launcherFocused
-                            + " results=" + host.launcherResultCount + " regions="
-                            + host.loadedDashboardRegionCount + " target=" + coordinator.focusTarget
+                            + " regions=" + host.loadedDashboardRegionCount + " target="
+                            + coordinator.focusTarget
                             + " serial=" + coordinator.focusRequestSerial)) {
                 return;
             }
             require(host.launcherSelectedId === "fixture.desktop"
                     && host.surfaceToken === initialSurfaceToken,
                     "launcher selection did not remain on the original surface");
+            requireSurfaceMatches(launcherReference, "launcher");
+            const expectedLauncherWidth = Theme.spacing.xxl * 15 + Theme.spacing.lg * 2;
+            require(launcherReference.implicitWidth === expectedLauncherWidth
+                    && Math.abs(host.surfacePreferredWidth - expectedLauncherWidth) <= 1
+                    && Math.abs(host.surfaceWidth - expectedLauncherWidth) <= 1,
+                    "launcher surface width is exactly the 480 px lane plus frame padding");
+            require(!host.launcherResultScrollVisible,
+                    "one launcher result must not create a phantom scrollbar");
             focusSerialBeforeRestore = coordinator.focusRequestSerial;
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
+            require(host.interactiveExitRunning && host.geometryAnimationRunning
+                    && host.launcherLoaded && !host.surfaceFocusable,
+                    "reverse exit and outer geometry morph begin together while retaining Launcher");
+            require(!host.interactiveExitLoaderEnabled,
+                    "outgoing Launcher is disabled as soon as ownership returns");
+            launcherExitAnchorX = host.interactiveExitLoaderX;
+            launcherExitMappedX = host.interactiveExitMappedX;
+            require(host.interactiveExitDuration === Theme.motion.durationNormal
+                    && host.interactiveExitDuration === 180
+                    && host.geometryAnimationDuration === Theme.motion.durationExpansion
+                    && host.geometryAnimationDuration === 300,
+                    "internal exit uses 180 ms while outer geometry uses 300 ms");
+            require(Math.abs(host.surfacePreferredWidth - launcherReference.implicitWidth) > 1,
+                    "outer preferred geometry switches immediately instead of staging after exit");
         } else if (step === 4) {
+            if (host.interactiveExitRunning && host.interactiveExitOffset > 0) {
+                require(host.interactiveExitLoaderX === launcherExitAnchorX,
+                        "anchored outgoing Loader geometry remains unchanged during exit");
+                if (host.interactiveExitMappedX > launcherExitMappedX) {
+                    require(host.interactiveExitMappedX - launcherExitMappedX > 0,
+                            "outgoing Loader transform moves in the expected positive direction");
+                    launcherExitTransformObserved = true;
+                }
+            }
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.surfaceFocusable && host.dashboardFocused
-                            && host.loadedDashboardRegionCount === 6,
-                            "dashboard did not restore visibly with focus")) {
+                            && !host.interactiveExitRunning && !host.launcherLoaded
+                            && host.loadedDashboardRegionCount === 6
+                            && host.surfaceWidth === host.surfacePreferredWidth
+                            && host.surfaceHeight === host.surfacePreferredHeight,
+                            "dashboard did not restore at settled geometry with focus")) {
                 return;
             }
+            require(launcherExitTransformObserved && host.interactiveExitOffset === 0,
+                    "exit transform is observed mid-animation and reset on completion");
             require(coordinator.focusRequestSerial === focusSerialBeforeRestore + 1,
                     "restored deliberate dashboard receives one fresh focus request");
-            require(host.cancelDashboard(), "keyboard cancellation closes the dashboard");
+            startGeometrySampling("collapsing", function () {
+                return host.cancelDashboard();
+            });
+            return;
         } else if (step === 5) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible &&
                             !host.surfaceFocusable,
@@ -195,7 +394,8 @@ ShellRoot {
             sessionEpoch = coordinator.ownerEpoch;
         } else if (step === 9) {
             if (!awaitState(coordinator.ownerName === "session" && coordinator.presentationVisible
-                            && host.surfaceFocusable && host.sessionFocused,
+                            && host.surfaceFocusable && host.sessionFocused
+                            && surfaceMatches(sessionReference),
                             "session focus state: owner=" + coordinator.ownerName + " visible="
                             + coordinator.presentationVisible + " focusable="
                             + host.surfaceFocusable + " focused=" + host.sessionFocused
@@ -207,38 +407,130 @@ ShellRoot {
                     "session presentation receives the action-grid focus target");
             require(host.surfaceToken === initialSurfaceToken,
                     "session interaction preserves the one live surface");
+            requireSurfaceMatches(sessionReference, "session");
             require(!coordinator.cancelInteractive(sessionEpoch - 1),
                     "stale session cancellation cannot close the current owner");
             require(coordinator.cancelInteractive(sessionEpoch),
                     "session cancellation accepts the current owner epoch");
+            require(!host.interactiveExitRunning && !host.geometryAnimationRunning
+                    && !host.sessionLoaded && host.interactiveExitDuration === 0
+                    && host.geometryAnimationDuration === 0 && host.interactiveExitOffset === 0,
+                    "reduced motion synchronously finishes exit, resets its transform, and skips geometry work");
         } else if (step === 10) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.dashboardFocused,
                             "session cancellation did not restore the deliberate dashboard")) {
                 return;
             }
+            host.reducedMotion = false;
             require(coordinator.openHistory(host.surfaceToken),
                     "visible dashboard history entry is admitted");
             historyEpoch = coordinator.ownerEpoch;
         } else if (step === 11) {
             if (!awaitState(coordinator.ownerName === "history" && coordinator.presentationVisible
                             && host.surfaceFocusable && host.historyFocused && host.historyRowCount
-                            === 2, "history view did not render and receive focus in the actual surface")) {
+                            === 2 && surfaceMatches(historyReference),
+                            "history geometry/focus did not settle: surface=" + host.surfaceWidth
+                            + "x" + host.surfaceHeight + " preferred=" + host.surfacePreferredWidth
+                            + "x" + host.surfacePreferredHeight + " natural="
+                            + historyReference.implicitWidth + "x" + historyReference.implicitHeight
+                            + " focused=" + host.historyFocused + " rows=" + host.historyRowCount)) {
                 return;
             }
             require(coordinator.focusTarget === coordinator.focusNotificationHistory,
                     "history presentation receives the list focus target");
+            requireSurfaceMatches(historyReference, "history");
             require(!coordinator.cancelInteractive(historyEpoch - 1),
                     "stale history Back cannot close the current owner");
             require(coordinator.cancelInteractive(historyEpoch),
                     "history Back accepts the current owner epoch");
+            require(host.interactiveExitRunning && host.historyLoaded && !host.surfaceFocusable,
+                    "reverse exit retains History and delays dashboard focus");
+            require(!host.interactiveExitLoaderEnabled,
+                    "outgoing History is disabled immediately while retained for its fade");
         } else if (step === 12) {
-            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
-                            && host.dashboardFocused,
-                            "history Back did not restore the deliberate dashboard")) {
-                return;
+            if (!trayVerified && coordinator.ownerName === "tray") {
+                if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
+                                && host.trayLoaded && host.trayFocused
+                                && surfaceMatches(trayReference),
+                                "tray view did not load at its natural size and receive focus")) {
+                    return;
+                }
+                require(coordinator.focusTarget === coordinator.focusTray,
+                        "tray presentation receives the item focus target");
+                requireSurfaceMatches(trayReference, "tray");
+                require(coordinator.cancelInteractive(trayEpoch),
+                        "tray Back accepts the current owner epoch");
+                require(host.interactiveExitRunning && host.trayLoaded && !host.surfaceFocusable,
+                        "generic reverse exit retains Tray without wrapper-specific lifecycle code");
+                require(!host.interactiveExitLoaderEnabled,
+                        "outgoing Tray is disabled immediately while retained for its fade");
+                const trayControl = findObject(host.interactiveExitItem, "trayItemButton");
+                require(trayControl !== null, "retained Tray exposes its representative control");
+                inputDriver.click(trayControl);
+                require(fakeTrayAdapter.activationCount === 0,
+                        "disabled outgoing Tray cannot dispatch pointer activation");
+                trayVerified = true;
+                step = 11;
+            } else if (!audioVerified && coordinator.ownerName === "audio") {
+                if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
+                                && host.audioLoaded && host.audioFocused
+                                && Math.abs(host.surfacePreferredWidth
+                                            - audioWidthReference.implicitWidth) <= 1
+                                && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth)
+                                <= 1,
+                                "audio view did not load, focus, and drive the exact surface width")) {
+                    return;
+                }
+                require(host.backgroundCoversSurface,
+                        "interactive subview background geometry equals the surface geometry");
+                require(Math.abs(host.surfacePreferredWidth - audioWidthReference.implicitWidth)
+                        <= 1 && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth) <= 1,
+                        "audio surface width equals the audio view implicit width");
+                require(coordinator.focusTarget === coordinator.focusAudio,
+                        "audio presentation receives the candidate focus target");
+                require(coordinator.cancelInteractive(audioEpoch),
+                        "audio Back accepts the current owner epoch");
+                require(host.interactiveExitRunning && host.audioLoaded && !host.surfaceFocusable,
+                        "generic reverse exit retains Audio without wrapper-specific lifecycle code");
+                require(!host.interactiveExitLoaderEnabled,
+                        "outgoing Audio is disabled immediately while retained for its fade");
+                const audioControl = findObject(host.interactiveExitItem,
+                                                "audioOutputCandidate");
+                require(audioControl !== null, "retained Audio exposes its representative control");
+                inputDriver.click(audioControl);
+                require(fakeAudioAdapter.selectionCount === 0,
+                        "disabled outgoing Audio cannot dispatch pointer selection");
+                audioVerified = true;
+                step = 11;
+            } else {
+                if (!awaitState(coordinator.ownerName === "expanded"
+                                && coordinator.presentationVisible && host.dashboardFocused,
+                                "interactive Back did not restore the deliberate dashboard")) {
+                    return;
+                }
+                require(!host.interactiveExitRunning,
+                        "restored dashboard has no hidden recurring exit work");
+                if (!trayVerified) {
+                    require(!host.historyLoaded,
+                            "History unloads only after its reverse exit completes");
+                    require(coordinator.openTray(host.surfaceToken),
+                            "visible dashboard tray entry is admitted");
+                    trayEpoch = coordinator.ownerEpoch;
+                    step = 11;
+                } else if (!audioVerified) {
+                    require(!host.trayLoaded,
+                            "Tray unloads only after its reverse exit completes");
+                    require(coordinator.openAudio(host.surfaceToken),
+                            "visible dashboard audio entry is admitted");
+                    audioEpoch = coordinator.ownerEpoch;
+                    step = 11;
+                } else {
+                    require(!host.audioLoaded,
+                            "Audio unloads only after its reverse exit completes");
+                    require(host.cancelDashboard(), "restored dashboard remains cancellable");
+                }
             }
-            require(host.cancelDashboard(), "restored dashboard remains cancellable");
         } else if (step === 13) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
                             "final dashboard cancellation did not restore Idle")) {
@@ -255,11 +547,15 @@ ShellRoot {
                             "compact value transient did not commit visibly")) {
                 return;
             }
+            require(host.backgroundCoversSurface,
+                    "transient background geometry equals the surface geometry");
             require(host.transientPrimaryText === "Built-in Audio" && host.transientDetailText
                     === "Output volume", "compact transient resolves the exact normalized payload");
-            require(host.surfacePreferredWidth === Theme.size.islandTransientCompactWidth
+            require(host.surfacePreferredWidth
+                    >= Theme.size.islandTransientCompactMinimumWidth
+                    && host.surfacePreferredWidth <= Theme.size.islandTransientCompactWidth
                     && host.surfacePreferredHeight === Theme.size.islandTransientCompactHeight,
-                    "compact transient uses representative OSD geometry");
+                    "compact transient uses the shared OSD geometry bounds");
             require(!host.transientEntryAnimationRunning && !host.surfaceFocusable,
                     "settled transient suspends animation and never steals focus");
             compactTransientWidth = host.surfacePreferredWidth;
@@ -278,8 +574,10 @@ ShellRoot {
                     === "Review requested",
                     "notification transient replaces compact content without stale text");
             require(host.surfacePreferredWidth > compactTransientWidth
-                    && host.surfacePreferredHeight > compactTransientHeight,
-                    "notification content receives taller representative geometry");
+                    && host.surfacePreferredHeight > compactTransientHeight
+                    && host.surfacePreferredHeight
+                    > Theme.size.islandTransientNotificationHeight,
+                    "notification body grows the existing island beyond compact OSD geometry");
             require(coordinator.invalidateTransient("surface-notification", 2),
                     "notification source invalidation releases current ownership");
         } else if (step === 16) {
@@ -306,6 +604,8 @@ ShellRoot {
             }
             require(host.transientPrimaryText === "Development" && host.transientDetailText
                     === "Desktop 2 of 4", "reduced motion preserves transient state meaning");
+            require(host.surfacePreferredWidth <= Theme.size.islandTransientCompactWidth,
+                    "workspace transient stays within the compact surface width bound");
             require(host.geometryAnimationDuration === 0 && !host.transientEntryAnimationRunning,
                     "reduced motion removes geometry and entry animation work");
             require(coordinator.invalidateTransient("surface-workspace", 3),
@@ -315,8 +615,8 @@ ShellRoot {
                             "final transient cleanup did not restore Idle")) {
                 return;
             }
-            require(mountedRegionCount >= 18,
-                    "all six real region components remount across Interactive interruptions");
+            require(mountedRegionCount === 6,
+                    "dashboard regions stay mounted across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
             host.reducedMotion = true;
@@ -337,10 +637,11 @@ ShellRoot {
                             "Polkit presentation did not load, acknowledge, and focus")) {
                 return;
             }
-            require(host.surfacePreferredWidth === Theme.size.islandExpandedWidth
-                    && host.surfacePreferredHeight === Theme.size.islandExpandedHeight
+            require(host.surfacePreferredWidth > 0 && host.surfacePreferredHeight > 0
+                    && host.surfaceWidth <= host.surfacePreferredWidth
+                    && host.surfaceHeight <= host.surfacePreferredHeight
                     && host.geometryAnimationDuration === 0,
-                    "Polkit Modal uses bounded reduced-motion geometry");
+                    "Polkit Modal uses content-sized reduced-motion geometry");
             require(host.polkitIdentityCount === 2 && host.polkitResponseFieldVisible,
                     "normalized identities and the live prompt reach the Modal view");
             require(!coordinator.openLauncher(host.surfaceToken)
@@ -381,8 +682,19 @@ ShellRoot {
             }
             require(coordinator.revision === modalRevisionBeforeReplacement + 1,
                     "flow replacement increments one Modal revision without a second frame");
+            host.reducedMotion = false;
             require(coordinator.syncPolkitModal(false, false, 0),
                     "terminal absent snapshot releases Modal");
+            require(host.interactiveExitRunning && host.polkitLoaded
+                    && !host.interactiveExitLoaderEnabled,
+                    "outgoing Polkit remains visual but becomes disabled immediately");
+            const authenticateControl = findObject(host.interactiveExitItem,
+                                                   "polkitAuthenticateButton");
+            require(authenticateControl !== null,
+                    "retained Polkit exposes its representative authentication control");
+            inputDriver.click(authenticateControl);
+            require(fakePolkitController.submitCount === 0,
+                    "disabled outgoing Polkit cannot dispatch a response");
         } else if (step === 26) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.dashboardFocused && !host.polkitLoaded,
@@ -406,8 +718,9 @@ ShellRoot {
     }
 
     component TestRegion: Item {
-        implicitWidth: 120
-        implicitHeight: 72
+        implicitWidth: test.testRegionImplicitWidth
+        implicitHeight: test.testRegionImplicitHeight
+        activeFocusOnTab: true
         Component.onCompleted: test.mountedRegionCount += 1
     }
 
@@ -505,7 +818,18 @@ ShellRoot {
         readonly property bool isGroup: false
     }
 
+    TestCase {
+        id: inputDriver
+
+        name: "Retained exit input driver"
+        when: false
+
+        function click(item) {
+            mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton);
+        }
+    }
     QtObject {
+
         id: fakePolkitController
 
         property bool available: true
@@ -525,6 +849,7 @@ ShellRoot {
         property string iconName: "object-locked-symbolic"
         property var identities: [modalIdentity, alternateModalIdentity]
         property var selectedIdentity: modalIdentity
+        property int submitCount: 0
 
         function cancel() {
             cancellationPending = true;
@@ -533,6 +858,7 @@ ShellRoot {
             selectedIdentity = identity;
         }
         function submitResponse(response, generation) {
+            submitCount += 1;
             submissionPending = true;
             responseRequired = false;
         }
@@ -571,6 +897,8 @@ ShellRoot {
             if (sourceToken === "surface-notification" && sourceGeneration === 2 && sourceRevision
                     === 1) {
                 return {
+                    "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
+                    "body": "A bounded plain-text notification body that grows the island.",
                     "detail": "Review requested",
                     "iconName": "preferences-desktop-notification-symbolic",
                     "primary": "Messages",
@@ -632,10 +960,121 @@ ShellRoot {
             return false;
         }
     }
+    QtObject {
+        id: fakeTrayAdapter
+        property int activationCount: 0
+
+        function activate(token) {
+            activationCount += 1;
+            return "accepted";
+        }
+
+        function secondaryActivate(token) {
+            return "accepted";
+        }
+
+        function openMenu(token, window, x, y) {
+            return "accepted";
+        }
+
+        readonly property var items: [{
+                "token": 1,
+                "label": "Fixture tray item",
+                "tooltip": "Fixture tray item",
+                "iconSource": "",
+                "status": "active",
+                "hasMenu": false,
+                "onlyMenu": false
+            }]
+    }
+
+    QtObject {
+        id: fakeAudioAdapter
+        property int selectionCount: 0
+
+        readonly property bool available: true
+        readonly property bool pendingOutputSelection: false
+        readonly property bool pendingInputSelection: false
+        readonly property string failure: "none"
+        readonly property var outputCandidates: [{
+                "endpointKey": "output",
+                "label": "Fixture output",
+                "isDefault": true
+            }]
+        readonly property var inputCandidates: [{
+                "endpointKey": "input",
+                "label": "Fixture input",
+                "isDefault": true
+            }]
+
+        function requestOutputSelection(endpointKey) {
+            selectionCount += 1;
+            return endpointKey === "output";
+        }
+
+        function requestInputSelection(endpointKey) {
+            selectionCount += 1;
+            return endpointKey === "input";
+        }
+    }
+
+    Item {
+        visible: false
+
+        AudioSelectionView {
+            id: audioWidthReference
+
+            active: false
+            adapter: fakeAudioAdapter
+            ownerEpoch: 0
+            reducedMotion: true
+        }
+
+        LauncherView {
+            id: launcherReference
+
+            active: false
+            applicationModel: fakeApplicationModel
+            ownerEpoch: 0
+            reducedMotion: true
+        }
+
+        NotificationHistoryView {
+            id: historyReference
+
+            active: false
+            ownerEpoch: 0
+            reducedMotion: true
+            service: fakeNotificationService
+        }
+
+        SessionView {
+            id: sessionReference
+
+            active: false
+            ownerEpoch: 0
+            reducedMotion: true
+            service: fakeSessionService
+        }
+
+        TrayView {
+            id: trayReference
+
+            active: false
+            adapter: fakeTrayAdapter
+            ownerEpoch: 0
+            reducedMotion: true
+        }
+
+        IslandPanel {
+            id: defaultPanelReference
+        }
+    }
 
     IslandStateCoordinator {
         id: coordinator
     }
+
 
     IslandSurfaceHost {
         id: host
@@ -648,6 +1087,8 @@ ShellRoot {
         dashboardNotificationsContent: notificationsRegion
         dashboardNavigationContent: navigationRegion
         sessionService: fakeSessionService
+        trayAdapter: fakeTrayAdapter
+        audioAdapter: fakeAudioAdapter
         polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel
@@ -655,6 +1096,11 @@ ShellRoot {
         brightnessTransientSource: fakeTransientSource
         volumeTransientSource: fakeTransientSource
         notificationTransientSource: fakeTransientSource
+    }
+
+    FrameAnimation {
+        running: test.geometryDirection !== ""
+        onTriggered: Qt.callLater(test.sampleGeometry)
     }
 
     Timer {

@@ -23,14 +23,17 @@ Item {
     property int endpointPauseMs: 1400
     property int pixelsPerSecond: 24
 
-    readonly property bool overflowing: label.implicitWidth > maximumWidth
-    readonly property real scrollDistance: overflowing ? label.implicitWidth - maximumWidth : 0
+    readonly property int viewportWidth: Math.max(0, maximumWidth)
+    readonly property bool overflowing: label.implicitWidth > viewportWidth
+    readonly property real scrollDistance: overflowing ? label.implicitWidth - viewportWidth : 0
     readonly property int scrollDurationMs: scrollDistance > 1 ? Math.max(1, Math.round(
                                                                               scrollDistance
                                                                               / pixelsPerSecond
                                                                               * 1000)) : 1
+    readonly property bool marqueeEligible: scrolling && visible && summary !== "" && overflowing
+                                            && !reducedMotion
 
-    implicitWidth: Math.min(label.implicitWidth, maximumWidth)
+    implicitWidth: Math.min(label.implicitWidth, viewportWidth)
     implicitHeight: label.implicitHeight
     clip: true
 
@@ -57,13 +60,15 @@ Item {
 
         text: media.summary
         tone: "secondary"
+        size: "body"
+        font.weight: Theme.type.weightRegular
         elide: media.reducedMotion ? Text.ElideRight : Text.ElideNone
     }
 
     SequentialAnimation {
         id: marquee
 
-        running: media.scrolling && media.overflowing && !media.reducedMotion
+        running: media.marqueeEligible
         loops: Animation.Infinite
 
         PauseAnimation {

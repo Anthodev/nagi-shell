@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
-import Quickshell.Widgets
+import QtQuick.Controls
 import QtQuick
 import QtQuick.Layouts
 
@@ -10,8 +10,23 @@ FocusScope {
 
     required property var applicationModel
     required property real ownerEpoch
+    property bool active: true
+    property bool reducedMotion: false
     property alias query: searchInput.text
     readonly property var normalizedSearchIndex: buildSearchIndex()
+    readonly property int maximumVisibleResults: 5
+    readonly property int resultRowExtent: Theme.size.controlHeightLg
+    readonly property int resultRowSpacing: Theme.spacing.xs
+    readonly property real resultViewportHeight: resultCount === 0 ? Theme.size.controlHeightMd :
+                                                                     Math.min(resultCount,
+                                                                              maximumVisibleResults)
+                                                                     * resultRowExtent + Math.max(0,
+                                                                                                  Math.min(resultCount,
+                                                                                                           maximumVisibleResults)
+                                                                                                  - 1) * resultRowSpacing
+    readonly property bool resultScrollVisible: resultCount > maximumVisibleResults
+    readonly property bool resultScrollBarActive: resultScrollBar.policy !== ScrollBar.AlwaysOff
+    readonly property real contentWidth: Theme.spacing.xxl * 15
 
     readonly property var rows: buildRows(searchInput.text)
     readonly property int resultCount: rows.length
@@ -21,11 +36,17 @@ FocusScope {
                                                                                 ).name
     readonly property bool searchFocused: searchInput.activeFocus
     readonly property bool emptyStateVisible: emptyState.visible
+    readonly property alias searchFieldItem: searchField
+    readonly property alias resultViewportItem: resultViewport
+    readonly property alias resultListItem: resultList
 
     property string retainedSelectionId: ""
     property int pendingLaunchRequestId: 0
     property string launchFailure: ""
     property string pinStatus: ""
+    implicitWidth: frame.implicitWidth
+    implicitHeight: frame.implicitHeight
+    visible: active
 
     signal cancelled(real ownerEpoch)
     signal launchDispatched(int requestId, real ownerEpoch)
@@ -289,11 +310,7 @@ FocusScope {
 
     onRowsChanged: Qt.callLater(restoreSelection)
 
-    Keys.priority: Keys.BeforeItem
-    Keys.onEscapePressed: event => {
-        requestCancellation();
-        event.accepted = true;
-    }
+    // Escape is owned by the shared frame so every interactive view restores identically.
 
     Connections {
         target: view.applicationModel
@@ -331,307 +348,321 @@ FocusScope {
         }
     }
 
-    ColumnLayout {
+    SubviewFrame {
+        id: frame
+
         anchors.fill: parent
-        anchors.margins: Theme.spacing.xl
-        spacing: Theme.spacing.md
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.md
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spacing.xs
-
-                IslandText {
-                    text: "Applications"
-                    textFormat: Text.PlainText
-                    size: "title"
-                    font.weight: Theme.type.weightSemibold
-                }
-
-                IslandText {
-                    text: "Search installed applications by name or keyword."
-                    textFormat: Text.PlainText
-                    tone: "secondary"
-                }
-            }
-
-            IslandButton {
-                id: backButton
-
-                label: "Back"
-                Accessible.description: "Cancel the launcher and restore the previous island state"
-                onClicked: view.requestCancellation()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: Theme.size.controlHeightLg
-            radius: Theme.radius.md
-            color: Theme.color.controlFill
-            border.width: Theme.size.hairlineWidth
-            border.color: searchInput.activeFocus ? Theme.color.focusRing :
-                                                    Theme.color.surfaceBorder
-
-            IslandText {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spacing.md
-                text: "Search applications"
-                textFormat: Text.PlainText
-                tone: "muted"
-                verticalAlignment: Text.AlignVCenter
-                visible: searchInput.text === ""
-            }
-
-            TextInput {
-                id: searchInput
-
-                anchors.fill: parent
-                leftPadding: Theme.spacing.md
-                rightPadding: Theme.spacing.md
-                color: Theme.color.textPrimary
-                selectionColor: Theme.color.accent
-                selectedTextColor: Theme.color.accentForeground
-                font.pixelSize: Theme.type.body
-                verticalAlignment: TextInput.AlignVCenter
-                clip: true
-                activeFocusOnTab: true
-                inputMethodHints: Qt.ImhNoPredictiveText
-                Accessible.role: Accessible.EditableText
-                Accessible.name: "Search applications"
-
-                onTextChanged: {
-                    view.retainedSelectionId = "";
-                    view.launchFailure = "";
-                    Qt.callLater(view.restoreSelection);
-                }
-
-                Keys.priority: Keys.BeforeItem
-                Keys.onDownPressed: event => {
-                    view.selectRelative(1);
-                    event.accepted = true;
-                }
-                Keys.onUpPressed: event => {
-                    view.selectRelative(-1);
-                    event.accepted = true;
-                }
-                Keys.onReturnPressed: event => {
-                    view.launchSelected();
-                    event.accepted = true;
-                }
-                Keys.onEnterPressed: event => {
-                    view.launchSelected();
-                    event.accepted = true;
-                }
-            }
-        }
+        active: view.active
+        title: "Applications"
+        reducedMotion: view.reducedMotion
+        initialFocusItem: searchInput
+        onBackRequested: view.requestCancellation()
+        onEscapePressed: view.requestCancellation()
 
         Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            implicitWidth: view.contentWidth
+            implicitHeight: launcherContent.implicitHeight
+            width: implicitWidth
+            height: implicitHeight
+            ColumnLayout {
+                id: launcherContent
 
-            ListView {
-                id: resultList
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: Theme.spacing.md
 
-                anchors.fill: parent
-                clip: true
-                spacing: Theme.spacing.sm
-                reuseItems: true
-                boundsBehavior: Flickable.StopAtBounds
-                keyNavigationEnabled: false
-                model: view.rows
-                currentIndex: view.rows.length > 0 ? 0 : -1
-                Accessible.role: Accessible.List
-                Accessible.name: "Application results"
+                Rectangle {
+                    id: searchField
+                    Layout.fillWidth: true
+                    implicitHeight: Theme.size.controlHeightLg
+                    radius: Theme.radius.md
+                    color: Theme.color.controlFill
+                    border.width: Theme.size.hairlineWidth
+                    border.color: searchInput.activeFocus ? Theme.snapshot.focusRing :
+                                                            Theme.color.surfaceBorder
 
-                delegate: FocusScope {
-                    id: row
+                    IslandText {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.spacing.md
+                        text: "Search applications"
+                        textFormat: Text.PlainText
+                        tone: "muted"
+                        verticalAlignment: Text.AlignVCenter
+                        visible: searchInput.text === ""
+                    }
 
-                    required property int index
-                    required property var modelData
+                    TextInput {
+                        id: searchInput
 
-                    readonly property var application: modelData.application
-                    readonly property bool selected: ListView.isCurrentItem
-                    readonly property int storedPinIndex: view.applicationModel.pinIds.indexOf(
-                                                              application.id)
-                    readonly property bool pinned: storedPinIndex >= 0
+                        anchors.fill: parent
+                        leftPadding: Theme.spacing.md
+                        rightPadding: Theme.spacing.md
+                        color: Theme.color.textPrimary
+                        selectionColor: Theme.snapshot.accent
+                        selectedTextColor: Theme.snapshot.accentForeground
+                        font.pixelSize: Theme.type.body
+                        font.family: Theme.type.family
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        activeFocusOnTab: true
+                        inputMethodHints: Qt.ImhNoPredictiveText
+                        Accessible.role: Accessible.EditableText
+                        Accessible.name: "Search applications"
+                        KeyNavigation.backtab: frame.backControl
 
-                    width: ListView.view.width
-                    implicitHeight: content.implicitHeight + Theme.spacing.md * 2
-                    activeFocusOnTab: true
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: application.name
-                    Accessible.description: pinned ? "Pinned application" : "Application"
-
-                    onActiveFocusChanged: {
-                        if (activeFocus) {
-                            view.selectIndex(index);
+                        onTextChanged: {
+                            view.retainedSelectionId = "";
+                            view.launchFailure = "";
+                            Qt.callLater(view.restoreSelection);
                         }
-                    }
 
-                    Keys.priority: Keys.BeforeItem
-                    Keys.onDownPressed: event => {
-                        view.focusRow(index + 1, Qt.TabFocusReason);
-                        event.accepted = true;
-                    }
-                    Keys.onUpPressed: event => {
-                        view.focusRow(index - 1, Qt.BacktabFocusReason);
-                        event.accepted = true;
-                    }
-                    Keys.onReturnPressed: event => {
-                        view.launchSelected();
-                        event.accepted = true;
-                    }
-                    Keys.onEnterPressed: event => {
-                        view.launchSelected();
-                        event.accepted = true;
-                    }
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) {
-                            view.toggleSelectedPin();
+                        Keys.priority: Keys.BeforeItem
+                        Keys.onDownPressed: event => {
+                            view.focusRow(resultList.currentIndex < 0 ? 0 : resultList.currentIndex,
+                                          Qt.TabFocusReason);
+                            event.accepted = true;
+                        }
+                        Keys.onUpPressed: event => {
+                            view.selectRelative(-1);
+                            event.accepted = true;
+                        }
+                        Keys.onReturnPressed: event => {
+                            view.launchSelected();
+                            event.accepted = true;
+                        }
+                        Keys.onEnterPressed: event => {
+                            view.launchSelected();
                             event.accepted = true;
                         }
                     }
+                }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radius.md
-                        color: row.selected || row.activeFocus || hover.hovered
-                               ? Theme.color.controlFillHover : Theme.color.controlFill
-                        border.width: Theme.size.hairlineWidth
-                        border.color: row.activeFocus ? Theme.color.focusRing : row.selected
-                                                        ? Theme.color.accent :
-                                                          Theme.color.surfaceBorder
-                    }
+                Item {
+                    id: resultViewport
+                    Layout.fillWidth: true
+                    implicitHeight: view.resultViewportHeight
 
-                    RowLayout {
-                        id: content
+                    ListView {
+                        id: resultList
 
                         anchors.fill: parent
-                        anchors.margins: Theme.spacing.md
-                        spacing: Theme.spacing.md
+                        clip: view.resultScrollVisible
+                        interactive: view.resultScrollVisible
+                        spacing: view.resultRowSpacing
+                        reuseItems: true
+                        keyNavigationEnabled: false
+                        model: view.rows
+                        currentIndex: view.rows.length > 0 ? 0 : -1
+                        Accessible.role: Accessible.List
+                        Accessible.name: "Application results"
 
-                        IconImage {
-                            Layout.preferredWidth: Theme.size.iconSizeLg
-                            Layout.preferredHeight: Theme.size.iconSizeLg
-                            source: Quickshell.iconPath(row.application.icon === ""
-                                                        ? "application-x-executable" :
-                                                          row.application.icon)
-                            implicitSize: Theme.size.iconSizeLg
+                        delegate: FocusScope {
+                            id: row
+
+                            required property int index
+                            required property var modelData
+
+                            readonly property var application: modelData.application
+                            readonly property bool selected: ListView.isCurrentItem
+                            readonly property int storedPinIndex:
+                            view.applicationModel.pinIds.indexOf(application.id)
+                            readonly property real labelLaneWidth: labelColumn.width
+                            readonly property real primaryLabelWidth: primaryLabel.width
+                            readonly property real metadataLabelWidth: metadataLabel.width
+                            readonly property real pinActionRightEdge: pinAction.mapToItem(row,
+                                                                                           pinAction.width,
+                                                                                           0).x
+                            readonly property bool pinned: storedPinIndex >= 0
+
+                            width: ListView.view.width
+                            implicitHeight: view.resultRowExtent
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.ListItem
+                            Accessible.name: application.name
+                            Accessible.description: pinned ? "Pinned application" : "Application"
+
+                            onActiveFocusChanged: {
+                                if (activeFocus) {
+                                    view.selectIndex(index);
+                                }
+                            }
+
+                            Keys.priority: Keys.BeforeItem
+                            Keys.onDownPressed: event => {
+                                view.focusRow(index + 1, Qt.TabFocusReason);
+                                event.accepted = true;
+                            }
+                            Keys.onUpPressed: event => {
+                                if (index === 0) {
+                                    searchInput.forceActiveFocus(Qt.BacktabFocusReason);
+                                } else {
+                                    view.focusRow(index - 1, Qt.BacktabFocusReason);
+                                }
+                                event.accepted = true;
+                            }
+                            Keys.onReturnPressed: event => {
+                                view.launchSelected();
+                                event.accepted = true;
+                            }
+                            Keys.onEnterPressed: event => {
+                                view.launchSelected();
+                                event.accepted = true;
+                            }
+                            Keys.onPressed: event => {
+                                if (event.key === Qt.Key_P && (event.modifiers
+                                                               & Qt.ControlModifier)) {
+                                    view.toggleSelectedPin();
+                                    event.accepted = true;
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: Theme.radius.md
+                                color: row.selected ? Theme.color.surfaceActive : hover.hovered
+                                                      ? Theme.color.surfaceHover : "transparent"
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.spacing.md
+                                anchors.rightMargin: Theme.spacing.sm
+                                spacing: Theme.spacing.md
+
+                                IslandIcon {
+                                    objectName: "launcherApplicationIcon"
+                                    Layout.preferredWidth: Theme.size.iconSizeLg
+                                    Layout.preferredHeight: Theme.size.iconSizeLg
+                                    meaning: "application"
+                                    size: "lg"
+                                    applicationSource: row.application.icon === "" ? "" :
+                                                                                     Quickshell.iconPath(
+                                                                                         row.application.icon)
+                                    applicationName: row.application.name
+                                }
+
+                                ColumnLayout {
+                                    id: labelColumn
+                                    Layout.fillWidth: true
+                                    spacing: 0
+
+                                    IslandText {
+                                        id: primaryLabel
+                                        text: row.application.name
+                                        textFormat: Text.PlainText
+                                        font.weight: Theme.type.weightSemibold
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    IslandText {
+                                        id: metadataLabel
+                                        text: (row.modelData.section ?? "") !== ""
+                                              ? row.modelData.section : row.pinned ? "Pinned" :
+                                                                                     "Application"
+                                        textFormat: Text.PlainText
+                                        tone: "secondary"
+                                        size: "caption"
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                IslandButton {
+                                    id: pinAction
+                                    label: row.pinned ? "Unpin" : "Pin"
+                                    visible: row.selected || row.activeFocus || activeFocus
+                                             || hover.hovered
+                                    enabled: !view.applicationModel.pinMutationPending
+                                    Accessible.description: (row.pinned ? "Unpin " : "Pin ")
+                                                            + row.application.name
+                                    onClicked: {
+                                        view.selectIndex(row.index);
+                                        view.toggleSelectedPin();
+                                    }
+                                }
+
+                                IslandButton {
+                                    label: "Earlier"
+                                    visible: row.pinned && (row.selected || row.activeFocus
+                                                            || activeFocus || hover.hovered)
+                                    enabled: !view.applicationModel.pinMutationPending
+                                             && row.storedPinIndex > 0
+                                    Accessible.description: "Move " + row.application.name
+                                                            + " earlier in pinned applications"
+                                    onClicked: {
+                                        view.selectIndex(row.index);
+                                        view.moveSelectedPin(-1);
+                                    }
+                                }
+
+                                IslandButton {
+                                    label: "Later"
+                                    visible: row.pinned && (row.selected || row.activeFocus
+                                                            || activeFocus || hover.hovered)
+                                    enabled: !view.applicationModel.pinMutationPending
+                                             && row.storedPinIndex >= 0 && row.storedPinIndex
+                                             < view.applicationModel.pinIds.length - 1
+                                    Accessible.description: "Move " + row.application.name
+                                                            + " later in pinned applications"
+                                    onClicked: {
+                                        view.selectIndex(row.index);
+                                        view.moveSelectedPin(1);
+                                    }
+                                }
+                            }
+
+                            IslandFocusRing {
+                                visible: row.activeFocus
+                            }
+
+                            HoverHandler {
+                                id: hover
+                            }
+
+                            TapHandler {
+                                acceptedButtons: Qt.LeftButton
+                                onTapped: {
+                                    view.selectIndex(row.index);
+                                    row.forceActiveFocus(Qt.MouseFocusReason);
+                                }
+                                onDoubleTapped: view.launchSelected()
+                            }
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.spacing.xs
-
-                            IslandText {
-                                text: row.application.name
-                                textFormat: Text.PlainText
-                                font.weight: Theme.type.weightSemibold
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-
-                            IslandText {
-                                text: (row.modelData.section ?? "") !== "" ? row.modelData.section :
-                                                                             row.pinned ? "Pinned" :
-                                                                                          "Application"
-                                textFormat: Text.PlainText
-                                tone: "secondary"
-                                size: "caption"
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-                        }
-
-                        IslandButton {
-                            label: row.pinned ? "Unpin" : "Pin"
-                            visible: row.selected || row.activeFocus || activeFocus || hover.hovered
-                            enabled: !view.applicationModel.pinMutationPending
-                            Accessible.description: (row.pinned ? "Unpin " : "Pin ")
-                                                    + row.application.name
-                            onClicked: {
-                                view.selectIndex(row.index);
-                                view.toggleSelectedPin();
-                            }
-                        }
-
-                        IslandButton {
-                            label: "Earlier"
-                            visible: row.pinned && (row.selected || row.activeFocus || activeFocus
-                                                    || hover.hovered)
-                            enabled: !view.applicationModel.pinMutationPending
-                                     && row.storedPinIndex > 0
-                            Accessible.description: "Move " + row.application.name
-                                                    + " earlier in pinned applications"
-                            onClicked: {
-                                view.selectIndex(row.index);
-                                view.moveSelectedPin(-1);
-                            }
-                        }
-
-                        IslandButton {
-                            label: "Later"
-                            visible: row.pinned && (row.selected || row.activeFocus || activeFocus
-                                                    || hover.hovered)
-                            enabled: !view.applicationModel.pinMutationPending
-                                     && row.storedPinIndex >= 0 && row.storedPinIndex
-                                     < view.applicationModel.pinIds.length - 1
-                            Accessible.description: "Move " + row.application.name
-                                                    + " later in pinned applications"
-                            onClicked: {
-                                view.selectIndex(row.index);
-                                view.moveSelectedPin(1);
-                            }
+                        ScrollBar.vertical: ScrollBar {
+                            id: resultScrollBar
+                            objectName: "launcherResultScrollBar"
+                            policy: view.resultScrollVisible ? ScrollBar.AlwaysOn :
+                                                               ScrollBar.AlwaysOff
                         }
                     }
 
-                    HoverHandler {
-                        id: hover
-                    }
+                    IslandText {
+                        id: emptyState
 
-                    TapHandler {
-                        acceptedButtons: Qt.LeftButton
-                        onTapped: {
-                            view.selectIndex(row.index);
-                            row.forceActiveFocus(Qt.MouseFocusReason);
-                        }
-                        onDoubleTapped: view.launchSelected()
+                        anchors.centerIn: parent
+                        visible: view.applicationModel === null || !view.applicationModel.available
+                                 || view.rows.length === 0
+                        text: view.applicationModel === null || !view.applicationModel.available
+                              ? "Applications unavailable" : searchInput.text === ""
+                                ? "No pinned or recent applications" : "No matches"
+                        textFormat: Text.PlainText
+                        tone: "secondary"
                     }
                 }
-            }
-
-            Column {
-                id: emptyState
-
-                anchors.centerIn: parent
-                spacing: Theme.spacing.xs
-                visible: view.applicationModel === null || !view.applicationModel.available
-                         || view.rows.length === 0
 
                 IslandText {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: view.applicationModel === null || !view.applicationModel.available
-                          ? "Applications are unavailable." : searchInput.text === ""
-                            ? "No pinned or recent applications." : "No matching applications."
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: view.launchFailure !== "" ? view.launchFailure : view.pinStatus
                     textFormat: Text.PlainText
-                    tone: "secondary"
+                    color: view.launchFailure !== "" || view.applicationModel.pinFailure
+                           === "write" ? Theme.color.danger : Theme.color.textSecondary
+                    size: "caption"
+                    elide: Text.ElideRight
                 }
             }
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            visible: text !== ""
-            text: view.launchFailure !== "" ? view.launchFailure : view.pinStatus
-            textFormat: Text.PlainText
-            color: view.launchFailure !== "" || view.applicationModel.pinFailure === "write"
-                   ? Theme.color.danger : Theme.color.textSecondary
-            size: "caption"
-            elide: Text.ElideRight
         }
     }
 }

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
-import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 
@@ -16,6 +15,8 @@ FocusScope {
     required property var controller
     required property real ownerEpoch
     required property real ownerRevision
+    property bool active: true
+    property bool reducedMotion: false
 
     readonly property bool controllerAvailable: controller !== null && controller !== undefined
                                                 && controller.available === true
@@ -65,15 +66,11 @@ FocusScope {
                                           !state.cancelDispatched && !controllerCancellationPending
     readonly property bool responseFocused: responseInput.activeFocus
     readonly property int responseEchoMode: responseInput.echoMode
+    readonly property bool backFocused: frame.backControl.activeFocus
+    implicitWidth: frame.implicitWidth
+    implicitHeight: frame.implicitHeight
 
-    visible: controllerAvailable
-
-    Keys.priority: Keys.BeforeItem
-    Keys.onEscapePressed: event => {
-        if (view.requestCancellation()) {
-            event.accepted = true;
-        }
-    }
+    visible: active && controllerAvailable
 
     function boundedGeneration(value) {
         return Number.isInteger(value) && value >= 0 && value <= 2147483647 ? value : 0;
@@ -188,7 +185,7 @@ FocusScope {
             return;
         }
         if (cancelEnabled) {
-            cancelButton.forceActiveFocus(Qt.ShortcutFocusReason);
+            frame.backControl.forceActiveFocus(Qt.ShortcutFocusReason);
         }
     }
 
@@ -317,40 +314,29 @@ FocusScope {
         property bool cancelDispatched: false
     }
 
-    ColumnLayout {
+    SubviewFrame {
+        id: frame
+
         anchors.fill: parent
-        anchors.margins: Theme.spacing.xl
-        spacing: Theme.spacing.lg
+        active: view.visible
+        title: "Authentication required"
+        reducedMotion: view.reducedMotion
+        initialFocusItem: view.identityCount > 1 ? identityList.currentItem :
+                                                   view.responseFieldVisible ? responseInput :
+                                                                               authenticateButton
+        onBackRequested: view.requestCancellation()
+        onEscapePressed: view.requestCancellation()
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.lg
-
-            IslandPanel {
-                Layout.preferredWidth: Theme.size.controlHeightLg
-                Layout.preferredHeight: Theme.size.controlHeightLg
-                color: Theme.color.controlFill
-                radius: Theme.radius.md
-
-                IconImage {
-                    anchors.centerIn: parent
-                    implicitSize: Theme.size.iconSizeLg
-                    source: Quickshell.iconPath(view.iconName, "dialog-password")
-                }
-            }
+        Item {
+            width: Theme.spacing.xxl * 13
+            height: authContent.implicitHeight
 
             ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spacing.xs
+                id: authContent
 
-                IslandText {
-                    text: "Authentication required"
-                    textFormat: Text.PlainText
-                    size: "title"
-                    font.weight: Theme.type.weightSemibold
-                    Accessible.role: Accessible.Heading
-                    Accessible.name: text
-                }
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: Theme.spacing.lg
 
                 IslandText {
                     Layout.fillWidth: true
@@ -367,243 +353,246 @@ FocusScope {
                     text: view.actionId
                     textFormat: Text.PlainText
                     tone: "muted"
+                    size: "caption"
                     elide: Text.ElideRight
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
                 }
-            }
-        }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            visible: view.identityCount > 0
-            spacing: Theme.spacing.sm
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: view.identityCount > 0
+                    spacing: Theme.spacing.sm
 
-            IslandText {
-                text: view.identityCount > 1 ? "Choose an identity" : "Identity"
-                textFormat: Text.PlainText
-                tone: "secondary"
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
-
-            ListView {
-                id: identityList
-
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.size.controlHeightMd + Theme.size.focusRingGap * 2
-                orientation: ListView.Horizontal
-                spacing: Theme.spacing.md
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                model: view.identities
-                visible: view.identityCount > 1
-                Accessible.role: Accessible.List
-                Accessible.name: "Authentication identities"
-
-                delegate: IslandButton {
-                    id: identityButton
-
-                    required property int index
-                    required property var modelData
-
-                    objectName: "polkitIdentityButton" + index
-                    label: view.identityLabel(modelData)
-                    variant: modelData === view.selectedIdentity ? "accent" : "standard"
-                    enabled: view.controllerAvailable && !view.terminal && !view.operationPending
-                    Accessible.description: modelData === view.selectedIdentity
-                                            ? "Selected authentication identity" :
-                                              "Select this authentication identity"
-                    onClicked: view.requestIdentity(modelData)
-
-                    Keys.onLeftPressed: event => {
-                        const nextIndex = Math.max(0, index - 1);
-                        identityList.currentIndex = nextIndex;
-                        identityList.positionViewAtIndex(nextIndex, ListView.Contain);
-                        if (identityList.currentItem !== null) {
-                            identityList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
-                        }
-                        event.accepted = true;
+                    IslandText {
+                        text: view.identityCount > 1 ? "Identity" : "Selected identity"
+                        textFormat: Text.PlainText
+                        tone: "secondary"
+                        size: "caption"
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
                     }
-                    Keys.onRightPressed: event => {
-                        const nextIndex = Math.min(view.identityCount - 1, index + 1);
-                        identityList.currentIndex = nextIndex;
-                        identityList.positionViewAtIndex(nextIndex, ListView.Contain);
-                        if (identityList.currentItem !== null) {
-                            identityList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
+
+                    ListView {
+                        id: identityList
+
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.size.controlHeightMd
+                        orientation: ListView.Horizontal
+                        spacing: Theme.spacing.sm
+                        interactive: contentWidth > width
+                        clip: interactive
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: view.identities
+                        visible: view.identityCount > 1
+                        Accessible.role: Accessible.List
+                        Accessible.name: "Authentication identities"
+
+                        delegate: IslandButton {
+                            id: identityButton
+
+                            required property int index
+                            required property var modelData
+
+                            objectName: "polkitIdentityButton" + index
+                            label: view.identityLabel(modelData)
+                            variant: modelData === view.selectedIdentity ? "accent" : "standard"
+                            enabled: view.controllerAvailable && !view.terminal &&
+                                     !view.operationPending
+                            Accessible.description: modelData === view.selectedIdentity
+                                                    ? "Selected authentication identity" :
+                                                      "Select this authentication identity"
+                            onClicked: view.requestIdentity(modelData)
+
+                            Keys.onLeftPressed: event => {
+                                const nextIndex = Math.max(0, index - 1);
+                                identityList.currentIndex = nextIndex;
+                                identityList.positionViewAtIndex(nextIndex, ListView.Contain);
+                                if (identityList.currentItem !== null) {
+                                    identityList.currentItem.forceActiveFocus(
+                                                Qt.ShortcutFocusReason);
+                                }
+                                event.accepted = true;
+                            }
+                            Keys.onRightPressed: event => {
+                                const nextIndex = Math.min(view.identityCount - 1, index + 1);
+                                identityList.currentIndex = nextIndex;
+                                identityList.positionViewAtIndex(nextIndex, ListView.Contain);
+                                if (identityList.currentItem !== null) {
+                                    identityList.currentItem.forceActiveFocus(
+                                                Qt.ShortcutFocusReason);
+                                }
+                                event.accepted = true;
+                            }
                         }
-                        event.accepted = true;
+                    }
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: view.identityCount === 1
+                        text: view.selectedIdentity === null ? "No supported identity selected" :
+                                                               view.identityLabel(
+                                                                   view.selectedIdentity)
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
                     }
                 }
-            }
 
-            IslandText {
-                Layout.fillWidth: true
-                visible: view.identityCount === 1
-                text: view.selectedIdentity === null ? "No supported identity selected" :
-                                                       view.identityLabel(view.selectedIdentity)
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
-        }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.sm
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.sm
-
-            IslandText {
-                Layout.fillWidth: true
-                text: view.inputPrompt
-                textFormat: Text.PlainText
-                tone: "secondary"
-                wrapMode: Text.Wrap
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
-
-            IslandPanel {
-                objectName: "polkitResponseField"
-                Accessible.role: Accessible.EditableText
-                Accessible.name: "Authentication response"
-                Accessible.description: "Enter the response requested for authentication"
-                Accessible.passwordEdit: true
-                Accessible.selectableText: false
-                Accessible.focusable: true
-                Accessible.focused: responseInput.activeFocus
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.size.controlHeightLg
-                visible: view.responseFieldVisible
-                opacity: view.operationPending ? Theme.opacity.disabled : 1
-                radius: Theme.radius.md
-                color: Theme.color.controlFill
-                border.width: Theme.size.hairlineWidth
-                border.color: responseInput.activeFocus ? Theme.color.focusRing :
-                                                          Theme.color.surfaceBorder
-
-                TextInput {
-                    id: responseInput
-
-                    objectName: "polkitResponseInput"
-                    anchors.fill: parent
-                    leftPadding: Theme.spacing.md
-                    rightPadding: Theme.spacing.md
-                    color: Theme.color.textPrimary
-                    selectionColor: Theme.color.accent
-                    selectedTextColor: Theme.color.accentForeground
-                    font.pixelSize: Theme.type.body
-                    verticalAlignment: TextInput.AlignVCenter
-                    clip: true
-                    activeFocusOnTab: true
-                    enabled: !view.operationPending
-                    readOnly: view.operationPending
-                    echoMode: view.responseVisible ? TextInput.Normal : TextInput.NoEcho
-                    passwordMaskDelay: 0
-                    maximumLength: 4096
-                    selectByMouse: view.responseVisible
-                    persistentSelection: false
-                    inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
-                                      | Qt.ImhNoAutoUppercase | (view.responseVisible ? Qt.ImhNone :
-                                                                                        Qt.ImhHiddenText)
-                    Accessible.ignored: true
-
-                    onSelectedTextChanged: {
-                        if (!view.responseVisible && selectedText !== "") {
-                            deselect();
-                        }
+                    IslandText {
+                        Layout.fillWidth: true
+                        text: view.inputPrompt
+                        textFormat: Text.PlainText
+                        tone: "secondary"
+                        size: "caption"
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
                     }
 
-                    Keys.priority: Keys.BeforeItem
-                    Keys.onPressed: event => {
-                        const control = (event.modifiers & Qt.ControlModifier) !== 0;
-                        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                        const hiddenExposure = !view.responseVisible && ((control && (event.key
+                    IslandPanel {
+                        objectName: "polkitResponseField"
+                        Accessible.role: Accessible.EditableText
+                        Accessible.name: "Authentication response"
+                        Accessible.description: "Enter the response requested for authentication"
+                        Accessible.passwordEdit: true
+                        Accessible.selectableText: false
+                        Accessible.focusable: true
+                        Accessible.focused: responseInput.activeFocus
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.size.controlHeightLg
+                        visible: view.responseFieldVisible
+                        opacity: view.operationPending ? Theme.opacity.disabled : 1
+                        radius: Theme.radius.md
+                        color: Theme.color.controlFill
+                        border.width: Theme.size.hairlineWidth
+                        border.color: responseInput.activeFocus ? Theme.snapshot.focusRing :
+                                                                  Theme.color.surfaceBorder
+
+                        TextInput {
+                            id: responseInput
+
+                            objectName: "polkitResponseInput"
+                            anchors.fill: parent
+                            leftPadding: Theme.spacing.md
+                            rightPadding: Theme.spacing.md
+                            color: Theme.color.textPrimary
+                            selectionColor: Theme.snapshot.accent
+                            selectedTextColor: Theme.snapshot.accentForeground
+                            font.pixelSize: Theme.type.body
+                            font.family: Theme.type.family
+                            verticalAlignment: TextInput.AlignVCenter
+                            clip: true
+                            activeFocusOnTab: true
+                            enabled: !view.operationPending
+                            readOnly: view.operationPending
+                            echoMode: view.responseVisible ? TextInput.Normal : TextInput.NoEcho
+                            passwordMaskDelay: 0
+                            maximumLength: 4096
+                            selectByMouse: view.responseVisible
+                            persistentSelection: false
+                            inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                                              | Qt.ImhNoAutoUppercase | (view.responseVisible
+                                                                         ? Qt.ImhNone :
+                                                                           Qt.ImhHiddenText)
+                            Accessible.ignored: true
+
+                            onSelectedTextChanged: {
+                                if (!view.responseVisible && selectedText !== "") {
+                                    deselect();
+                                }
+                            }
+
+                            Keys.priority: Keys.BeforeItem
+                            Keys.onPressed: event => {
+                                const control = (event.modifiers & Qt.ControlModifier) !== 0;
+                                const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                                const hiddenExposure = !view.responseVisible && ((control && (
+                                                                                      event.key
                                                                                       === Qt.Key_C
                                                                                       || event.key
                                                                                       === Qt.Key_X
                                                                                       || event.key
                                                                                       === Qt.Key_Insert))
-                                                                         || (shift && event.key
-                                                                             === Qt.Key_Delete));
-                        if (hiddenExposure) {
-                            deselect();
-                            event.accepted = true;
+                                                                                 || (shift
+                                                                                     && event.key
+                                                                                     === Qt.Key_Delete));
+                                if (hiddenExposure) {
+                                    deselect();
+                                    event.accepted = true;
+                                }
+                            }
+                            Keys.onReturnPressed: event => {
+                                view.submitCurrentResponse();
+                                event.accepted = true;
+                            }
+                            Keys.onEnterPressed: event => {
+                                view.submitCurrentResponse();
+                                event.accepted = true;
+                            }
                         }
                     }
-                    Keys.onReturnPressed: event => {
-                        view.submitCurrentResponse();
-                        event.accepted = true;
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: !view.responseFieldVisible && view.controllerAvailable &&
+                                 !view.terminal
+                        text: view.identityCount === 0
+                              ? "No supported authentication identity is available." :
+                                "Waiting for an authentication prompt…"
+                        textFormat: Text.PlainText
+                        tone: "secondary"
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
                     }
-                    Keys.onEnterPressed: event => {
-                        view.submitCurrentResponse();
-                        event.accepted = true;
+                }
+
+                IslandText {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: view.controllerCancellationPending || state.cancelDispatched
+                          ? "Cancelling…" : view.controllerSubmissionPending
+                            || state.submitDispatched ? "Authenticating…" :
+                                                        view.supplementaryMessage
+                    textFormat: Text.PlainText
+                    color: view.supplementaryIsError ? Theme.color.danger :
+                                                       Theme.color.textSecondary
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    IslandButton {
+                        id: authenticateButton
+
+                        objectName: "polkitAuthenticateButton"
+                        label: "Authenticate"
+                        variant: "accent"
+                        enabled: view.authenticateEnabled
+                        Accessible.description: "Submit the current authentication response"
+                        onClicked: view.submitCurrentResponse()
                     }
                 }
             }
-
-            IslandText {
-                Layout.fillWidth: true
-                visible: !view.responseFieldVisible && view.controllerAvailable && !view.terminal
-                text: view.identityCount === 0
-                      ? "No supported authentication identity is available." :
-                        "Waiting for an authentication prompt…"
-                textFormat: Text.PlainText
-                tone: "secondary"
-                wrapMode: Text.Wrap
-                Accessible.role: Accessible.StaticText
-                Accessible.name: text
-            }
         }
+    }
 
-        Item {
-            Layout.fillHeight: true
-            Layout.minimumHeight: Theme.spacing.sm
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            visible: text !== ""
-            text: view.controllerCancellationPending || state.cancelDispatched ? "Cancelling…" :
-                                                                                 view.controllerSubmissionPending
-                                                                                 || state.submitDispatched
-                                                                                 ? "Authenticating…" :
-                                                                                   view.supplementaryMessage
-            textFormat: Text.PlainText
-            color: view.supplementaryIsError ? Theme.color.danger : Theme.color.textSecondary
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.StaticText
-            Accessible.name: text
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.md
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            IslandButton {
-                id: cancelButton
-
-                objectName: "polkitCancelButton"
-                label: "Cancel"
-                enabled: view.cancelEnabled
-                Accessible.description: "Cancel this authentication request"
-                onClicked: view.requestCancellation()
-            }
-
-            IslandButton {
-                id: authenticateButton
-
-                objectName: "polkitAuthenticateButton"
-                label: "Authenticate"
-                variant: "accent"
-                enabled: view.authenticateEnabled
-                Accessible.description: "Submit the current authentication response"
-                onClicked: view.submitCurrentResponse()
-            }
-        }
+    Binding {
+        target: frame.backControl
+        property: "enabled"
+        value: view.cancelEnabled
     }
 }

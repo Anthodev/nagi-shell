@@ -400,6 +400,8 @@ QVariantMap NotificationRuntime::resolveTransient(const QString &sourceToken, in
         return {
             {QStringLiteral("appName"), association->transientAppName},
             {QStringLiteral("summary"), association->transientSummary},
+            {QStringLiteral("body"), association->transientBody},
+            {QStringLiteral("appIconName"), association->transientAppIconName},
         };
     }
     return {};
@@ -731,6 +733,8 @@ void NotificationRuntime::dispatchPresentation(
     }
     association.transientAppName = notification.appName;
     association.transientSummary = notification.summary;
+    association.transientBody = notification.body;
+    association.transientAppIconName = notification.appIconName;
     ++association.transientRevision;
     association.transientPresentationValid = true;
     emit transientRequested(association.transientSourceToken,

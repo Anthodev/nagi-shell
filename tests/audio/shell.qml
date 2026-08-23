@@ -17,6 +17,23 @@ ShellRoot {
         return Math.abs(left - right) < 0.000001;
     }
 
+    function findObject(root, objectName) {
+        if (root === null || root === undefined) {
+            return null;
+        }
+        if (root.objectName === objectName) {
+            return root;
+        }
+        const children = root.children === undefined ? [] : root.children;
+        for (let index = 0; index < children.length; ++index) {
+            const match = findObject(children[index], objectName);
+            if (match !== null) {
+                return match;
+            }
+        }
+        return null;
+    }
+
     function makeAudio(volume, muted, volumes) {
         return audioFactory.createObject(test, {
                                              "volume": volume,
@@ -37,6 +54,7 @@ ShellRoot {
         const bridge = bridgeFactory.createObject(test);
         const capture = {
             "preferredWrites": [],
+            "preferredSourceWrites": [],
             "outputChanges": [],
             "inputChanges": [],
             "outputInvalidations": [],
@@ -53,7 +71,14 @@ ShellRoot {
                                                                                           "backend":
                                                                                           backend,
                                                                                           "node": node
-                                                                                      })
+                                                                                      }),
+                                                        "preferredSourceWriter": (backend, node)
+                                                                                 => capture.preferredSourceWrites.push(
+                                                                                        {
+                                                                                            "backend":
+                                                                                            backend,
+                                                                                            "node": node
+                                                                                        })
                                                     });
         adapter.confirmedOutputChanged.connect((token, generation, revision)
                                                => capture.outputChanges.push({
@@ -102,10 +127,12 @@ ShellRoot {
         bundle.adapter.processPendingChanges();
     }
 
-    function candidate(bundle, label) {
-        for (let index = 0; index < bundle.adapter.outputCandidates.length; ++index) {
-            if (bundle.adapter.outputCandidates[index].label === label) {
-                return bundle.adapter.outputCandidates[index];
+    function candidate(bundle, label, role) {
+        const candidates = role === "input" ? bundle.adapter.inputCandidates :
+                                              bundle.adapter.outputCandidates;
+        for (let index = 0; index < candidates.length; ++index) {
+            if (candidates[index].label === label) {
+                return candidates[index];
             }
         }
         return null;
@@ -163,6 +190,7 @@ ShellRoot {
             property var defaultAudioSink: null
             property var defaultAudioSource: null
             property var preferredDefaultAudioSink: null
+            property var preferredDefaultAudioSource: null
         }
     }
 
@@ -256,7 +284,140 @@ ShellRoot {
         AudioAdapter {}
     }
 
+    Item {
+        id: selectionHost
+    }
+
+    Component {
+        id: selectionViewFactory
+
+        AudioSelectionView {}
+    }
+
+    Component {
+        id: emptySelectionAdapterFactory
+
+        QtObject {
+            property bool available: false
+            property var outputCandidates: []
+            property var inputCandidates: []
+            property bool pendingOutputSelection: false
+            property bool pendingInputSelection: false
+            property string failure: "none"
+        }
+    }
+
+    function verifyEmptySelectionLayouts(bundle) {
+        console.warn("audio: empty selection view geometry");
+        const unavailableAdapter = emptySelectionAdapterFactory.createObject(selectionHost);
+        const emptyAdapter = emptySelectionAdapterFactory.createObject(selectionHost, {
+                                                                           "available": true
+                                                                       });
+        const cases = [
+                  {
+                      "adapter": null,
+                      "text": "Audio devices unavailable"
+                  },
+                  {
+                      "adapter": unavailableAdapter,
+                      "text": "Audio devices unavailable"
+                  },
+                  {
+                      "adapter": emptyAdapter,
+                      "text": "No selectable audio devices"
+                  }
+              ];
+
+        function verifyCase(index) {
+            if (index >= cases.length) {
+                unavailableAdapter.destroy();
+                emptyAdapter.destroy();
+                verifySelectionLayout(bundle);
+                return;
+            }
+            const current = cases[index];
+            const view = selectionViewFactory.createObject(selectionHost, {
+                                                               "adapter": current.adapter,
+                                                               "ownerEpoch": index + 1
+                                                           });
+            require(view !== null, "empty audio selection view is created");
+            Qt.callLater(() => {
+                view.width = view.implicitWidth;
+                view.height = view.implicitHeight;
+                Qt.callLater(() => {
+                    const contentRoot = findObject(view, "audioContentRoot");
+                    const message = findObject(view, "audioEmptyMessage");
+                    require(contentRoot !== null && message !== null && message.visible && message.text
+                            === current.text, "empty audio state exposes its semantic text");
+                    const origin = message.mapToItem(contentRoot, 0, 0);
+                    require(view.naturalContentWidth === Theme.size.audioEmptyContentMinimumWidth
+                            && contentRoot.implicitWidth
+                            === Theme.size.audioEmptyContentMinimumWidth,
+                            "empty audio state retains the compact semantic width");
+                    require(message.width > 0 && message.paintedWidth <= message.width + 0.5
+                            && origin.x >= -0.5 && origin.x + message.width <= contentRoot.width + 0.5,
+                            "empty audio text bounds fit the content viewport");
+                    view.destroy();
+                    Qt.callLater(() => verifyCase(index + 1));
+                });
+            });
+        }
+
+        verifyCase(0);
+    }
+
     Component.onCompleted: Qt.callLater(run)
+
+    function verifySelectionLayout(bundle) {
+        console.warn("audio: selection view layout");
+        const view = selectionViewFactory.createObject(selectionHost, {
+                                                           "adapter": bundle.adapter,
+                                                           "ownerEpoch": 1
+                                                       });
+        require(view !== null, "audio selection view is created");
+
+        Qt.callLater(() => {
+            view.width = view.implicitWidth;
+            view.height = view.implicitHeight;
+            Qt.callLater(() => {
+                const outputSection = findObject(view, "audioOutputSection");
+                const inputSection = findObject(view, "audioInputSection");
+                const frame = findObject(view, "audioSubviewFrame");
+                const contentRoot = findObject(view, "audioContentRoot");
+                const columnRow = findObject(view, "audioColumnRow");
+                require(frame !== null && contentRoot !== null && columnRow !== null
+                        && outputSection !== null && inputSection !== null && outputSection.visible
+                        && inputSection.visible,
+                        "audio frame and both candidate sections are visible");
+                require(inputSection.x > outputSection.x + outputSection.width,
+                        "input candidates sit beside output candidates");
+                require(Math.abs(inputSection.y - outputSection.y) < 0.5,
+                        "output and input candidate sections share a row");
+                require(Math.abs(inputSection.width - outputSection.width) <= 1,
+                        "output and input columns receive equal width");
+                const expectedContentWidth = Math.max(outputSection.naturalWidth,
+                                                      inputSection.naturalWidth) * 2
+                      + Theme.spacing.lg;
+                require(Math.abs(contentRoot.implicitWidth - expectedContentWidth) < 0.5 && Math.abs(
+                            view.implicitWidth - (expectedContentWidth + Theme.spacing.lg * 2))
+                        < 0.5, "audio width derives from natural candidate labels, column gap, and frame padding");
+                require(Math.abs(columnRow.width - contentRoot.width) <= 1 && Math.abs(
+                            outputSection.width + inputSection.width + columnRow.spacing
+                            - columnRow.width) <= 1,
+                        "candidate columns fill the content-driven width");
+
+                require(Math.abs(outputSection.x) < 0.5 && Math.abs(inputSection.x
+                                                                    + inputSection.width
+                                                                    - columnRow.width) < 0.5,
+                        "both audio candidate columns reach the content bounds without a dead zone");
+
+                view.destroy();
+                destroyBundle(bundle);
+                console.warn("audio tests passed");
+                Qt.exit(0);
+            });
+        });
+    }
 
     function run() {
         console.warn("audio: synchronization and discovery");
@@ -266,6 +427,8 @@ ShellRoot {
         const virtualAudio = own(bundle, makeAudio(0.62, false, [0.62, 0.62]));
         const otherAudio = own(bundle, makeAudio(0.8, false, [0.8, 0.8]));
         const streamAudio = own(bundle, makeAudio(0.3, false, [0.3, 0.3]));
+        const alternateInputAudio = own(bundle, makeAudio(0.55, false, [0.55]));
+        const otherInputAudio = own(bundle, makeAudio(0.7, false, [0.7]));
         const physical = own(bundle, makeNode({
                                                   "pipewireId": 10,
                                                   "name": "alsa_output.main",
@@ -299,6 +462,22 @@ ShellRoot {
                                                 "isSink": false,
                                                 "audio": inputAudio
                                             }));
+        const alternateSource = own(bundle, makeNode({
+                                                         "pipewireId": 41,
+                                                         "name": "usb_input.alternate",
+                                                         "description": "USB Microphone",
+                                                         "ready": true,
+                                                         "isSink": false,
+                                                         "audio": alternateInputAudio
+                                                     }));
+        const otherSource = own(bundle, makeNode({
+                                                     "pipewireId": 42,
+                                                     "name": "webcam_input.other",
+                                                     "description": "Webcam Microphone",
+                                                     "ready": true,
+                                                     "isSink": false,
+                                                     "audio": otherInputAudio
+                                                 }));
         const stream = own(bundle, makeNode({
                                                 "pipewireId": 50,
                                                 "name": "application.stream",
@@ -313,7 +492,8 @@ ShellRoot {
                 && bundle.adapter.failure === "unavailable",
                 "cold unavailable PipeWire publishes no writable state");
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, other, physical];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other,
+                                   physical];
             bundle.service.defaultAudioSink = physical;
             bundle.service.defaultAudioSource = source;
             bundle.service.ready = true;
@@ -334,6 +514,12 @@ ShellRoot {
                 "remaining outputs sort by normalized label");
         require(bundle.adapter.outputCandidates[0].node === undefined,
                 "candidate contract exposes no backend node");
+        require(bundle.adapter.inputCandidates.length === 3
+                && bundle.adapter.inputCandidates[0].label === "Desk Microphone"
+                && bundle.adapter.inputCandidates[0].isDefault,
+                "input discovery mirrors output discovery and sorts the confirmed source first");
+        require(bundle.adapter.inputCandidates[0].node === undefined,
+                "input candidates expose no backend objects");
 
         bundle.bridge.ready = false;
         require(!bundle.adapter.available && bundle.adapter.syncState === "tracking"
@@ -515,7 +701,7 @@ ShellRoot {
         require(bundle.adapter.requestOutputSelection(physicalCandidate.endpointKey),
                 "removal scenario starts pending");
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, other];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other];
         });
         require(!bundle.adapter.pendingOutputSelection && bundle.adapter.failure === "removed",
                 "removed target clears pending state");
@@ -525,6 +711,65 @@ ShellRoot {
         bundle.adapter.selectionDeadlineReached();
         require(!bundle.adapter.pendingOutputSelection && bundle.adapter.failure === "timeout",
                 "selection timeout is bounded");
+        bundle.adapter.failureDeadlineReached();
+
+        console.warn("audio: preferred versus confirmed input");
+        const sourceCandidate = candidate(bundle, "Desk Microphone", "input");
+        const alternateSourceCandidate = candidate(bundle, "USB Microphone", "input");
+        const otherSourceCandidate = candidate(bundle, "Webcam Microphone", "input");
+        require(sourceCandidate !== null && alternateSourceCandidate !== null
+                && otherSourceCandidate !== null,
+                "normalized input candidate keys remain available");
+        require(bundle.adapter.requestInputSelection(alternateSourceCandidate.endpointKey)
+                && bundle.adapter.pendingInputSelection
+                && bundle.capture.preferredSourceWrites.length === 1
+                && bundle.capture.preferredSourceWrites[0].node === alternateSource,
+                "input selection writes the live candidate as the preferred source");
+        require(bundle.adapter.inputLabel === "Desk Microphone",
+                "preferred input never replaces confirmed presentation");
+        apply(bundle, () => {
+            bundle.service.defaultAudioSource = alternateSource;
+        });
+        bundle.bridge.confirmTracked("input", alternateInputAudio.volume,
+                                     alternateInputAudio.muted);
+        require(!bundle.adapter.pendingInputSelection && bundle.adapter.inputLabel
+                === "USB Microphone",
+                "input selection succeeds only after defaultAudioSource confirms it");
+
+        require(bundle.adapter.requestInputSelection(sourceCandidate.endpointKey),
+                "second input selection request is accepted");
+        apply(bundle, () => {
+            bundle.service.defaultAudioSource = otherSource;
+        });
+        bundle.bridge.confirmTracked("input", otherInputAudio.volume, otherInputAudio.muted);
+        require(!bundle.adapter.pendingInputSelection && bundle.adapter.failure === "diverged"
+                && bundle.adapter.inputLabel === "Webcam Microphone",
+                "divergent confirmed input fails without optimistic presentation");
+        bundle.adapter.failureDeadlineReached();
+
+        require(bundle.adapter.requestInputSelection(sourceCandidate.endpointKey),
+                "input rejection scenario starts pending");
+        bundle.service.preferredDefaultAudioSource = alternateSource;
+        require(!bundle.adapter.pendingInputSelection && bundle.adapter.failure === "rejected",
+                "divergent preferred input is rejected");
+        bundle.adapter.failureDeadlineReached();
+
+        require(bundle.adapter.requestInputSelection(sourceCandidate.endpointKey),
+                "input removal scenario starts pending");
+        apply(bundle, () => {
+            bundle.model.values = [stream, virtual, alternateSource, otherSource, other];
+        });
+        require(!bundle.adapter.pendingInputSelection && bundle.adapter.failure === "removed",
+                "removed input target clears pending state");
+        bundle.adapter.failureDeadlineReached();
+        apply(bundle, () => {
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other];
+        });
+        require(bundle.adapter.requestInputSelection(alternateSourceCandidate.endpointKey),
+                "input timeout scenario starts pending");
+        bundle.adapter.selectionDeadlineReached("input");
+        require(!bundle.adapter.pendingInputSelection && bundle.adapter.failure === "timeout",
+                "input selection timeout is bounded");
         bundle.adapter.failureDeadlineReached();
 
         console.warn("audio: nullable defaults and graph replacement");
@@ -559,7 +804,8 @@ ShellRoot {
                                                      "audio": replacementAudio
                                                  }));
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, replacement];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource,
+                                   replacement];
             bundle.service.defaultAudioSink = replacement;
         });
         bundle.bridge.confirmTracked("output", replacementAudio.volume, replacementAudio.muted);
@@ -575,7 +821,8 @@ ShellRoot {
         });
         require(!bundle.adapter.available && bundle.adapter.syncState === "unavailable"
                 && bundle.adapter.trackedObjectCount === 0
-                && bundle.adapter.outputCandidates.length === 0,
+                && bundle.adapter.outputCandidates.length === 0
+                && bundle.adapter.inputCandidates.length === 0,
                 "fatal graph loss discards tracked QObjects, candidates, and writable state");
         require(bundle.adapter.outputGeneration === 0 && bundle.adapter.outputEndpointKey === "",
                 "fatal graph loss discards old session IDs and generations");
@@ -588,8 +835,6 @@ ShellRoot {
                 && bundle.capture.outputChanges.length === changesBeforeFatal,
                 "fatal recovery reacquires defaults without replaying initial confirmed state");
 
-        destroyBundle(bundle);
-        console.warn("audio tests passed");
-        Qt.exit(0);
+        verifyEmptySelectionLayouts(bundle);
     }
 }

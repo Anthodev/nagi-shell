@@ -27,15 +27,44 @@ ShellRoot {
         return false;
     }
 
+    function findObject(item, objectName) {
+        if (item === null || item === undefined) {
+            return null;
+        }
+        if (item.objectName === objectName) {
+            return item;
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; ++index) {
+            const found = findObject(children[index], objectName);
+            if (found !== null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
     function runChecks() {
         require(typeof Theme.color.surface !== "undefined", "color tokens resolve");
         require(typeof Theme.spacing.md === "number", "spacing tokens resolve");
-        require(typeof Theme.radius.pill === "number", "radius tokens resolve");
+        require(typeof Theme.radius.outer === "number", "radius tokens resolve");
         require(typeof Theme.type.body === "number", "typography tokens resolve");
         require(typeof Theme.size.controlHeightMd === "number", "sizing tokens resolve");
         require(typeof Theme.opacity.disabled === "number", "opacity tokens resolve");
         require(typeof Theme.motion.durationNormal === "number", "motion tokens resolve");
-
+        require(String(IconResolver.tintFor("normal")) === String(Theme.color.textPrimary) && String(
+                    IconResolver.tintFor("off")) === String(Theme.color.textPrimary),
+                "normal and off semantic icons use the near-white tint");
+        require(Theme.contrast(IconResolver.tintFor("active").toString(), IconResolver.iconSurface)
+                >= 4.5, "active semantic icon tint remains legible on the island base");
+        require(IconResolver.resolve("history", "normal", "", "").source.endsWith(
+                    "/assets/icons/nagi/notification-bell.svg"),
+                "notification history uses the Nagi bell artwork");
+        require(IconResolver.resolve("wifi", "off", "", "").source.endsWith(
+                    "/assets/icons/nagi/wifi-off.svg") && IconResolver.resolve("bluetooth", "off",
+                                                                               "", "").source.endsWith(
+                    "/assets/icons/nagi/bluetooth-off.svg"),
+                "connectivity off states keep their distinct bold Nagi artwork");
         require(String(primaryText.color) !== String(secondaryText.color),
                 "primary tone differs from secondary");
         require(String(secondaryText.color) !== String(mutedText.color),
@@ -43,12 +72,29 @@ ShellRoot {
         require(String(primaryText.color) !== String(mutedText.color),
                 "primary tone differs from muted");
 
+        const standardFocusRing = findObject(standardButton, "islandFocusRing");
+        const accentFocusRing = findObject(accentButton, "islandFocusRing");
+        const iconFocusRing = findObject(iconButton, "islandFocusRing");
+        require(standardFocusRing !== null && accentFocusRing !== null && iconFocusRing !== null,
+                "button primitives expose their focus rings");
+        require(standardFocusRing.controlRadius === standardButton.background.radius
+                && standardFocusRing.radius === standardButton.background.radius
+                + Theme.size.focusRingGap && iconFocusRing.controlRadius
+                === iconButton.background.radius && iconFocusRing.radius
+                === iconButton.background.radius + Theme.size.focusRingGap,
+                "button and icon-button focus rings follow their medium owner curves");
+        require(standardFocusRing.anchors.margins === -Theme.size.focusRingGap
+                && standardFocusRing.border.width === Theme.size.focusRingWidth,
+                "focus ring gap and border width retain their design tokens");
+
         standardButton.forceActiveFocus(Qt.TabFocusReason);
         require(standardButton.activeFocus, "enabled button takes keyboard focus");
-        require(standardButton.visualFocus, "keyboard focus reason drives the visible ring");
+        require(standardButton.visualFocus && standardFocusRing.visible,
+                "keyboard focus reason drives the visible ring");
         accentButton.forceActiveFocus(Qt.MouseFocusReason);
-        require(!standardButton.visualFocus, "focus loss clears the keyboard ring");
-        require(accentButton.activeFocus && !accentButton.visualFocus,
+        require(!standardButton.visualFocus && !standardFocusRing.visible,
+                "focus loss clears the keyboard ring");
+        require(accentButton.activeFocus && !accentButton.visualFocus && !accentFocusRing.visible,
                 "pointer focus does not draw the keyboard ring");
 
         disabledButton.forceActiveFocus(Qt.TabFocusReason);
@@ -71,6 +117,9 @@ ShellRoot {
         require(indeterminateProgress.indeterminate, "indeterminate progress reports its mode");
         require(iconButton.implicitWidth === iconButton.implicitHeight,
                 "icon button stays circular");
+        require(iconButton.background.radius === Theme.radius.md && iconButton.background.radius * 2
+                < iconButton.implicitHeight,
+                "standard icon buttons use the 10 px medium radius, not a half-height pill");
 
         require(trayView.itemCount === 2 && trayView.implicitHeight > 0,
                 "tray renders live items as one contextual control row");
@@ -260,6 +309,7 @@ ShellRoot {
 
                 width: 240
                 adapter: trayAdapter
+                ownerEpoch: 1
             }
 
             IslandProgressBar {

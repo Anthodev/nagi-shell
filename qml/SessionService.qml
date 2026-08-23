@@ -12,12 +12,17 @@ Scope {
 
     // Verification seam. Production owns one native SessionBridge.
     property var bridge: null
+    // Quickshell.reload(false) performs a soft configuration reload, preserving
+    // reusable windows. Injection keeps this platform seam directly verifiable.
+    property var reloadController: Quickshell
 
     readonly property bool backendReady: engine.currentBridge !== null && engine.currentBridge.ready
     readonly property bool pending: engine.pendingRequestId !== 0
     readonly property string pendingAction: engine.pendingAction
     readonly property string failure: engine.failure
     readonly property int activeTimerCount: root.bridge === null ? nativeBridge.activeTimerCount : 0
+    readonly property bool shellRestartReady: root.reloadController !== null
+                                              && typeof root.reloadController.reload === "function"
 
     signal operationFinished(int requestId, string action, string outcome)
 
@@ -100,13 +105,22 @@ Scope {
         }
 
         function requestAction(action) {
-            if (currentBridge === null || !currentBridge.ready || pendingRequestId !== 0 || !validAction(
-                        action)) {
+            if (pendingRequestId !== 0 || !validAction(action)) {
                 return 0;
             }
 
             const requestId = allocateRequestId();
-            if (!currentBridge.requestAction(requestId, action)) {
+            if (action === "restartShell") {
+                if (!root.shellRestartReady) {
+                    return 0;
+                }
+                failure = "none";
+                root.reloadController.reload(false);
+                return requestId;
+            }
+
+            if (currentBridge === null || !currentBridge.ready || !currentBridge.requestAction(
+                        requestId, action)) {
                 return 0;
             }
             pendingRequestId = requestId;
@@ -123,7 +137,7 @@ Scope {
 
         function validAction(action) {
             return action === "lock" || action === "suspend" || action === "logout" || action
-                    === "reboot" || action === "powerOff";
+                    === "reboot" || action === "powerOff" || action === "restartShell";
         }
 
         function validOutcome(outcome) {

@@ -84,7 +84,7 @@ ShellRoot {
             responseField = findObject(polkitView, "polkitResponseField");
             firstIdentityButton = findObject(polkitView, "polkitIdentityButton0");
             secondIdentityButton = findObject(polkitView, "polkitIdentityButton1");
-            cancelButton = findObject(polkitView, "polkitCancelButton");
+            cancelButton = findObject(polkitView, "subviewBackButton");
             authenticateButton = findObject(polkitView, "polkitAuthenticateButton");
             if (!awaitState(responseInput !== null && responseField !== null
                             && firstIdentityButton !== null && secondIdentityButton !== null
@@ -99,8 +99,18 @@ ShellRoot {
                     "unsafe icon names use the fixed fallback");
             require(polkitView.identityCount === 2 && polkitView.selectedIdentity === identityA,
                     "only the normalized identity projection is consumed");
+            require(cancelButton.Accessible.name === "Back",
+                    "Polkit cancellation uses the shared iconographic Back affordance");
             require(polkitView.supplementaryMessage.length === 512,
                     "supplementary feedback is bounded");
+            require(responseField.radius === Theme.radius.md
+                    && firstIdentityButton.background.radius === Theme.radius.md
+                    && authenticateButton.background.radius === Theme.radius.md
+                    && cancelButton.background.radius === Theme.radius.md,
+                    "inner fields and standard controls use the 10 px medium radius");
+            require(firstIdentityButton.background.radius * 2
+                    < firstIdentityButton.implicitHeight,
+                    "standard controls do not regress to a 32 px pill");
             polkitView.focusInitialControl();
         } else if (step === 1) {
             if (!awaitState(firstIdentityButton.activeFocus,
@@ -183,7 +193,7 @@ ShellRoot {
             }
             require(traversalContains(firstIdentityButton,
                                       [responseInput, cancelButton, authenticateButton]),
-                    "focus chain reaches response, Cancel, and Authenticate");
+                    "focus chain reaches response, Back, and Authenticate");
             responseInput.text = "synthetic-before-cancel";
             keyDriver.pressEscape();
             require(controller.cancelCount === 1 && controller.cancelInputWasCleared
@@ -330,8 +340,8 @@ ShellRoot {
         id: window
 
         visible: true
-        width: Theme.size.islandExpandedWidth
-        height: Theme.size.islandExpandedHeight
+        width: polkitView.implicitWidth
+        height: polkitView.implicitHeight
         color: Theme.color.surface
 
         PolkitView {

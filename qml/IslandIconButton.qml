@@ -33,16 +33,16 @@ AbstractButton {
         if (!enabled) {
             return Theme.color.controlFill;
         }
-        return pressed ? Theme.color.controlFillPressed : hovered ? Theme.color.controlFillHover :
-                                                                    Theme.color.controlFill;
+        return pressed ? Theme.snapshot.controlFillPressed : hovered
+                         ? Theme.snapshot.controlFillHover : Theme.color.controlFill;
     }
 
     function outlineColor() {
         if (!enabled) {
             return "transparent";
         }
-        return pressed ? Theme.color.surfaceBorderPressed : hovered
-                         ? Theme.color.surfaceBorderHover : Theme.color.surfaceBorder;
+        return pressed ? Theme.snapshot.surfaceBorderPressed : hovered
+                         ? Theme.snapshot.surfaceBorderHover : Theme.color.surfaceBorder;
     }
 
     background: IslandPanel {

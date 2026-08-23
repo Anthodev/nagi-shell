@@ -83,6 +83,7 @@ jobs:
       WLR_BACKENDS: headless
       WLR_LIBINPUT_NO_DEVICES: '1'
       WLR_RENDERER: pixman
+      WLR_HEADLESS_OUTPUTS: '1'
       # Force Qt Quick CPU rasterization so the scenario needs no GPU or GL stack.
       QT_QUICK_BACKEND: software
     steps:
@@ -92,8 +93,15 @@ jobs:
       - name: Install the Fedora 44 toolchain
         uses: ./.github/actions/install-toolchain
 
+      - name: Install the headless layer-shell compositor
+        run: |
+          dnf -y --setopt=install_weak_deps=False install sway
+          cp /usr/bin/sway /usr/local/bin/sway-headless
+          command -v sway-headless
+          command -v swaymsg
+
       - name: Prepare the runtime directory
-        run: mkdir -p "$XDG_RUNTIME_DIR"
+        run: install -d -m 0700 "$XDG_RUNTIME_DIR"
 
       - name: Verify repository requirements
         run: make requirements
@@ -105,13 +113,31 @@ jobs:
           mkdir -p "$logdir"
           status_file="$logdir/test-status"
 
-          # cage exits when its client exits but does not reliably propagate the
-          # client exit status, so the inner shell records the make status itself.
+          cat >"$logdir/run-tests" <<'EOF'
+          #!/bin/bash
+          set +e
+          make test-surface-state >"/tmp/nagi-diagnostics/quickshell.log" 2>&1 \
+            && make test-ui-primitives >>"/tmp/nagi-diagnostics/quickshell.log" 2>&1
+          test_status=$?
+          printf '%s\n' "$test_status" >"/tmp/nagi-diagnostics/test-status"
+          swaymsg --quiet exit
+          exit "$test_status"
+          EOF
+          chmod +x "$logdir/run-tests"
+
+          cat >"$logdir/sway.conf" <<'EOF'
+          swaybg_command -
+          xwayland disable
+          output * resolution 1920x1080
+          exec /tmp/nagi-diagnostics/run-tests
+          EOF
+
+          # The Fedora binary carries a TTY capability that container runtimes
+          # may reject. The plain copy is sufficient for the headless backend.
           set +e
           timeout --kill-after=10s 300 \
-            cage -- sh -c 'make test-surface-state >"$1" 2>&1 && make test-ui-primitives >>"$1" 2>&1; printf "%s\n" "$?" >"$2"' \
-            sh "$logdir/quickshell.log" "$status_file" \
-            2>"$logdir/compositor.log"
+            sway-headless --config "$logdir/sway.conf" \
+            >"$logdir/compositor.log" 2>&1
           wrapper_status=$?
           set -e
 

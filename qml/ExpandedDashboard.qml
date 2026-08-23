@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 
-// Presentation-only shell for Expanded. Each semantic region mounts a real
-// downstream component or disappears completely; this component owns no
-// platform action, state arbitration, collapse timer, or placeholder control.
+// Presentation-only Expanded composition. Regions disappear with their injected
+// content, and geometry follows the mounted rows within the current screen.
 FocusScope {
     id: dashboard
 
@@ -14,17 +14,60 @@ FocusScope {
     property Component notificationsContent: null
     property Component navigationContent: null
 
+    readonly property bool mediaReady: mediaRegion.ready
+    readonly property string primaryRowMode: mediaReady ? "media-and-clock" : "clock-only"
     readonly property int loadedRegionCount: (mediaRegion.ready ? 1 : 0) + (clockRegion.ready ? 1 :
                                                                                                 0) + (quickControlsRegion.ready
                                                                                                       ? 1 : 0)
                                              + (audioRegion.ready ? 1 : 0) + (
                                                  notificationsRegion.ready ? 1 : 0) + (
                                                  navigationRegion.ready ? 1 : 0)
+    readonly property bool primaryRowReady: mediaRegion.ready || clockRegion.ready
+    readonly property int mainRowCount: (primaryRowReady ? 1 : 0) + (quickControlsRegion.ready ? 1 :
+                                                                                                 0) + (audioRegion.ready
+                                                                                                       ? 1 : 0)
+                                        + (notificationsRegion.ready ? 1 : 0)
+    readonly property real primaryRowWidth: mediaRegion.implicitWidth + (mediaRegion.ready
+                                                                         && clockRegion.ready
+                                                                         ? Theme.spacing.lg : 0)
+                                            + clockRegion.implicitWidth
+    readonly property real primaryRowHeight: Math.max(mediaRegion.implicitHeight,
+                                                      clockRegion.implicitHeight)
+    readonly property real mainContentWidth: Math.max(primaryRowWidth,
+                                                      quickControlsRegion.implicitWidth,
+                                                      audioRegion.implicitWidth,
+                                                      notificationsRegion.implicitWidth)
+    readonly property real mainContentHeight: primaryRowHeight + quickControlsRegion.implicitHeight
+                                              + audioRegion.implicitHeight
+                                              + notificationsRegion.implicitHeight + Math.max(0,
+                                                                                              mainRowCount
+                                                                                              - 1) * Theme.spacing.lg
+    readonly property real naturalWidth: Theme.spacing.xl * 2 + mainContentWidth + (
+                                             navigationRegion.ready ? Theme.spacing.lg
+                                                                      + navigationRegion.implicitWidth :
+                                                                      0)
+    readonly property real naturalHeight: Theme.spacing.xl * 2 + Math.max(mainContentHeight,
+                                                                          navigationRegion.implicitHeight)
+    readonly property real availableWidth: Screen.desktopAvailableWidth > 0 ? Math.max(1,
+                                                                                       Screen.desktopAvailableWidth
+                                                                                       - Theme.spacing.sm
+                                                                                       * 2) : naturalWidth
+    readonly property real availableHeight: Screen.desktopAvailableHeight > 0 ? Math.max(1,
+                                                                                         Screen.desktopAvailableHeight
+                                                                                         - Theme.spacing.sm
+                                                                                         * 2) : naturalHeight
+
+    implicitWidth: Math.min(naturalWidth, availableWidth)
+    implicitHeight: Math.min(naturalHeight, availableHeight)
+    clip: true
 
     signal closeRequested
 
     function focusInitialControl() {
-        closeButton.forceActiveFocus(Qt.ShortcutFocusReason);
+        const first = dashboard.nextItemInFocusChain(true);
+        if (first !== null && first !== dashboard) {
+            first.forceActiveFocus(Qt.ShortcutFocusReason);
+        }
     }
 
     Keys.priority: Keys.BeforeItem
@@ -33,74 +76,78 @@ FocusScope {
         event.accepted = true;
     }
 
-    GridLayout {
+    RowLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacing.xl
-        anchors.topMargin: Theme.spacing.xl + closeButton.implicitHeight + Theme.spacing.sm
-        columns: 2
-        columnSpacing: Theme.spacing.lg
-        rowSpacing: Theme.spacing.lg
+        spacing: Theme.spacing.lg
 
-        DashboardRegion {
-            id: mediaRegion
+        ColumnLayout {
+            Layout.alignment: Qt.AlignTop | Qt.AlignLeft
+            Layout.preferredWidth: dashboard.mainContentWidth
+            spacing: Theme.spacing.lg
 
-            objectName: "dashboardMediaRegion"
-            content: dashboard.mediaContent
-            active: dashboard.visible
-            Layout.row: 0
-            Layout.column: 0
-            Layout.columnSpan: dashboard.clockContent === null ? 2 : 1
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
+            Item {
+                id: primaryRow
+                objectName: "dashboardPrimaryRow"
 
-        DashboardRegion {
-            id: clockRegion
+                Layout.fillWidth: true
+                Layout.preferredHeight: dashboard.primaryRowHeight
 
-            objectName: "dashboardClockRegion"
-            content: dashboard.clockContent
-            active: dashboard.visible
-            Layout.row: 0
-            Layout.column: dashboard.mediaContent === null ? 0 : 1
-            Layout.columnSpan: dashboard.mediaContent === null ? 2 : 1
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
+                DashboardRegion {
+                    id: mediaRegion
 
-        DashboardRegion {
-            id: quickControlsRegion
+                    objectName: "dashboardMediaRegion"
+                    content: dashboard.mediaContent
+                    active: dashboard.visible
+                    width: implicitWidth
+                    height: implicitHeight
+                }
 
-            objectName: "dashboardQuickControlsRegion"
-            content: dashboard.quickControlsContent
-            active: dashboard.visible
-            Layout.row: 1
-            Layout.column: 0
-            Layout.columnSpan: 2
-            Layout.fillWidth: true
-        }
+                DashboardRegion {
+                    id: clockRegion
 
-        DashboardRegion {
-            id: audioRegion
+                    objectName: "dashboardClockRegion"
+                    content: dashboard.clockContent
+                    active: dashboard.visible
+                    x: dashboard.mediaReady ? primaryRow.width - width : (primaryRow.width - width)
+                                              / 2
+                    width: implicitWidth
+                    height: implicitHeight
+                }
+            }
 
-            objectName: "dashboardAudioRegion"
-            content: dashboard.audioContent
-            active: dashboard.visible
-            Layout.row: 2
-            Layout.column: 0
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
+            DashboardRegion {
+                id: quickControlsRegion
 
-        DashboardRegion {
-            id: notificationsRegion
+                objectName: "dashboardQuickControlsRegion"
+                content: dashboard.quickControlsContent
+                active: dashboard.visible
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                Layout.alignment: Qt.AlignLeft
+            }
 
-            objectName: "dashboardNotificationsRegion"
-            content: dashboard.notificationsContent
-            active: dashboard.visible
-            Layout.row: 2
-            Layout.column: 1
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            DashboardRegion {
+                id: audioRegion
+
+                objectName: "dashboardAudioRegion"
+                content: dashboard.audioContent
+                active: dashboard.visible
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                Layout.alignment: Qt.AlignLeft
+            }
+
+            DashboardRegion {
+                id: notificationsRegion
+
+                objectName: "dashboardNotificationsRegion"
+                content: dashboard.notificationsContent
+                active: dashboard.visible
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                Layout.alignment: Qt.AlignLeft
+            }
         }
 
         DashboardRegion {
@@ -109,23 +156,9 @@ FocusScope {
             objectName: "dashboardNavigationRegion"
             content: dashboard.navigationContent
             active: dashboard.visible
-            Layout.row: 3
-            Layout.column: 0
-            Layout.columnSpan: 2
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignBottom
+            Layout.preferredWidth: implicitWidth
+            Layout.preferredHeight: Math.max(implicitHeight, dashboard.mainContentHeight)
+            Layout.alignment: Qt.AlignTop | Qt.AlignRight
         }
-    }
-
-    IslandButton {
-        id: closeButton
-
-        objectName: "dashboardCloseButton"
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: Theme.spacing.xl
-        anchors.rightMargin: Theme.spacing.xl
-        label: "Close"
-        onClicked: dashboard.closeRequested()
     }
 }
