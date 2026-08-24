@@ -97,6 +97,7 @@ ShellRoot {
 
     function makeWeather(overrides) {
         const properties = {
+            "enabled": true,
             "wallNow": function () {
                 return test.nowMs;
             },
@@ -134,6 +135,19 @@ ShellRoot {
 
     function run() {
         rngQueue = [];
+
+        const disabledCap = newCapture(null);
+        const disabled = makeWeather({
+                                         "enabled": false,
+                                         "latitude": 48.8566,
+                                         "longitude": 2.3522,
+                                         "transport": disabledCap.transport
+                                     });
+        disabled.refreshDeadlineReached();
+        require(!disabled.locationConfigured && !disabled.available
+                && disabled.failure === "unconfigured"
+                && disabledCap.record.requests.length === 0,
+                "disabled weather performs no cache adoption or request");
 
         // Unconfigured and invalid locations never request and stay unavailable.
         const unconfiguredCap = newCapture(null);
@@ -526,6 +540,14 @@ ShellRoot {
                 "the compact clock updates only at minute precision");
         require(clock.dateText.length > 0 && /^Week [1-9][0-9]?$/.test(clock.weekText),
                 "expanded clock derives date and ISO week from the same minute source");
+        clock.dateFormat = "yyyy-MM-dd";
+        require(/^\d{4}-\d{2}-\d{2}$/.test(clock.dateText),
+                "the compact clock applies a custom bounded Qt date pattern");
+        clock.dateFormat = "dddd, d MMMM";
+        clock.format = "12h";
+        require(/^(?:1[0-2]|[1-9]):[0-5]\d\s.+$/.test(clock.text),
+                "the compact clock renders localized 12-hour text with an AM/PM indicator");
+        clock.format = "24h";
 
         // Cache lifecycle across instances: adoption without requests, keyed
         // replacement, and removal of a previous location's record.

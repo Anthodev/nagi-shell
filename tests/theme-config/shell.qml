@@ -11,6 +11,11 @@ ShellRoot {
     property string stage: "default"
     property var preservedSnapshot: null
     property int publishedSnapshots: 0
+    readonly property string configPhase: (Quickshell.env("NAGI_THEME_CONFIG_TEST_PHASE") ?? "")
+                                          === "race" || (Quickshell.env("XDG_CONFIG_HOME")
+                                                         ?? "").endsWith("/race-config") ? "race" :
+                                                                                           "normal"
+    readonly property string raceContent: "[theme]\nmode=wallpaper\naccent=#123456\n"
 
     function fail(message) {
         console.error("FAIL: " + message + " (stage=" + stage + ")");
@@ -26,6 +31,48 @@ ShellRoot {
 
     function colorString(value) {
         return String(value).toUpperCase();
+    }
+    function parse(content) {
+        return UserConfig.parseConfiguration(content, unescape(encodeURIComponent(content)).length);
+    }
+
+    function validateConfigurationContract() {
+        const legacy = parse("[theme]\nmode=wallpaper\naccent=#5B6FF5\n");
+        require(legacy !== null && legacy.media.enabled && !legacy.weather.enabled
+                && legacy.clock.format === "24h" && legacy.clock.dateFormat === "dddd, d MMMM" &&
+                !legacy.clock.showIdleDate, "legacy theme-only files retain documented defaults");
+        const full = parse(
+                  "[theme]\nmode=accent\naccent=#123456\nsurface_opacity=0.85\nfont_family=Noto Sans\nouter_radius=32\n[media]\nenabled=false\n[weather]\nenabled=true\nlatitude=-90\nlongitude=180\n[clock]\nformat=12h\ndate_format=yyyy-MM-dd\nshow_idle_date=true\n");
+        require(full !== null && full.theme.surfaceOpacity === 0.85 && full.theme.fontFamily
+                === "Noto Sans" && full.theme.outerRadius === 32 && !full.media.enabled
+                && full.weather.enabled && full.weather.latitude === -90 && full.weather.longitude
+                === 180 && full.clock.format === "12h" && full.clock.dateFormat === "yyyy-MM-dd"
+                && full.clock.showIdleDate, "every documented key is normalized");
+        const invalid = ["[theme]\nmode=wallpaper\nunknown=x\n",
+                         "[theme]\nmode=wallpaper\nmode=accent\naccent=#123456\n",
+                         "[unknown]\nenabled=true\n[theme]\nmode=wallpaper\n",
+                         "[theme]\nmode=wallpaper\nsurface_opacity=0.84\n",
+                         "[theme]\nmode=wallpaper\nsurface_opacity=Infinity\n",
+                         "[theme]\nmode=wallpaper\nfont_family= \n",
+                         "[theme]\nmode=wallpaper\nfont_family=" + "x".repeat(129) + "\n",
+                         "[theme]\nmode=wallpaper\nouter_radius=7\n",
+                         "[theme]\nmode=wallpaper\nouter_radius=16.5\n",
+                         "[theme]\nmode=wallpaper\n[weather]\nenabled=true\n",
+                         "[theme]\nmode=wallpaper\n[weather]\nenabled=true\nlatitude=91\nlongitude=0\n",
+                         "[theme]\nmode=wallpaper\n[media]\nenabled=yes\n",
+                         "[theme]\nmode=wallpaper\n[clock]\nformat=locale\n",
+                         "[theme]\nmode=wallpaper\n[clock]\ndate_format=" + "y".repeat(65) + "\n",
+                         "[theme]\nmode=wallpaper\n[clock]\ndate_format=yyyy\tMM\n",
+                         "[theme]\nmode=wallpaper\u0000\n"];
+        for (let index = 0; index < invalid.length; index += 1) {
+            require(parse(invalid[index]) === null, "invalid configuration " + index
+                    + " is rejected");
+        }
+        require(UserConfig.parseConfiguration("x".repeat(4097), 4097) === null,
+                "oversized input is rejected before parsing");
+        require(UserConfig.defaultContent.indexOf("nominatim.openstreetmap.org/ui/search.html") !==
+                -1 && UserConfig.defaultContent.indexOf("date_format=dddd, d MMMM") !== -1,
+                "generated default documents coordinates and the date format");
     }
 
     function validateSnapshot(snapshot) {
@@ -60,6 +107,11 @@ ShellRoot {
     }
 
     function defaultStage() {
+        validateConfigurationContract();
+        if (!UserConfig._hasLoadedConfiguration) {
+            settle("generated-default");
+            return;
+        }
         validateSnapshot(Theme.snapshot);
         require(Theme.configPath === Quickshell.env("XDG_CONFIG_HOME") + "/nagi-shell/theme.conf",
                 "theme uses the isolated XDG path");
@@ -68,6 +120,23 @@ ShellRoot {
         require(Theme.snapshot.accent === "#5B6FF5", "official fallback accent is exact");
         require(colorString(Theme.snapshot.accent) === "#5B6FF5",
                 "canonical accent resolves dynamically");
+        writeFixture("accent-one", "[theme]\nmode=accent\naccent=#FF8A00\n", true);
+    }
+    function generatedDefaultStage() {
+        require(UserConfig._hasLoadedConfiguration,
+                "missing configuration is created and loaded without replacing built-in defaults");
+        if (configPhase === "race") {
+            raceReader.reload();
+            raceReader.waitForJob();
+            require(raceReader.text() === raceContent,
+                    "exclusive default creation preserves a concurrently created file");
+            console.log("theme configuration race test passed");
+            Qt.exit(0);
+            return;
+        }
+        require(Theme.snapshot.mode === "wallpaper" && Theme.opacity.surface === 0.96
+                && Theme.type.family === "Inter" && Theme.radius.outer === 16,
+                "generated configuration preserves visible defaults");
         writeFixture("accent-one", "[theme]\nmode=accent\naccent=#FF8A00\n", true);
     }
 
@@ -195,6 +264,9 @@ ShellRoot {
 
     function runSettledStage() {
         switch (stage) {
+        case "generated-default":
+            generatedDefaultStage();
+            break;
         case "accent-one":
             accentOneStage();
             break;
@@ -242,6 +314,16 @@ ShellRoot {
     Component.onCompleted: Qt.callLater(test.defaultStage)
 
     Connections {
+        target: UserConfig
+
+        function onDefaultCandidateStaged() {
+            if (test.configPhase === "race") {
+                raceWriter.setText(test.raceContent);
+            }
+        }
+    }
+
+    Connections {
         target: Theme
 
         function onSnapshotChanged() {
@@ -260,6 +342,22 @@ ShellRoot {
         onSaveFailed: function (error) {
             test.fail("fixture write failed");
         }
+    }
+
+    FileView {
+        id: raceWriter
+
+        path: Theme.configPath
+        blockWrites: true
+        printErrors: false
+    }
+
+    FileView {
+        id: raceReader
+
+        path: Theme.configPath
+        blockLoading: true
+        printErrors: false
     }
 
     Process {

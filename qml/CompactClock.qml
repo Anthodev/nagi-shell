@@ -1,11 +1,13 @@
 import Quickshell
 import QtQuick
 
-// Compact 24-hour idle clock state. Minute precision is the visible
-// granularity of the idle island, so this clock updates only when the minute
-// changes; no higher-frequency timer or animation ever runs.
+// Minute precision is the visible granularity of both clock formats, so this
+// clock updates only when the minute changes.
 SystemClock {
     id: clock
+    property string format: "24h"
+    property string dateFormat: "dddd, d MMMM"
+    property bool showIdleDate: false
 
     precision: SystemClock.Minutes
     function isoWeek(date) {
@@ -16,7 +18,8 @@ SystemClock {
         return Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
     }
 
-    readonly property string text: Qt.formatDateTime(clock.date, "HH:mm")
-    readonly property string dateText: Qt.formatDateTime(clock.date, "dddd, d MMMM")
+    readonly property string text: format === "12h" ? Qt.formatDateTime(clock.date, "h:mm AP") :
+                                                      Qt.formatDateTime(clock.date, "HH:mm")
+    readonly property string dateText: Qt.formatDateTime(clock.date, dateFormat)
     readonly property string weekText: "Week " + isoWeek(clock.date)
 }

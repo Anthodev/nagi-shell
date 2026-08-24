@@ -98,13 +98,26 @@ ShellRoot {
                 && islandFull.workspaceBlock.height === islandFull.workspaceIndicatorHeight,
                 "workspace position uses the compact rectangular indicator geometry");
         require(islandFull.clockBlock.text === "13:45", "clock renders normalized time text");
+        require(!islandFull.clockDateBlock.visible && islandFull.clockGroupBlock.width
+                === islandFull.clockBlock.width,
+                "disabled Idle date leaves no separator or residual gap");
+        require(islandWithDate.clockDateBlock.visible && islandWithDate.clockDateBlock.text
+                === "Monday, 24 August" && islandWithDate.clockDateGap === Theme.spacing.md
+                && islandWithDate.clockDateBlock.font.pixelSize
+                === islandWithDate.clockBlock.font.pixelSize
+                && islandWithDate.clockDateBlock.font.weight
+                === islandWithDate.clockBlock.font.weight && islandWithDate.clockDateBlock.color
+                === islandWithDate.clockBlock.color && islandWithDate.clockGroupBlock.width
+                === islandWithDate.clockBlock.width + islandWithDate.clockDateGap
+                + islandWithDate.clockDateBlock.width,
+                "enabled Idle date matches the time typography and keeps its semantic gap");
         require(islandFull.temperatureText === "24°", "temperature renders rounded Celsius");
         require(islandFull.weatherCaptionText === "Clear · Day",
                 "weather renders normalized condition and day phase context");
         require(islandFull.mediaSummary === "Artist — Track", "media renders the selected summary");
         require(islandFull.workspaceBlock.x < islandFull.workspaceBoundary.x
-                && islandFull.workspaceBoundary.x < islandFull.clockBlock.x
-                && islandFull.clockBlock.x < islandFull.clockBoundary.x
+                && islandFull.workspaceBoundary.x < islandFull.clockGroupBlock.x
+                && islandFull.clockGroupBlock.x < islandFull.clockBoundary.x
                 && islandFull.clockBoundary.x < islandFull.weatherBlock.x
                 && islandFull.weatherBlock.x < islandFull.weatherBoundary.x
                 && islandFull.weatherBoundary.x < islandFull.mediaBlock.x,
@@ -121,7 +134,7 @@ ShellRoot {
         requireEdgeSymmetry(islandFull, islandFull.weatherBoundary, islandFull.mediaBlock,
                             "full Idle");
         require(islandFull.implicitWidth === islandFull.contentPadding * 2
-                + islandFull.workspaceBlock.width + islandFull.clockBlock.width
+                + islandFull.workspaceBlock.width + islandFull.clockGroupBlock.width
                 + islandFull.weatherBlock.width + islandFull.mediaBlock.width
                 + islandFull.boundaryWidth * 3,
                 "idle width follows groups, boundaries, and symmetric edge padding exactly");
@@ -139,7 +152,7 @@ ShellRoot {
                 + islandNoWeather.clockBoundary.width,
                 "media follows the clock with one boundary and no orphan weather separator");
         require(islandNoWeather.implicitWidth === islandNoWeather.contentPadding * 2
-                + islandNoWeather.workspaceBlock.width + islandNoWeather.clockBlock.width
+                + islandNoWeather.workspaceBlock.width + islandNoWeather.clockGroupBlock.width
                 + islandNoWeather.mediaBlock.width + islandNoWeather.boundaryWidth * 2,
                 "weather-free geometry contains exactly three groups and two boundaries");
         requireEdgeSymmetry(islandNoWeather, islandNoWeather.clockBoundary,
@@ -152,7 +165,7 @@ ShellRoot {
         require(!islandNoMedia.weatherBoundary.visible,
                 "missing media leaves no orphan separator after weather");
         require(islandNoMedia.implicitWidth === islandNoMedia.contentPadding * 2
-                + islandNoMedia.workspaceBlock.width + islandNoMedia.clockBlock.width
+                + islandNoMedia.workspaceBlock.width + islandNoMedia.clockGroupBlock.width
                 + islandNoMedia.weatherBlock.width + islandNoMedia.boundaryWidth * 2,
                 "media-free geometry contains exactly three groups and two boundaries");
         requireEdgeSymmetry(islandNoMedia, islandNoMedia.clockBoundary, islandNoMedia.weatherBlock,
@@ -167,13 +180,15 @@ ShellRoot {
                 "only the required workspace/time boundary survives optional collapse");
         require(islandNoWeatherNoMedia.implicitWidth === islandNoWeatherNoMedia.contentPadding * 2
                 + islandNoWeatherNoMedia.workspaceBlock.width
-                + islandNoWeatherNoMedia.clockBlock.width + islandNoWeatherNoMedia.boundaryWidth,
+                + islandNoWeatherNoMedia.clockGroupBlock.width
+                + islandNoWeatherNoMedia.boundaryWidth,
                 "collapsing optional groups leaves required groups and one boundary");
-        require(islandNoWeatherNoMedia.clockBlock.x === islandNoWeatherNoMedia.workspaceBoundary.x
+        require(islandNoWeatherNoMedia.clockGroupBlock.x
+                === islandNoWeatherNoMedia.workspaceBoundary.x
                 + islandNoWeatherNoMedia.workspaceBoundary.width,
                 "required groups preserve order without optional-content residue");
         requireEdgeSymmetry(islandNoWeatherNoMedia, islandNoWeatherNoMedia.workspaceBoundary,
-                            islandNoWeatherNoMedia.clockBlock, "required-only Idle");
+                            islandNoWeatherNoMedia.clockGroupBlock, "required-only Idle");
         require(islandFull.implicitHeight === islandNoWeather.implicitHeight
                 && islandFull.implicitHeight === islandNoMedia.implicitHeight
                 && islandFull.implicitHeight === islandNoWeatherNoMedia.implicitHeight,
@@ -225,7 +240,7 @@ ShellRoot {
         // Bounded overflow: the island width caps and the marquee arms.
         require(islandOverflow.mediaBlock.overflowing, "long media reports overflow");
         require(islandOverflow.implicitWidth <= islandOverflow.contentPadding * 2
-                + islandOverflow.workspaceBlock.width + islandOverflow.clockBlock.width
+                + islandOverflow.workspaceBlock.width + islandOverflow.clockGroupBlock.width
                 + islandOverflow.weatherBlock.width + Theme.size.islandIdleMediaMaximumWidth
                 + islandOverflow.boundaryWidth * 3,
                 "overflowing media stays inside the island width cap");
@@ -336,6 +351,8 @@ ShellRoot {
 
     component FakeClock: QtObject {
         property string text: "13:45"
+        property string dateText: "Monday, 24 August"
+        property bool showIdleDate: false
     }
 
     component FakeDesktops: QtObject {
@@ -433,6 +450,20 @@ ShellRoot {
 
         virtualDesktops: fullDesktops
         clock: FakeClock {}
+        weather: FakeWeather {
+            available: false
+        }
+        media: FakeMedia {
+            available: false
+        }
+    }
+    IdleIsland {
+        id: islandWithDate
+
+        virtualDesktops: fullDesktops
+        clock: FakeClock {
+            showIdleDate: true
+        }
         weather: FakeWeather {
             available: false
         }

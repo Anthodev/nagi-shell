@@ -3,11 +3,25 @@ pragma ComponentBehavior: Bound
 
 import Quickshell
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 import "qml"
 
 ShellRoot {
+    property int systemSettingsRequestId: 0
+    property string systemSettingsFailure: ""
+
+    function launchSystemSettings() {
+        systemSettingsFailure = "";
+        const requestId = applicationModel.dispatchLaunch("systemsettings.desktop");
+        if (requestId === 0) {
+            systemSettingsFailure
+                    = "System Settings is unavailable. Open it from the application launcher.";
+            settingsFailureTimer.restart();
+            return false;
+        }
+        systemSettingsRequestId = requestId;
+        return true;
+    }
+
     KWinVirtualDesktopAdapter {
         id: virtualDesktops
         helperPath: Quickshell.shellPath("build/nagi-kwin-virtual-desktops")
@@ -20,25 +34,37 @@ ShellRoot {
 
     CompactClock {
         id: clockState
+        format: UserConfig.snapshot.clock.format
+        dateFormat: UserConfig.snapshot.clock.dateFormat
+        showIdleDate: UserConfig.snapshot.clock.showIdleDate
     }
 
     IslandStateCoordinator {
         id: islandState
     }
 
-    LauncherShortcutAdapter {
-        id: launcherShortcut
+    GlobalShortcutAdapter {
+        id: globalShortcut
 
         coordinator: islandState
-        helperPath: Quickshell.shellPath("build/launcher-shortcut/nagi-launcher-shortcut")
+        helperPath: Quickshell.shellPath("build/global-shortcut/nagi-global-shortcut")
+        onSystemSettingsRequested: {
+            if (!islandState.modalPresent) {
+                launchSystemSettings();
+            }
+        }
     }
 
     WeatherAdapter {
         id: weather
+        enabled: UserConfig.snapshot.weather.enabled
+        latitude: UserConfig.snapshot.weather.latitude ?? Number.NaN
+        longitude: UserConfig.snapshot.weather.longitude ?? Number.NaN
     }
 
     MediaAdapter {
         id: mediaAdapter
+        enabled: UserConfig.snapshot.media.enabled
         detailsVisible: islandState.ownerKind === islandState.ownerExpanded
                         && islandState.presentationVisible
     }
@@ -66,6 +92,11 @@ ShellRoot {
         id: applicationModel
 
         helperPath: Quickshell.shellPath("build/nagi-applications")
+    }
+
+    OnboardingWindow {
+        settingsFailure: systemSettingsFailure
+        onSystemSettingsRequested: launchSystemSettings()
     }
 
     NotificationService {
@@ -123,86 +154,40 @@ ShellRoot {
     Component {
         id: dashboardNavigation
 
-        Item {
-            implicitWidth: Math.max(navigationTopCluster.implicitWidth,
-                                    navigationSession.implicitWidth)
-            implicitHeight: navigationTopCluster.implicitHeight + Theme.spacing.xl
-                            + navigationSession.implicitHeight
+        DashboardNavigation {
+            coordinator: islandState
+            surfaceToken: islandHost.surfaceToken
+            settingsFailure: systemSettingsFailure
+            onSystemSettingsRequested: launchSystemSettings()
+        }
+    }
 
-            ColumnLayout {
-                id: navigationTopCluster
-                objectName: "dashboardNavigationTopCluster"
-                anchors.top: parent.top
-                anchors.right: parent.right
-                spacing: Theme.spacing.sm
+    Connections {
+        target: applicationModel
 
-                RailButton {
-                    objectName: "dashboardTray"
-                    meaning: "tray"
-                    accessibleName: "System tray"
-                    onOpenRequested: islandState.openTray(islandHost.surfaceToken)
-                }
-
-                RailButton {
-                    objectName: "dashboardLauncher"
-                    meaning: "launcher"
-                    accessibleName: "Launcher"
-                    onOpenRequested: islandState.openLauncher(islandHost.surfaceToken)
-                }
-
-                RailButton {
-                    objectName: "dashboardHistory"
-                    meaning: "history"
-                    accessibleName: "Notification history"
-                    onOpenRequested: islandState.openHistory(islandHost.surfaceToken)
-                }
+        function onLaunchAccepted(requestId, desktopFileId) {
+            if (requestId === systemSettingsRequestId) {
+                systemSettingsRequestId = 0;
+                systemSettingsFailure = "";
+                settingsFailureTimer.stop();
             }
+        }
 
-            RailButton {
-                id: navigationSession
-                objectName: "dashboardSession"
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                meaning: "session"
-                accessibleName: "Session"
-                onOpenRequested: islandState.openSession(islandHost.surfaceToken)
+        function onLaunchRejected(requestId, category) {
+            if (requestId === systemSettingsRequestId) {
+                systemSettingsRequestId = 0;
+                systemSettingsFailure
+                        = "System Settings could not be opened. Open it from the application launcher.";
+                settingsFailureTimer.restart();
             }
         }
     }
 
-    component RailButton: AbstractButton {
-        id: control
+    Timer {
+        id: settingsFailureTimer
 
-        required property string meaning
-        required property string accessibleName
-
-        signal openRequested
-
-        implicitWidth: Theme.size.controlHeightMd
-        implicitHeight: Theme.size.controlHeightMd
-        focusPolicy: Qt.StrongFocus
-        hoverEnabled: true
-        Accessible.role: Accessible.Button
-        Accessible.name: accessibleName
-        onClicked: openRequested()
-
-        background: Rectangle {
-            radius: Theme.radius.md
-            color: control.pressed ? Theme.color.surfaceActive : control.hovered ? Theme.color.surfaceHover :
-                                                                                   "transparent"
-        }
-        contentItem: Item {
-            IslandIcon {
-                anchors.centerIn: parent
-                meaning: control.meaning
-            }
-        }
-        IslandFocusRing {
-            visible: control.visualFocus
-        }
-        ToolTip.delay: Theme.motion.durationSlow
-        ToolTip.visible: hovered || visualFocus
-        ToolTip.text: accessibleName
+        interval: 5000
+        onTriggered: systemSettingsFailure = ""
     }
 
     ReducedMotion {

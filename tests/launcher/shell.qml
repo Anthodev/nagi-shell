@@ -10,6 +10,7 @@ ShellRoot {
     property int pinCalls: 0
     property int moveCalls: 0
     property int shortcutOpenCalls: 0
+    property int settingsOpenCalls: 0
 
     function require(condition, message) {
         if (!condition) {
@@ -19,6 +20,25 @@ ShellRoot {
         }
         return true;
     }
+    function shortcutState(available, launcherShortcut, launcherConflict) {
+        const names = ["openDashboard", "openLauncher", "openTray", "openHistory", "openAudio",
+                       "openSession", "openSystemSettings"];
+        const actions = {};
+        for (let index = 0; index < names.length; index += 1) {
+            const launcherAction = names[index] === "openLauncher";
+            actions[names[index]] = {
+                "activeShortcut": launcherAction ? launcherShortcut : null,
+                "preferredShortcut": launcherAction ? "Meta+Space" : null,
+                "preferredConflict": launcherAction ? launcherConflict : false
+            };
+        }
+        return JSON.stringify({
+                                  "type": "state",
+                                  "available": available,
+                                  "actions": actions
+                              });
+    }
+
     function findObjects(item, objectName, matches) {
         if (item === null || item === undefined) {
             return;
@@ -64,11 +84,12 @@ ShellRoot {
         }
     }
 
-    LauncherShortcutAdapter {
+    GlobalShortcutAdapter {
         id: shortcut
 
         coordinator: coordinator
         helperPath: ""
+        onSystemSettingsRequested: test.settingsOpenCalls += 1
     }
 
     QtObject {
@@ -344,8 +365,7 @@ ShellRoot {
             if (!test.require(launcher.searchFocused, "launcher did not focus search")) {
                 return;
             }
-            shortcut.acceptLine(
-                        "{\"type\":\"state\",\"available\":true,\"activeShortcut\":\"Meta+Space\",\"preferredShortcut\":\"Meta+Space\",\"preferredConflict\":false}");
+            shortcut.acceptLine(test.shortcutState(true, "Meta+Space", false));
             if (!test.require(shortcut.available && shortcut.activeShortcut === "Meta+Space",
                               "valid shortcut state was not exposed")) {
                 return;
@@ -357,8 +377,12 @@ ShellRoot {
                               "shortcut activation validation did not forward exactly one intent")) {
                 return;
             }
-            shortcut.acceptLine(
-                        "{\"type\":\"state\",\"available\":false,\"activeShortcut\":null,\"preferredShortcut\":\"Meta+Space\",\"preferredConflict\":false}");
+            shortcut.acceptLine("{\"type\":\"activation\",\"action\":\"openSystemSettings\"}");
+            if (!test.require(test.settingsOpenCalls === 1,
+                              "Settings activation remains outside island state")) {
+                return;
+            }
+            shortcut.acceptLine(test.shortcutState(false, null, false));
             if (!test.require(!shortcut.available && shortcut.activeShortcut === "",
                               "unavailable shortcut state was not exposed")) {
                 return;

@@ -75,6 +75,13 @@ Scope {
         return reducer.detachSurface(token, generation);
     }
 
+    function openDashboard(initiatingSurfaceToken) {
+        if (!reducer.matchingSurface(initiatingSurfaceToken)) {
+            return false;
+        }
+        return reducer.setExplicitExpanded(reducer.surfaceGeneration, true);
+    }
+
     function openLauncher(initiatingSurfaceToken) {
         return reducer.openLauncher(initiatingSurfaceToken);
     }
@@ -559,8 +566,7 @@ Scope {
             const now = currentTime();
             expireDue(now);
 
-            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
-                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
                     || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
                                          !== root.ownerHistory)) {
                 schedule(now);
@@ -586,8 +592,7 @@ Scope {
             const now = currentTime();
             expireDue(now);
 
-            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
-                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
                     || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
                                          !== root.ownerTray)) {
                 schedule(now);
@@ -614,8 +619,7 @@ Scope {
             const now = currentTime();
             expireDue(now);
 
-            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined ||
-                    !matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
+            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
                     || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
                                          !== root.ownerAudio)) {
                 schedule(now);

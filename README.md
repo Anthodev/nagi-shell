@@ -100,46 +100,91 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. The launcher helper requests `Meta+Space`; if that shortcut conflicts or cannot register, open Launcher from the dashboard rail. Use Back or `Escape` to leave a focused subview. Run `make stop` from another terminal to stop this checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window points to the configuration file and KDE shortcut settings. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
 ## Configuration
 
-Nagi reads `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/theme.conf`. Wallpaper mode is the default and falls back through the configured accent to the official `#5B6FF5` accent.
+Nagi reads `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/theme.conf`. If the file is missing, Nagi creates this default without replacing an existing file:
 
 ```ini
 [theme]
 mode=wallpaper
 accent=#5B6FF5
+surface_opacity=0.96
+font_family=Inter
+outer_radius=16
+
+[media]
+enabled=true
+
+[weather]
+enabled=false
+; Find a city's coordinates:
+; https://nominatim.openstreetmap.org/ui/search.html
+; latitude=48.85
+; longitude=2.35
+
+[clock]
+format=24h
+date_format=dddd, d MMMM
+show_idle_date=false
 ```
 
-| Mode | Behavior |
-|---|---|
-| `wallpaper` | Derive a bounded accent from the current Plasma static-image wallpaper; use `accent` as fallback |
-| `accent` | Use the configured `#RRGGBB` or `#AARRGGBB` color |
+| Section and key | Type and allowed value | Default | Effect |
+|---|---|---|---|
+| `theme.mode` | `wallpaper` or `accent` | `wallpaper` | Select the wallpaper-derived or fixed accent path |
+| `theme.accent` | `#RRGGBB` or `#AARRGGBB` | `#5B6FF5` | Set the fixed accent or wallpaper-mode fallback |
+| `theme.surface_opacity` | Decimal from `0.85` to `1.0` | `0.96` | Set only the outer island fill and shadow silhouette opacity |
+| `theme.font_family` | Non-empty UTF-8 family name, at most 128 bytes | `Inter` | Set the presentation-wide family through `Theme.type.family` |
+| `theme.outer_radius` | Whole logical pixels from `8` to `32` | `16` | Set the outer island and shadow radius |
+| `media.enabled` | `true` or `false` | `true` | Show media and enable MPRIS observation |
+| `weather.enabled` | `true` or `false` | `false` | Enable MET Norway weather only when both coordinates are valid |
+| `weather.latitude` | Decimal from `-90` to `90` | unset | Set the explicit weather latitude |
+| `weather.longitude` | Decimal from `-180` to `180` | unset | Set the explicit weather longitude |
+| `clock.format` | `12h` or `24h` | `24h` | Select localized 12-hour time with AM/PM or `HH:mm` |
+| `clock.date_format` | Non-empty Qt date pattern, at most 64 UTF-8 bytes | `dddd, d MMMM` | Format the date in Idle and Expanded presentations |
+| `clock.show_idle_date` | `true` or `false` | `false` | Place the formatted date beside Idle time |
 
-The file is limited to 4 KiB and accepts only the two known keys in one `[theme]` section. Valid changes apply without restarting Quickshell. Invalid or partial writes preserve the last valid contrast-safe theme.
+The strict parser accepts only these sections and keys. The file is limited to 4 KiB. Empty, oversized, duplicate, unknown, malformed, NUL-containing, non-finite, or out-of-range values reject the entire candidate. Valid changes apply atomically without restarting Quickshell. Invalid, partial, deleted, or unavailable content preserves the last valid snapshot. If Nagi cannot create the default, built-in defaults still start the shell.
+
+`clock.date_format` follows [Qt's date format syntax](https://doc.qt.io/qt-6/qdate.html#toString-1). Common fields are `d`/`dd` for the day number, `ddd`/`dddd` for the localized weekday, `M`/`MM` for the month number, `MMM`/`MMMM` for the localized month name, and `yy`/`yyyy` for the year. Examples: `dd/MM/yyyy`, `yyyy-MM-dd`, and `ddd d MMM`. Put literal text inside single quotes. Empty patterns, control characters, and patterns longer than 64 UTF-8 bytes invalidate the candidate snapshot.
+
+Wallpaper mode derives a bounded accent from the current Plasma static-image wallpaper, then falls back through `theme.accent` to `#5B6FF5`. Accent mode requires `theme.accent`. Both paths keep the existing contrast floors. Disabling media stops MPRIS observation. Disabling weather or omitting valid coordinates performs no weather request. Nagi never uses IP geolocation or calls a geocoding service.
 
 ## Controls and behavior
 
 | Input | Result |
 |---|---|
 | Hover the Idle island | Open the Expanded dashboard |
-| `Meta+Space` when registered | Open Launcher and focus search |
 | Dashboard device name | Open output/input device selection |
-| Dashboard Tray, Launcher, History, or Session icon | Open that focused subview |
+| Dashboard Tray, Launcher, History, Audio, Settings, or Session action | Open the corresponding view or KDE System Settings |
 | Back or `Escape` | Return through the shared cancellation path |
 | Session `Restart shell` | Soft-reload Nagi with `Quickshell.reload(false)` |
 | Session Restart or Power off | Open the matching KDE confirmation path |
 
-Backend-confirmed state is authoritative for audio, connectivity, brightness, and session operations. Pending and failure states do not pretend an operation succeeded.
+KDE lists these actions under **Nagi Shell**:
+
+| Action | Proposed default |
+|---|---|
+| Open Dashboard | Unbound |
+| Open Launcher | `Meta+Space`, only when available and no Nagi binding exists |
+| Open System Tray | Unbound |
+| Open Notification History | Unbound |
+| Open Audio Controls | Unbound |
+| Open Session Controls | Unbound |
+| Open System Settings | Unbound |
+
+Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's Settings action remains available even when every global shortcut is unbound.
+
+Backend-confirmed state is authoritative for audio, connectivity, brightness, and session operations. Pending and failure states do not report success.
 
 ## Privacy
 
 Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, and wallpaper analysis stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, wallpaper paths, and backend errors out of the presentation.
 
-Weather is opt-in at the adapter boundary. When configured, it sends coordinates truncated to two decimal places to MET Norway and stores a bounded local cache; its optional location label never leaves the machine. The production checkout currently leaves weather coordinates unconfigured, so it makes no weather request.
+Weather is opt-in. It sends coordinates truncated to two decimal places and the user's IP address to MET Norway, then stores a bounded local cache. No location label leaves the machine. Use the linked Nominatim web page to look up coordinates manually; Nagi does not contact Nominatim. Weather data comes from [MET Norway Locationforecast](https://api.met.no/weatherapi/locationforecast/2.0/documentation), transformed into compact Nagi Shell condition categories and licensed under [CC BY 4.0](https://api.met.no/doc/License). MET Norway provides no delivery SLA.
 
 Polkit credentials never enter the production shell because the backend is dormant. Synthetic presentation tests still enforce explicit submission and secret cleanup.
 
