@@ -236,6 +236,8 @@ ShellRoot {
             }
             require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
             require(!host.surfaceFocusable, "Idle never takes keyboard focus");
+            require(host.menuParentWindow !== null,
+                    "actual surface exposes its Quickshell proxy for native platform menus");
             require(host.backgroundRadius === Theme.radius.outer
                     && defaultPanelReference.radius === Theme.radius.md,
                     "surface keeps the outer radius override while standard panels default to md");
@@ -269,9 +271,9 @@ ShellRoot {
                     <= expectedWidth && host.surfaceHeight <= expectedHeight,
                     "expanded geometry derives from mounted row content");
             require(host.geometryAnimationDuration === Theme.motion.durationExpansion
-                    && host.geometryAnimationDuration >= 280
-                    && host.geometryAnimationDuration <= 320,
-                    "expanded geometry uses the mandated calm 280–320 ms interpolation");
+                    && host.geometryAnimationDuration >= 170
+                    && host.geometryAnimationDuration <= 210,
+                    "expanded geometry uses the responsive 170–210 ms interpolation");
             hoverExpandedEpoch = coordinator.ownerEpoch;
             require(coordinator.setExplicitExpanded(host.surfaceGeneration, true),
                     "deliberate keyboard intent joins the visible dashboard");
@@ -322,10 +324,10 @@ ShellRoot {
             launcherExitAnchorX = host.interactiveExitLoaderX;
             launcherExitMappedX = host.interactiveExitMappedX;
             require(host.interactiveExitDuration === Theme.motion.durationNormal
-                    && host.interactiveExitDuration === 180
+                    && host.interactiveExitDuration === 120
                     && host.geometryAnimationDuration === Theme.motion.durationExpansion
-                    && host.geometryAnimationDuration === 300,
-                    "internal exit uses 180 ms while outer geometry uses 300 ms");
+                    && host.geometryAnimationDuration === 190,
+                    "internal exit uses 120 ms while outer geometry uses 190 ms");
             require(Math.abs(host.surfacePreferredWidth - launcherReference.implicitWidth) > 1,
                     "outer preferred geometry switches immediately instead of staging after exit");
         } else if (step === 4) {
@@ -708,7 +710,62 @@ ShellRoot {
                             "final Modal predecessor cleanup did not restore Idle")) {
                 return;
             }
-            console.warn("actual island launcher, transient, dashboard, history, session, and Polkit UI tests passed");
+            require(coordinator.setHover(host.surfaceGeneration, true),
+                    "Expanded menu scenario enters through pointer hover");
+        } else if (step === 28) {
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible,
+                            "hover-expanded menu scenario did not settle")) {
+                return;
+            }
+            require(host.menuParentWindow.beginShellMenu()
+                    && host.menuParentWindow.reportHover(false)
+                    && coordinator.ownerName === "expanded" && coordinator.hoverIntent,
+                    "opening a shell-owned menu suppresses its synthetic hover exit");
+            require(host.menuParentWindow.completeShellMenuAction(),
+                    "selecting the Expanded tray menu action resets to Idle");
+        } else if (step === 29) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.surfaceFocusable,
+                            "Expanded tray menu selection did not settle at Idle")) {
+                return;
+            }
+            require(coordinator.openTray(host.surfaceToken),
+                    "focus-loss scenario opens a shell-focused tray");
+        } else if (step === 30) {
+            if (!awaitState(coordinator.ownerName === "tray" && coordinator.presentationVisible
+                            && host.trayFocused,
+                            "focus-loss tray did not become focused")) {
+                return;
+            }
+            require(!host.menuParentWindow.handleWindowActivation(true),
+                    "focus acquisition records ownership without resetting");
+            require(host.menuParentWindow.handleWindowActivation(false),
+                    "reliable external focus loss resets non-modal ownership");
+        } else if (step === 31) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.surfaceFocusable && !host.trayLoaded,
+                            "external focus loss did not settle at Idle")) {
+                return;
+            }
+            require(coordinator.openLauncher(host.surfaceToken),
+                    "external launch scenario opens Launcher");
+        } else if (step === 32) {
+            if (!awaitState(coordinator.ownerName === "launcher"
+                            && coordinator.presentationVisible && host.launcherFocused,
+                            "external launch scenario did not focus Launcher")) {
+                return;
+            }
+            require(host.menuParentWindow.interactiveContent.launchSelected(),
+                    "selected application dispatches through Launcher");
+            fakeApplicationModel.launchAccepted(1, "fixture.desktop");
+        } else if (step === 33) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.surfaceFocusable && !host.launcherLoaded,
+                            "accepted application launch did not settle at Idle")) {
+                return;
+            }
+            console.warn("actual island launcher, transient, dashboard, history, session, Polkit UI, tray-menu selection, external action, and focus-reset tests passed");
             Qt.exit(0);
             return;
         }
@@ -963,6 +1020,7 @@ ShellRoot {
     QtObject {
         id: fakeTrayAdapter
         property int activationCount: 0
+        signal menuActionTriggered(int token)
 
         function activate(token) {
             activationCount += 1;
@@ -974,7 +1032,10 @@ ShellRoot {
         }
 
         function openMenu(token, window, x, y) {
-            return "accepted";
+            return "dispatched";
+        }
+
+        function cancelMenuTracking() {
         }
 
         readonly property var items: [{

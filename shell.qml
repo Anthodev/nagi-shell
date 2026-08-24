@@ -19,6 +19,7 @@ ShellRoot {
             return false;
         }
         systemSettingsRequestId = requestId;
+        islandState.resetToIdle(islandHost.surfaceToken);
         return true;
     }
 
@@ -131,6 +132,10 @@ ShellRoot {
             connectivity: connectivityAdapter
             applicationModel: applicationModel
             tray: trayAdapter
+            menuParentWindow: islandHost.menuParentWindow
+            onExternalActionDispatched: islandHost.completeShellMenuAction()
+            onShellMenuOpening: islandHost.beginShellMenu()
+            onShellMenuOpenResult: result => islandHost.finishShellMenuOpen(result)
         }
     }
 

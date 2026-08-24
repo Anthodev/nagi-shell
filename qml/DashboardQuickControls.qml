@@ -12,11 +12,13 @@ FocusScope {
     required property var connectivity
     required property var applicationModel
     required property var tray
+    property var menuParentWindow: null
 
     readonly property int pinCount: applicationModel === null ? 0 :
                                                                 applicationModel.pinnedApplications.length
     readonly property var statusItems: projectTrayItems(tray === null ? [] : tray.items)
     property bool centerStatusInMainLane: false
+    property int openedMenuToken: 0
     readonly property string wifiState: connectivity === null || !connectivity.wifiAvailable
                                         ? "Unavailable" : connectivity.wifiEnabled ? "On" : "Off"
     readonly property string bluetoothState: connectivity === null ||
@@ -47,6 +49,23 @@ FocusScope {
 
     implicitWidth: controlsColumn.implicitWidth
     implicitHeight: controlsColumn.implicitHeight
+
+    signal externalActionDispatched
+    signal shellMenuOpening
+    signal shellMenuOpenResult(string result)
+
+    Connections {
+        target: root.tray
+        ignoreUnknownSignals: true
+
+        function onMenuActionTriggered(token) {
+            if (!root.visible || token !== root.openedMenuToken) {
+                return;
+            }
+            root.openedMenuToken = 0;
+            root.externalActionDispatched();
+        }
+    }
 
     function projectTrayItems(items) {
         const projected = [];
@@ -94,8 +113,44 @@ FocusScope {
                 !connectivity.bluetoothPending && connectivity.toggleBluetooth();
     }
 
+    function completeExternalAction(result) {
+        if (result === "dispatched") {
+            externalActionDispatched();
+        }
+        return result;
+    }
+
     function activateStatusItem(token) {
-        return tray !== null && tray.activate(token);
+        return completeExternalAction(tray === null ? "rejected" : tray.activate(token));
+    }
+
+    function statusMenuPosition(button) {
+        return button.mapToItem(null, button.width / 2, button.height);
+    }
+
+    function openStatusMenu(item, button) {
+        if (tray === null || item === null || button === null || menuParentWindow === null || item.hasMenu
+                !== true) {
+            return "rejected";
+        }
+        const position = statusMenuPosition(button);
+        openedMenuToken = item.token;
+        shellMenuOpening();
+        const result = tray.openMenu(item.token, menuParentWindow, position.x, position.y);
+        if (result !== "dispatched") {
+            openedMenuToken = 0;
+        }
+        shellMenuOpenResult(result);
+        return result;
+    }
+
+    function primaryStatusAction(item, button) {
+        if (tray === null || item === null) {
+            return "rejected";
+        }
+        return item.onlyMenu === true ? openStatusMenu(item, button) : activateStatusItem(
+                                            item.token);
+
     }
 
     function reveal(flickable, item) {
@@ -111,7 +166,12 @@ FocusScope {
                 >= applicationModel.pinnedApplications.length) {
             return 0;
         }
-        return applicationModel.dispatchLaunch(applicationModel.pinnedApplications[index].id);
+        const requestId = applicationModel.dispatchLaunch(
+                  applicationModel.pinnedApplications[index].id);
+        if (requestId > 0) {
+            externalActionDispatched();
+        }
+        return requestId;
     }
 
     ColumnLayout {
@@ -259,8 +319,20 @@ FocusScope {
                             hoverEnabled: true
                             Accessible.role: Accessible.Button
                             Accessible.name: modelData.label
-                            Accessible.description: modelData.tooltip
-                            onClicked: root.activateStatusItem(modelData.token)
+                            Accessible.description: modelData.hasMenu === true ? modelData.tooltip
+                                                                                 + ". Context menu available" :
+                                                                                 modelData.tooltip
+                            onClicked: root.primaryStatusAction(modelData, statusButton)
+
+                            Keys.onPressed: event => {
+                                if (modelData.hasMenu === true && (event.key === Qt.Key_Menu || (
+                                                                       event.key === Qt.Key_F10 && (
+                                                                           event.modifiers
+                                                                           & Qt.ShiftModifier)))) {
+                                    root.openStatusMenu(modelData, statusButton);
+                                    event.accepted = true;
+                                }
+                            }
 
                             background: Rectangle {
                                 radius: Theme.radius.md
@@ -286,6 +358,13 @@ FocusScope {
                             ToolTip.delay: Theme.motion.durationSlow
                             ToolTip.visible: hovered || visualFocus
                             ToolTip.text: modelData.tooltip
+
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.RightButton
+                                enabled: statusButton.modelData.hasMenu === true
+                                onClicked: root.openStatusMenu(statusButton.modelData, statusButton)
+                            }
                         }
                     }
                 }

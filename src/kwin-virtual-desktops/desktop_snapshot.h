@@ -41,6 +41,7 @@ std::optional<QVector<Desktop>> decodeDesktopTuples(
 std::optional<QByteArray> availableSnapshotJson(
     const QVector<Desktop> &desktops,
     const QString &currentId,
+    bool showTransient,
     QString *error);
 QByteArray unavailableSnapshotJson();
 

@@ -386,10 +386,10 @@ Singleton {
     }
 
     readonly property QtObject motion: QtObject {
-        readonly property int durationFast: 100
-        readonly property int durationNormal: 180
-        readonly property int durationSlow: 280
-        readonly property int durationExpansion: 300
+        readonly property int durationFast: 70
+        readonly property int durationNormal: 120
+        readonly property int durationSlow: 170
+        readonly property int durationExpansion: 190
         readonly property int expansionAnchor: Qt.AlignTop
         readonly property int easingStandard: Easing.OutCubic
         readonly property int easingExpansion: Easing.OutCubic

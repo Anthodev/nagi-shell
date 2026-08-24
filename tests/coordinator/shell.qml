@@ -134,6 +134,30 @@ ShellRoot {
                 === coordinator.focusNone, "keyboard cancellation restores Idle focus policy");
     }
 
+    function verifyExternalReset() {
+        attachFreshSurface();
+        require(coordinator.setHover(generation, true)
+                && coordinator.setExplicitExpanded(generation, true),
+                "external-reset baseline expands with focus intent");
+        require(coordinator.openTray(token), "external-reset tray interaction opens");
+        require(coordinator.requestNotification("external-reset-notification", 1, 1, token),
+                "external-reset scenario retains pending transient work");
+        require(coordinator.resetToIdle(token), "matching external reset is accepted");
+        require(coordinator.ownerName === "idle" && !coordinator.hoverIntent
+                && !coordinator.explicitExpandedIntent && coordinator.pendingTransientCount === 0
+                && coordinator.restorationDepth === 0 && coordinator.focusTarget
+                === coordinator.focusNone,
+                "external reset clears every non-modal owner, intent, pending item, and predecessor");
+        require(!coordinator.resetToIdle({}), "foreign surface reset is rejected");
+
+        require(coordinator.syncPolkitModal(true, true, 90), "Modal opens for reset guard");
+        require(!coordinator.resetToIdle(token) && coordinator.ownerName === "polkitModal",
+                "external reset cannot abandon Modal ownership");
+        require(coordinator.syncPolkitModal(false, false, 0),
+                "Modal reset guard releases through its authoritative snapshot");
+        require(coordinator.ownerName === "idle", "Modal cleanup returns to Idle");
+    }
+
     function require(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -488,6 +512,7 @@ ShellRoot {
 
 
         verifyExpandedIntents();
+        verifyExternalReset();
 
         verifyReloadReattachment();
 

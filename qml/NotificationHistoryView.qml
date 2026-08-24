@@ -14,8 +14,7 @@ FocusScope {
 
     readonly property int maximumVisibleRows: 5
     readonly property int historyRowExtent: Theme.spacing.xxl * 4
-    readonly property real contentWidth: rowCount === 0 ? Theme.spacing.xxl * 6 : Theme.spacing.xxl
-                                                          * 11
+    readonly property real contentWidth: Theme.spacing.xxl * 15
 
     readonly property bool historyScrollVisible: rowCount > maximumVisibleRows
     readonly property real historyViewportHeight: rowCount === 0 ? Theme.size.controlHeightLg :

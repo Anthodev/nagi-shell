@@ -18,6 +18,8 @@ constexpr auto Service = "org.kde.KWin";
 constexpr auto ObjectPath = "/VirtualDesktopManager";
 constexpr auto Interface = "org.kde.KWin.VirtualDesktopManager";
 constexpr auto PropertiesInterface = "org.freedesktop.DBus.Properties";
+constexpr auto RootObjectPath = "/KWin";
+constexpr auto RootInterface = "org.kde.KWin";
 constexpr int SnapshotTimeoutMs = 2000;
 constexpr int MaximumDiagnostics = 8;
 
@@ -56,6 +58,9 @@ private slots:
                 || arguments.constFirst().toString() != QString::fromLatin1(Interface)) {
                 return;
             }
+        } else if (message.interface() == QString::fromLatin1(Interface)
+                   && message.member() == QStringLiteral("currentChanged")) {
+            currentChangePending = true;
         }
 
         scheduleSnapshot();
@@ -120,6 +125,9 @@ private:
         }
 
         activeOwner = owner;
+        lastCurrentId.clear();
+        lastActiveOutputName.clear();
+        currentChangePending = false;
         bool subscribed = true;
         const auto subscribe = [this, &owner, &subscribed](
                                    const char *interface,
@@ -167,6 +175,9 @@ private:
         unsubscribe(Interface, "desktopDataChanged");
         unsubscribe(Interface, "desktopRemoved");
         unsubscribe(PropertiesInterface, "PropertiesChanged");
+        lastCurrentId.clear();
+        lastActiveOutputName.clear();
+        currentChangePending = false;
         activeOwner.clear();
     }
 
@@ -201,6 +212,21 @@ private:
         return value;
     }
 
+    std::optional<QString> readActiveOutputName(const QString &owner)
+    {
+        const QDBusMessage request = QDBusMessage::createMethodCall(
+            owner,
+            QString::fromLatin1(RootObjectPath),
+            QString::fromLatin1(RootInterface),
+            QStringLiteral("activeOutputName"));
+        const QDBusMessage reply = bus.call(request, QDBus::Block, SnapshotTimeoutMs);
+        if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().size() != 1
+            || reply.arguments().constFirst().metaType() != QMetaType::fromType<QString>()) {
+            return std::nullopt;
+        }
+        return reply.arguments().constFirst().toString();
+    }
+
 
     void refreshSnapshot()
     {
@@ -216,8 +242,10 @@ private:
         const auto currentValue = readProperty(
             requestedOwner,
             QStringLiteral("current"));
+        const auto activeOutputName = readActiveOutputName(requestedOwner);
         if (!desktopsValue || !currentValue) {
             diagnose(QStringLiteral("complete KWin property snapshot failed"));
+            currentChangePending = false;
             return;
         }
 
@@ -226,8 +254,17 @@ private:
         }
         if (currentValue->metaType() != QMetaType::fromType<QString>()) {
             diagnose(QStringLiteral("KWin current property has an invalid type"));
+            currentChangePending = false;
             return;
         }
+
+        const QString currentId = currentValue->toString();
+        const bool showTransient = currentChangePending && !lastCurrentId.isEmpty()
+            && currentId != lastCurrentId && activeOutputName.has_value()
+            && !lastActiveOutputName.isEmpty() && *activeOutputName == lastActiveOutputName;
+        currentChangePending = false;
+        lastCurrentId = currentId;
+        lastActiveOutputName = activeOutputName.value_or(QString{});
 
         QString error;
         const auto desktops = nagi::kwin::decodeDesktopTuples(*desktopsValue, &error);
@@ -236,10 +273,8 @@ private:
             return;
         }
 
-        const auto snapshot = nagi::kwin::availableSnapshotJson(
-            *desktops,
-            currentValue->toString(),
-            &error);
+        const auto snapshot =
+            nagi::kwin::availableSnapshotJson(*desktops, currentId, showTransient, &error);
         if (!snapshot) {
             diagnose(error);
             return;
@@ -277,8 +312,11 @@ private:
     QDBusServiceWatcher watcher;
     QString activeOwner;
     QByteArray lastSnapshot;
+    QString lastCurrentId;
+    QString lastActiveOutputName;
     QString lastDiagnostic;
     bool snapshotScheduled = false;
+    bool currentChangePending = false;
     int diagnosticCount = 0;
 };
 

@@ -152,8 +152,17 @@ Scope {
 
     Connections {
         target: engine.currentModel
+        ignoreUnknownSignals: true
 
         function onValuesChanged() {
+            engine.scheduleRebuild();
+        }
+
+        function onObjectInsertedPost() {
+            engine.scheduleRebuild();
+        }
+
+        function onObjectRemovedPost() {
             engine.scheduleRebuild();
         }
     }

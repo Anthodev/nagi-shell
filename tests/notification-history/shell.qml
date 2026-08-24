@@ -47,10 +47,8 @@ ShellRoot {
                 "history viewport height was not exact for " + count + " rows");
         require(historyView.historyScrollVisible === (count > historyView.maximumVisibleRows),
                 "history scrollbar threshold was wrong for " + count + " rows");
-        if (count === 0) {
-            require(historyView.contentWidth === Theme.spacing.xxl * 6,
-                    "empty history width was not compact");
-        }
+        require(historyView.contentWidth === Theme.spacing.xxl * 15,
+                "history keeps the 480 px reading lane in every population state");
     }
 
     function appendHistory(sequence) {

@@ -14,6 +14,9 @@ ShellRoot {
     property var launchActions: []
     property var navigationActions: []
     property var trayActions: []
+    property var trayMenuActions: []
+    property int quickExternalActionCount: 0
+    property int quickMenuOpeningCount: 0
     property var tooltipChecks: []
     property int tooltipCheckIndex: 0
     readonly property var muteSamples: [
@@ -422,8 +425,9 @@ ShellRoot {
                 !== bluetoothErrorColor && bluetoothIcon.semanticState === "pending",
                 "pending connectivity is disabled with a distinct persistent surface");
         connectivityAdapter.bluetoothPending = false;
-        require(quickView.launchPin(0) === 41 && launchActions[0] === "first.desktop",
-                "pinned control dispatches the exact shared desktop ID");
+        require(quickView.launchPin(0) === 41 && launchActions[0] === "first.desktop"
+                && quickExternalActionCount === 1,
+                "pinned control dispatches the exact desktop ID and reports external focus transfer");
         applications.pinnedApplications = [applications.eligibleEntries[1]];
         require(quickView.pinCount === 1 && applications.pinIds.length === 2
                 && applications.pinIds[0] === "dormant.desktop" && test.findObject(quickView,
@@ -452,11 +456,25 @@ ShellRoot {
         require(Math.abs(fourItemPosition.x + dashboardStatusGroup.width / 2 - clockCenterX) <= 1,
                 "four projected tray icons center beneath the time/date lane");
         attentionButton.clicked();
-        require(trayActions.length === 1 && trayActions[0] === 11,
-                "projected tray icon primary click dispatches only the activation token");
+        require(trayActions.length === 1 && trayActions[0] === 11
+                && quickExternalActionCount === 2,
+                "projected tray activation reports one external focus transfer");
         const projectedItems = trayAdapter.items;
         const passiveItem = projectedItems[2];
-        trayAdapter.items = [trayAdapter.items[1]];
+        require(quickView.openStatusMenu(quickView.statusItems[0], attentionButton)
+                === "dispatched" && trayMenuActions.length === 1
+                && trayMenuActions[0].token === 11
+                && trayMenuActions[0].parentWindow === quickView.menuParentWindow
+                && quickExternalActionCount === 2 && quickMenuOpeningCount === 1
+                && quickView.openedMenuToken === 11,
+                "opening a projected tray menu retains its exact token without external focus transfer");
+        trayAdapter.items = [passiveItem];
+        require(quickView.statusItems.length === 0,
+                "menu action may remove its icon from the current Expanded projection");
+        trayAdapter.menuActionTriggered(11);
+        require(quickExternalActionCount === 3 && quickView.openedMenuToken === 0,
+                "the retained Expanded menu token survives projection changes and resets on selection");
+        trayAdapter.items = [projectedItems[1]];
         const quickRowHeight = quickRow.height;
 
         require(audioView.outputDeviceName === "Built-in Audio" && audioView.inputDeviceName
@@ -903,6 +921,7 @@ ShellRoot {
 
     QtObject {
         id: trayAdapter
+        signal menuActionTriggered(int token)
 
         property var items: [
             {
@@ -917,7 +936,9 @@ ShellRoot {
                 "label": "Mail",
                 "tooltip": "Mail needs attention",
                 "iconSource": "file://" + Quickshell.shellPath("assets/icons/nagi/launcher.svg"),
-                "status": "needsAttention"
+                "status": "needsAttention",
+                "hasMenu": true,
+                "onlyMenu": false
             },
             {
                 "token": 30,
@@ -966,7 +987,17 @@ ShellRoot {
 
         function activate(token) {
             test.trayActions.push(token);
-            return true;
+            return "dispatched";
+        }
+
+        function openMenu(token, parentWindow, relativeX, relativeY) {
+            test.trayMenuActions.push({
+                                          "token": token,
+                                          "parentWindow": parentWindow,
+                                          "relativeX": relativeX,
+                                          "relativeY": relativeY
+                                      });
+            return "dispatched";
         }
     }
 
@@ -1033,6 +1064,7 @@ ShellRoot {
             connectivity: connectivityAdapter
             applicationModel: applications
             tray: trayAdapter
+            menuParentWindow: dashboardWindow
         }
     }
     Component {
@@ -1275,6 +1307,9 @@ ShellRoot {
                 connectivity: connectivityAdapter
                 applicationModel: applications
                 tray: trayAdapter
+                menuParentWindow: dashboardWindow
+                onExternalActionDispatched: test.quickExternalActionCount += 1
+                onShellMenuOpening: test.quickMenuOpeningCount += 1
             }
 
             DashboardAudio {

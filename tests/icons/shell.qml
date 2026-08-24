@@ -138,8 +138,9 @@ ShellRoot {
                 "normalized operating-system meaning resolves through the current icon theme");
         const settings = IconResolver.resolve("settings", "normal", "", "");
         require(settings.kind === "system" && settings.accessibleName === "System Settings"
-                && String(settings.source) === String(Quickshell.iconPath("preferences-system")),
-                "Settings resolves through the current KDE icon theme");
+                && String(settings.source) === String(Quickshell.iconPath("preferences-system"))
+                && !settings.tintable,
+                "Settings preserves the current KDE theme icon without destructive colorization");
 
 
         const application = IconResolver.resolve("application", "active", applicationSource,

@@ -110,9 +110,14 @@ Scope {
         }
 
         state.revision += 1;
-        state.presentation = presentationFor(nextProjection);
-        adapter.confirmedWorkspaceChanged(transientSourceToken, state.sourceGeneration,
-                                          state.revision);
+        if (normalized.showTransient) {
+            state.presentation = presentationFor(nextProjection);
+            adapter.confirmedWorkspaceChanged(transientSourceToken, state.sourceGeneration,
+                                              state.revision);
+        } else {
+            state.presentation = null;
+            adapter.confirmedWorkspaceInvalidated(transientSourceToken, state.sourceGeneration);
+        }
     }
 
     function projectionFor(snapshot) {
@@ -153,17 +158,20 @@ Scope {
 
     function normalizeSnapshot(candidate) {
         if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)
-                || typeof candidate.available !== "boolean" || !Array.isArray(candidate.desktops)) {
+                || typeof candidate.available !== "boolean" || typeof candidate.showTransient
+                !== "boolean" || !Array.isArray(candidate.desktops)) {
             return null;
         }
 
         if (!candidate.available) {
-            if (candidate.currentId !== null || candidate.desktops.length !== 0) {
+            if (candidate.currentId !== null || candidate.desktops.length !== 0
+                    || candidate.showTransient) {
                 return null;
             }
             return {
                 "available": false,
                 "currentId": null,
+                "showTransient": false,
                 "desktops": []
             };
         }
@@ -211,12 +219,14 @@ Scope {
         return {
             "available": true,
             "currentId": candidate.currentId,
+            "showTransient": candidate.showTransient,
             "desktops": normalizedDesktops
         };
     }
 
     function publishUnavailable() {
-        acceptSnapshotLine("{\"available\":false,\"currentId\":null,\"desktops\":[]}");
+        acceptSnapshotLine(
+                    "{\"available\":false,\"currentId\":null,\"showTransient\":false,\"desktops\":[]}");
     }
 
     function warnBounded(message) {
@@ -247,10 +257,11 @@ Scope {
         property int revision: 0
         property var presentation: null
         property string serializedSnapshot:
-        "{\"available\":false,\"currentId\":null,\"desktops\":[]}"
+        "{\"available\":false,\"currentId\":null,\"showTransient\":false,\"desktops\":[]}"
         property var snapshot: ({
                                     "available": false,
                                     "currentId": null,
+                                    "showTransient": false,
                                     "desktops": []
                                 })
     }

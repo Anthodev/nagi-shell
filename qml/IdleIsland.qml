@@ -357,8 +357,6 @@ Item {
             visible: idle.mediaAvailable && idle.mediaSummary !== ""
             summary: idle.mediaSummary
             maximumWidth: Theme.size.islandIdleMediaMaximumWidth
-            scrolling: idle.visible && visible
-            reducedMotion: idle.reducedMotion
         }
     }
 }

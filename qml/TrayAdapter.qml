@@ -16,11 +16,17 @@ Scope {
     readonly property int maximumTextCharacters: 256
     readonly property int maximumIdentityCharacters: 128
     readonly property int maximumIconSourceCharacters: 4096
+    readonly property int maximumMenuWatcherEntries: 256
 
     readonly property var items: engine.snapshots
     readonly property int itemCount: items.length
     readonly property bool available: itemCount > 0
     readonly property int trackedItemCount: engine.records.length
+
+    signal menuActionTriggered(int token)
+
+    readonly property bool menuTrackingActive: engine.activeMenuToken > 0
+    readonly property int activeMenuToken: engine.activeMenuToken
 
     function activate(token) {
         return engine.dispatch(token, "activate", null, 0, 0);
@@ -32,6 +38,14 @@ Scope {
 
     function openMenu(token, parentWindow, relativeX, relativeY) {
         return engine.dispatch(token, "menu", parentWindow, relativeX, relativeY);
+    }
+
+    function cancelMenuTracking() {
+        engine.cancelMenuTracking();
+    }
+
+    function notifyMenuAction(token) {
+        return engine.notifyMenuAction(token);
     }
 
     // Flushes coalesced lifecycle/property updates for deterministic tests.
@@ -96,6 +110,158 @@ Scope {
         }
     }
 
+    Component {
+        id: menuEntryWatcher
+
+        QtObject {
+            id: entryWatcher
+            property var entry: null
+            property int token: 0
+            property bool admitted: false
+            property var childWatchers: []
+
+            property QtObject triggerConnection: Connections {
+                target: entryWatcher.entry
+                ignoreUnknownSignals: true
+
+                function onTriggered() {
+                    root.notifyMenuAction(entryWatcher.token);
+                }
+            }
+
+            property QsMenuOpener opener: QsMenuOpener {
+                menu: entryWatcher.admitted ? entryWatcher.entry : null
+            }
+
+            property QtObject openerConnection: Connections {
+                target: entryWatcher.opener
+                ignoreUnknownSignals: true
+
+                function onChildrenChanged() {
+                    entryWatcher.rebuildChildren();
+                }
+            }
+
+            property QtObject childConnection: Connections {
+                target: entryWatcher.opener.children
+                ignoreUnknownSignals: true
+
+                function onValuesChanged() {
+                    entryWatcher.rebuildChildren();
+                }
+
+                function onObjectInsertedPost() {
+                    entryWatcher.rebuildChildren();
+                }
+
+                function onObjectRemovedPost() {
+                    entryWatcher.rebuildChildren();
+                }
+            }
+
+            function clearChildren() {
+                for (let index = 0; index < childWatchers.length; ++index) {
+                    childWatchers[index].destroy();
+                }
+                childWatchers = [];
+            }
+
+            function rebuildChildren() {
+                clearChildren();
+                if (!admitted) {
+                    return;
+                }
+                const values = opener.children.values;
+                const next = [];
+                for (let index = 0; index < values.length && engine.menuWatcherCount
+                     < root.maximumMenuWatcherEntries; ++index) {
+                    const watcher = menuEntryWatcher.createObject(entryWatcher, {
+                                                                      "entry": values[index],
+                                                                      "token": token
+                                                                  });
+                    if (watcher !== null) {
+                        next.push(watcher);
+                    }
+                }
+                childWatchers = next;
+            }
+
+            Component.onCompleted: {
+                admitted = engine.claimMenuWatcher();
+                rebuildChildren();
+            }
+            Component.onDestruction: clearChildren()
+        }
+    }
+
+    Component {
+        id: menuWatcher
+
+        QtObject {
+            id: menuRoot
+            required property var menuHandle
+            required property int token
+            property var childWatchers: []
+
+            property QsMenuOpener opener: QsMenuOpener {
+                menu: menuRoot.menuHandle
+            }
+
+            property QtObject openerConnection: Connections {
+                target: menuRoot.opener
+                ignoreUnknownSignals: true
+
+                function onChildrenChanged() {
+                    menuRoot.rebuildChildren();
+                }
+            }
+
+            property QtObject childConnection: Connections {
+                target: menuRoot.opener.children
+                ignoreUnknownSignals: true
+
+                function onValuesChanged() {
+                    menuRoot.rebuildChildren();
+                }
+
+                function onObjectInsertedPost() {
+                    menuRoot.rebuildChildren();
+                }
+
+                function onObjectRemovedPost() {
+                    menuRoot.rebuildChildren();
+                }
+            }
+
+            function clearChildren() {
+                for (let index = 0; index < childWatchers.length; ++index) {
+                    childWatchers[index].destroy();
+                }
+                childWatchers = [];
+            }
+
+            function rebuildChildren() {
+                clearChildren();
+                const values = opener.children.values;
+                const next = [];
+                for (let index = 0; index < values.length && engine.menuWatcherCount
+                     < root.maximumMenuWatcherEntries; ++index) {
+                    const watcher = menuEntryWatcher.createObject(menuRoot, {
+                                                                      "entry": values[index],
+                                                                      "token": token
+                                                                  });
+                    if (watcher !== null) {
+                        next.push(watcher);
+                    }
+                }
+                childWatchers = next;
+            }
+
+            Component.onCompleted: rebuildChildren()
+            Component.onDestruction: clearChildren()
+        }
+    }
+
     QtObject {
         id: engine
 
@@ -103,6 +269,9 @@ Scope {
         property var snapshots: []
         property int nextToken: 1
         property bool scheduled: false
+        property int activeMenuToken: 0
+        property var activeMenuWatcher: null
+        property int menuWatcherCount: 0
         readonly property var currentModel: root.itemsModel === null ? SystemTray.items :
                                                                        root.itemsModel
 
@@ -186,7 +355,48 @@ Scope {
             return record;
         }
 
+        function claimMenuWatcher() {
+            if (menuWatcherCount >= root.maximumMenuWatcherEntries) {
+                return false;
+            }
+            menuWatcherCount += 1;
+            return true;
+        }
+
+        function cancelMenuTracking() {
+            if (activeMenuWatcher !== null) {
+                activeMenuWatcher.destroy();
+                activeMenuWatcher = null;
+            }
+            activeMenuToken = 0;
+            menuWatcherCount = 0;
+        }
+
+        function beginMenuTracking(record) {
+            cancelMenuTracking();
+            activeMenuToken = record.token;
+            const menuHandle = safeRead(record.item, "menu", null);
+            if (menuHandle !== null) {
+                activeMenuWatcher = menuWatcher.createObject(root, {
+                                                                 "menuHandle": menuHandle,
+                                                                 "token": record.token
+                                                             });
+            }
+        }
+
+        function notifyMenuAction(token) {
+            if (token !== activeMenuToken || findToken(token) === null) {
+                return false;
+            }
+            cancelMenuTracking();
+            root.menuActionTriggered(token);
+            return true;
+        }
+
         function disposeRecord(record) {
+            if (record.token === activeMenuToken) {
+                cancelMenuTracking();
+            }
             if (record.watcher !== null) {
                 try {
                     record.watcher.destroy();
@@ -304,18 +514,23 @@ Scope {
                                 relativeY)) {
                         return "rejected";
                     }
+                    beginMenuTracking(record);
                     record.item.display(parentWindow, menuCoordinate(relativeX), menuCoordinate(
                                             relativeY));
                 } else {
                     return "rejected";
                 }
             } catch (error) {
+                if (action === "menu") {
+                    cancelMenuTracking();
+                }
                 return "rejected";
             }
             return "dispatched";
         }
 
         function hardReset() {
+            cancelMenuTracking();
             scheduled = false;
             for (let index = 0; index < records.length; ++index) {
                 disposeRecord(records[index]);

@@ -137,6 +137,7 @@ std::optional<QVector<Desktop>> decodeDesktopTuples(
 std::optional<QByteArray> availableSnapshotJson(
     const QVector<Desktop> &desktops,
     const QString &currentId,
+    bool showTransient,
     QString *error)
 {
     const auto current = std::find_if(
@@ -160,6 +161,7 @@ std::optional<QByteArray> availableSnapshotJson(
     return QJsonDocument(QJsonObject{
                              {QStringLiteral("available"), true},
                              {QStringLiteral("currentId"), currentId},
+                             {QStringLiteral("showTransient"), showTransient},
                              {QStringLiteral("desktops"), desktopArray},
                          })
         .toJson(QJsonDocument::Compact);
@@ -170,6 +172,7 @@ QByteArray unavailableSnapshotJson()
     return QJsonDocument(QJsonObject{
                              {QStringLiteral("available"), false},
                              {QStringLiteral("currentId"), QJsonValue::Null},
+                             {QStringLiteral("showTransient"), false},
                              {QStringLiteral("desktops"), QJsonArray{}},
                          })
         .toJson(QJsonDocument::Compact);

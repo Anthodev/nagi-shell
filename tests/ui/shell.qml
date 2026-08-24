@@ -7,6 +7,8 @@ import "qml"
 // visuals driven by focus reasons, disabled flattening, progress clamping).
 ShellRoot {
     id: test
+    property int externalActionCount: 0
+    property int menuOpeningCount: 0
 
     function require(condition, message) {
         if (!condition) {
@@ -129,17 +131,22 @@ ShellRoot {
                 "tray items accept keyboard focus");
         trayView.currentItem.clicked();
         require(trayActions.length === 1 && trayActions[0].action === "activate"
-                && trayActions[0].token === 1, "primary control activation reaches the adapter");
+                && trayActions[0].token === 1 && externalActionCount === 1,
+                "primary tray activation reports one external focus transfer");
         trayView.moveFocus(0, 1);
         require(trayView.currentItem.modelData.label === "Menu item",
                 "arrow navigation reaches the next labeled tray item");
         trayView.currentItem.clicked();
         require(trayActions.length === 2 && trayActions[1].action === "menu"
-                && trayActions[1].token === 2 && trayActions[1].parent !== null,
-                "menu-only controls open the platform menu against their live window");
+                && trayActions[1].token === 2 && trayActions[1].parent === surface
+                && externalActionCount === 1 && menuOpeningCount === 1,
+                "opening a tray menu remains shell-owned without reporting external focus transfer");
+        trayAdapter.menuActionTriggered(2);
+        require(externalActionCount === 2,
+                "selecting a tray menu entry reports external focus transfer");
         require(trayView.secondaryAction(trayAdapter.items[0]) === "dispatched"
-                && trayActions[2].action === "secondary",
-                "secondary pointer behavior stays available through the normalized adapter");
+                && trayActions[2].action === "secondary" && externalActionCount === 3,
+                "secondary tray activation reports external focus transfer");
         console.log("island ui primitive tests passed");
 
         if (Quickshell.env("NAGI_UI_HOLD") === "1") {
@@ -157,6 +164,7 @@ ShellRoot {
 
     QtObject {
         id: trayAdapter
+        signal menuActionTriggered(int token)
 
         readonly property var items: [
             {
@@ -310,6 +318,9 @@ ShellRoot {
                 width: 240
                 adapter: trayAdapter
                 ownerEpoch: 1
+                menuParentWindow: surface
+                onExternalActionDispatched: test.externalActionCount += 1
+                onShellMenuOpening: test.menuOpeningCount += 1
             }
 
             IslandProgressBar {

@@ -53,7 +53,7 @@ ShellRoot {
                         "/assets/icons/nagi/navigation-back.svg"),
                     "Back uses the Nagi navigation-back semantic icon");
             require(frame.motionDuration === Theme.motion.durationNormal && frame.motionDuration
-                    === 180, "internal subview motion uses the short 180 ms duration");
+                    === 120, "internal subview motion uses the short 120 ms duration");
             require(frame.titleControl.text === "Applications" && frame.titleControl.visible,
                     "the single-line semantic title renders");
             require(frame.titleControl.maximumLineCount === 1 && frame.titleControl.font.pixelSize

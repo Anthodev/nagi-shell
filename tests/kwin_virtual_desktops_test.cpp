@@ -43,12 +43,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    const auto json = availableSnapshotJson(*signedDesktops, QStringLiteral("first"), &error);
+    const auto json =
+        availableSnapshotJson(*signedDesktops, QStringLiteral("first"), false, &error);
     if (!require(json.has_value(), "current desktop resolves")) {
         return 1;
     }
     const QJsonObject parsed = QJsonDocument::fromJson(*json).object();
     if (!require(parsed.value(QStringLiteral("available")).toBool(), "available snapshot is emitted")
+        || !require(!parsed.value(QStringLiteral("showTransient")).toBool(), "initial snapshot suppresses feedback")
         || !require(
             parsed.value(QStringLiteral("desktops")).toArray().at(0).toObject().value(QStringLiteral("name")).toString()
                 == QStringLiteral("Desktop \"1\"\n"),
@@ -68,7 +70,9 @@ int main(int argc, char **argv)
     if (!require(!normalizeSignedDesktops(negative, &error), "negative position is rejected")
         || !require(!normalizeSignedDesktops(signedOutOfRange, &error), "signed out-of-range position is rejected")
         || !require(!normalizeUnsignedDesktops(unsignedOutOfRange, &error), "unsigned out-of-range position is rejected")
-        || !require(!availableSnapshotJson(*signedDesktops, QStringLiteral("missing"), &error), "unknown current desktop is rejected")) {
+        || !require(
+            !availableSnapshotJson(*signedDesktops, QStringLiteral("missing"), true, &error),
+            "unknown current desktop is rejected")) {
         return 1;
     }
 

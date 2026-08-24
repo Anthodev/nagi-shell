@@ -21,7 +21,7 @@ ShellRoot {
 
     function run() {
         const initial
-              = "{\"available\":true,\"currentId\":\"first\",\"desktops\":[{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1},{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0}]}";
+              = "{\"available\":true,\"currentId\":\"first\",\"showTransient\":false,\"desktops\":[{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1},{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0}]}";
         adapter.acceptSnapshotLine(initial);
         if (!require(adapter.available, "valid state is available") || !require(
                     adapter.desktops.length === 2, "complete desktop list is exposed") || !require(
@@ -37,7 +37,7 @@ ShellRoot {
         adapter.acceptSnapshotLine("{\"available\":true");
         adapter.acceptSnapshotLine("x".repeat(adapter.maximumLineLength + 1));
         adapter.acceptSnapshotLine(
-                    "{\"available\":true,\"currentId\":\"missing\",\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0}]}");
+                    "{\"available\":true,\"currentId\":\"missing\",\"showTransient\":false,\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0}]}");
         adapter.acceptSnapshotLine("still not json");
         if (!require(adapter.available, "invalid lines preserve availability") || !require(
                     adapter.currentId === "first", "invalid lines preserve current desktop") ||
@@ -46,42 +46,52 @@ ShellRoot {
         }
 
         adapter.acceptSnapshotLine(
-                    "{\"available\":true,\"currentId\":\"second\",\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0},{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1}]}");
-        if (!require(adapter.currentId === "second", "replacement current ID updates") || !require(
-                    adapter.currentName === "Desktop 2", "replacement current name is coherent") ||
-                !require(adapter.currentPosition === 1, "replacement current position is coherent")
+                    "{\"available\":true,\"currentId\":\"second\",\"showTransient\":false,\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0},{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1}]}");
+        if (!require(adapter.currentId === "second", "active-output projection updates") || !require(
+                    adapter.currentPosition === 1, "active-output position stays coherent") ||
+                !require(workspaceChangeCount === 0 && workspaceInvalidationCount === 1,
+                         "active-output changes suppress and invalidate workspace feedback")) {
+            return;
+        }
+
+        adapter.acceptSnapshotLine(
+                    "{\"available\":true,\"currentId\":\"first\",\"showTransient\":true,\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0},{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1}]}");
+        if (!require(adapter.currentId === "first", "confirmed current ID updates") || !require(
+                    adapter.currentName === "Desktop 1", "confirmed current name is coherent") ||
+                !require(adapter.currentPosition === 0, "confirmed current position is coherent")
                 || !require(workspaceChangeCount === 1 && lastSourceToken === "workspace-current"
-                            && lastSourceGeneration === 1 && lastRevision === 2,
-                            "confirmed switch publishes one generation-scoped revision")) {
+                            && lastSourceGeneration === 1 && lastRevision === 3,
+                            "same-output desktop switch publishes one generation-scoped revision")) {
             return;
         }
         const switched = adapter.resolveTransient(lastSourceToken, lastSourceGeneration,
                                                   lastRevision);
-        if (!require(switched !== null && switched.primary === "Desktop 2" && switched.detail === "Current desktop"
-                     && switched.value === "2 / 2",
+        if (!require(switched !== null && switched.primary === "Desktop 1" && switched.detail === "Current desktop"
+                     && switched.value === "1 / 2",
                      "exact switch revision resolves current name and relative position") ||
-                !require(adapter.resolveTransient(lastSourceToken, lastSourceGeneration, 1) === null,
+                !require(adapter.resolveTransient(lastSourceToken, lastSourceGeneration, 2) === null,
                          "stale workspace revision cannot resolve")) {
             return;
         }
 
         adapter.acceptSnapshotLine(
-                    "{\"available\":true,\"currentId\":\"second\",\"desktops\":[{\"id\":\"first\",\"name\":\"Desktop 1\",\"position\":0},{\"id\":\"second\",\"name\":\"Focus\",\"position\":1}]}");
-        if (!require(workspaceChangeCount === 2 && lastRevision === 3 && adapter.resolveTransient(
-                         lastSourceToken, 1, 3).primary === "Focus",
-                     "current projection rename publishes one latest coalescing revision")) {
+                    "{\"available\":true,\"currentId\":\"first\",\"showTransient\":false,\"desktops\":[{\"id\":\"first\",\"name\":\"Focus\",\"position\":0},{\"id\":\"second\",\"name\":\"Desktop 2\",\"position\":1}]}");
+        if (!require(workspaceChangeCount === 1 && workspaceInvalidationCount === 2
+                     && lastRevision === 3
+                     && adapter.resolveTransient(lastSourceToken, 1, 4) === null,
+                     "metadata-only changes update state without workspace feedback")) {
             return;
         }
 
         adapter.publishUnavailable();
-        if (!require(!adapter.available && workspaceInvalidationCount === 1
-                     && adapter.resolveTransient(lastSourceToken, 1, 3) === null,
+        if (!require(!adapter.available && workspaceInvalidationCount === 3
+                     && adapter.resolveTransient(lastSourceToken, 1, 4) === null,
                      "backend loss invalidates the current workspace source")) {
             return;
         }
         adapter.acceptSnapshotLine(initial);
-        if (!require(adapter.available && workspaceChangeCount === 2 && workspaceInvalidationCount
-                     === 1, "fresh backend generation synchronizes without replaying startup feedback")) {
+        if (!require(adapter.available && workspaceChangeCount === 1 && workspaceInvalidationCount
+                     === 3, "fresh backend generation synchronizes without replaying startup feedback")) {
             return;
         }
 

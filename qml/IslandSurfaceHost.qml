@@ -33,6 +33,7 @@ Scope {
 
     readonly property int surfaceGeneration: ownership.surfaceGeneration
     readonly property var surfaceToken: ownership.surfaceToken
+    readonly property var menuParentWindow: ownership.liveSurface
     readonly property int surfaceWidth: ownership.liveSurface === null ? 0 :
                                                                          ownership.liveSurface.width
 
@@ -137,6 +138,18 @@ Scope {
 
     function requestDeliberateExpansion() {
         return ownership.liveSurface !== null && ownership.liveSurface.requestDeliberateExpansion();
+    }
+
+    function beginShellMenu() {
+        return ownership.liveSurface !== null && ownership.liveSurface.beginShellMenu();
+    }
+
+    function finishShellMenuOpen(result) {
+        return ownership.liveSurface !== null && ownership.liveSurface.finishShellMenuOpen(result);
+    }
+
+    function completeShellMenuAction() {
+        return ownership.liveSurface !== null && ownership.liveSurface.completeShellMenuAction();
     }
 
     QtObject {
