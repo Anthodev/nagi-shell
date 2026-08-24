@@ -1,7 +1,6 @@
 pragma Singleton
 
 import Quickshell
-import Quickshell.Io
 import QtQuick
 
 // The presentation-wide design-system boundary. Configuration and palette
@@ -10,28 +9,16 @@ import QtQuick
 Singleton {
     id: root
 
-    readonly property string configHome: {
-        const xdgHome = Quickshell.env("XDG_CONFIG_HOME") ?? "";
-        return xdgHome !== "" ? xdgHome : (Quickshell.env("HOME") ?? "") + "/.config";
-    }
-    readonly property string configDirectoryPath: configHome + "/nagi-shell"
-    readonly property string configPath: configDirectoryPath + "/theme.conf"
-    // Strict, bounded INI contract:
-    //   [theme]
-    //   mode=wallpaper|accent
-    //   accent=#RRGGBB|#AARRGGBB
-    // Accent is required in fixed mode and optional as wallpaper-mode fallback.
+    readonly property string configHome: UserConfig.configHome
+    readonly property string configDirectoryPath: UserConfig.configDirectoryPath
+    readonly property string configPath: UserConfig.configPath
     // The injected wallpaper adapter publishes { accent: "#RRGGBB" } here only
     // for a validated Ready snapshot and clears the seam on every failure state.
     property var wallpaperPalette: null
     readonly property var snapshot: root._snapshot
 
-    readonly property int maximumConfigBytes: 4096
     readonly property string officialAccent: "#5B6FF5"
-    property var _configuration: Object.freeze({
-                                                   "mode": "wallpaper",
-                                                   "configuredAccent": null
-                                               })
+    property var _configuration: UserConfig.snapshot.theme
     property int _generation: 1
     property var _snapshot: buildSnapshot(_configuration)
     property string _snapshotKey: ""
@@ -271,78 +258,9 @@ Singleton {
         return true;
     }
 
-    function parseConfiguration(content, byteLength) {
-        if (typeof content !== "string" || byteLength > root.maximumConfigBytes || content.indexOf(
-                    "\0") !== -1) {
-            return null;
-        }
-        let inTheme = false;
-        let sawTheme = false;
-        const values = {};
-        const lines = content.split(/\r?\n/);
-        for (let index = 0; index < lines.length; index += 1) {
-            const line = lines[index].trim();
-            if (line === "" || line.startsWith(";")) {
-                continue;
-            }
-            if (line.startsWith("[") && line.endsWith("]")) {
-                if (line !== "[theme]" || sawTheme) {
-                    return null;
-                }
-                inTheme = true;
-                sawTheme = true;
-                continue;
-            }
-            const separator = line.indexOf("=");
-            if (!inTheme || separator <= 0) {
-                return null;
-            }
-            const key = line.slice(0, separator).trim();
-            const value = line.slice(separator + 1).trim();
-            if ((key !== "mode" && key !== "accent") || Object.prototype.hasOwnProperty.call(values,
-                                                                                             key) || value
-                    === "") {
-                return null;
-            }
-            values[key] = value;
-        }
-        if (!sawTheme || (values.mode !== "wallpaper" && values.mode !== "accent")) {
-            return null;
-        }
-        const configuredAccent = values.accent === undefined ? null : canonicalHex(values.accent);
-        if ((values.accent !== undefined && configuredAccent === null) || (values.mode === "accent"
-                                                                           && configuredAccent
-                                                                           === null)) {
-            return null;
-        }
-        return Object.freeze({
-                                 "mode": values.mode,
-                                 "configuredAccent": configuredAccent
-                             });
-    }
-
-    function applyLoadedConfiguration() {
-        const data = configFile.data();
-        const byteLength = data !== null && typeof data.byteLength === "number" ? data.byteLength :
-                                                                                  configFile.text(
-                                                                                      ).length;
-        const configuration = parseConfiguration(configFile.text(), byteLength);
-        if (configuration === null) {
-            warnOnce(byteLength > root.maximumConfigBytes ? "oversized" : "malformed", byteLength
-                     > root.maximumConfigBytes ? "theme configuration exceeds 4 KiB" :
-                                                 "theme configuration is malformed");
-            return;
-        }
-        root._configuration = configuration;
-        publish(configuration);
-    }
-
-    function warnOnce(kind, message) {
-        if (root._loggedFailures[kind] === true) {
-            return;
-        }
-        root._loggedFailures[kind] = true;
-        console.warn("Nagi Theme: " + message + "; preserving the last valid snapshot");
+    function syncUserConfiguration() {
+        root._configuration = UserConfig.snapshot.theme;
+        publish(root._configuration);
     }
 
     Component.onCompleted: {
@@ -352,6 +270,7 @@ Singleton {
         root._snapshot = initial;
         root._snapshotKey = snapshotKey(initial);
         root._initialized = true;
+        syncUserConfiguration();
     }
 
     onWallpaperPaletteChanged: {
@@ -360,45 +279,17 @@ Singleton {
         }
     }
 
-    FileView {
-        id: configFile
+    Connections {
+        target: UserConfig
 
-        path: root.configPath
-        watchChanges: true
-        preload: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: root.applyLoadedConfiguration()
-        onLoadFailed: function (error) {
-            root.warnOnce("unavailable", "theme configuration is unavailable");
-        }
-    }
-
-    // FileView watches a missing file only when its parent exists. This
-    // one-shot parent watcher covers first-time creation of nagi-shell/ and
-    // then retires; steady-state changes remain owned by configFile.
-    FileView {
-        id: configDirectoryWatcher
-
-        path: root.configDirectoryPath
-        watchChanges: true
-        preload: true
-        printErrors: false
-        onFileChanged: {
-            path = "";
-            configFile.watchChanges = false;
-            configFile.watchChanges = true;
-            configFile.reload();
-        }
-        onLoadFailed: function (error) {
-            if (error === FileViewError.NotAFile) {
-                path = "";
-            }
+        function onSnapshotChanged() {
+            root.syncUserConfiguration();
         }
     }
 
     readonly property QtObject color: QtObject {
         readonly property color surface: "#F5080D16"
+        readonly property color surfaceOpaque: "#080D16"
         readonly property color surfaceBorder: "#263448"
         readonly property color controlFill: "#16222F"
         readonly property color textPrimary: "#EFF3F8"
@@ -428,7 +319,7 @@ Singleton {
     readonly property QtObject radius: QtObject {
         // A 16 px outer radius reads as softly rectangular at both compact and
         // expanded scales. Inner radii subtract optical insets, not percentages.
-        readonly property int outer: 16
+        readonly property int outer: UserConfig.snapshot.theme.outerRadius
         readonly property int sm: 6
         readonly property int md: 10
         readonly property int lg: 12
@@ -439,7 +330,7 @@ Singleton {
     // deployment fallback chain is "Inter" -> "Noto Sans" -> "DejaVu Sans" -> sans-serif.
     // Fontconfig resolves unavailable faces and scripts.
     readonly property QtObject type: QtObject {
-        readonly property string family: "Inter"
+        readonly property string family: UserConfig.snapshot.theme.fontFamily
         readonly property int caption: 11
         readonly property int display: 48
         readonly property int body: 13
@@ -465,6 +356,9 @@ Singleton {
         readonly property int islandTransientNotificationWidth: 420
         readonly property int islandTransientNotificationHeight: 72
         readonly property int islandTransientValueMaximumWidth: 96
+        readonly property int onboardingWidth: 520
+        readonly property int onboardingMinimumWidth: 420
+        readonly property int onboardingMaximumWidth: 640
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38
@@ -479,7 +373,7 @@ Singleton {
     }
 
     readonly property QtObject opacity: QtObject {
-        readonly property real surface: 0.96
+        readonly property real surface: UserConfig.snapshot.theme.surfaceOpacity
         readonly property real disabled: 0.45
         readonly property real shadow: 0.28
     }

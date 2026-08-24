@@ -18,6 +18,9 @@ Scope {
     // Verification seam following the injected-dependency pattern.
     // Production leaves it unset and observes Mpris.players directly.
     property var playersModel: null
+    // Disabling the integration disconnects every player watcher and avoids
+    // touching the process-wide MPRIS model.
+    property bool enabled: true
 
     // Set by presentation while the expanded media view is visible. Artwork
     // decoding and the shared 1 Hz position refresh run only while true;
@@ -40,7 +43,7 @@ Scope {
 
     // True while a meaningful player is selected. Stopped-only players and
     // an absent session bus both leave this false.
-    readonly property bool available: engine.state.available
+    readonly property bool available: root.enabled && engine.state.available
     // Monotonic connection generation of the selected player instance.
     readonly property int selectedGeneration: engine.state.generation
     // Transient track identity "<generation>:<uniqueId>"; changes whenever
@@ -116,6 +119,7 @@ Scope {
 
     Component.onCompleted: engine.rebuild()
     onPlayersModelChanged: engine.scheduleRebuild()
+    onEnabledChanged: engine.scheduleRebuild()
 
     Timer {
         id: dispatchTimer
@@ -260,8 +264,8 @@ Scope {
         property int generationCounter: 0
         property bool scheduled: false
         property var warnedKeys: ({})
-        readonly property var currentModel: root.playersModel !== null ? root.playersModel :
-                                                                         Mpris.players
+        readonly property var currentModel: !root.enabled ? null : root.playersModel !== null
+                                                            ? root.playersModel : Mpris.players
 
         function artworkStatusFor() {
             if (!state.available || state.artworkUrl === "") {

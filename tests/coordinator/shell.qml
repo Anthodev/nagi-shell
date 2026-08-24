@@ -118,8 +118,8 @@ ShellRoot {
         require(coordinator.ownerName === "idle", "clearing both intents restores Idle");
 
         const deliberateFocusSerial = coordinator.focusRequestSerial;
-        require(coordinator.setExplicitExpanded(generation, true),
-                "keyboard expansion enters from Idle");
+        require(coordinator.openDashboard(null),
+                "surface-independent dashboard activation enters from Idle");
         require(coordinator.focusRequestSerial === deliberateFocusSerial && coordinator.focusTarget
                 === coordinator.focusExpandedDashboard,
                 "focus waits for the deliberate dashboard presentation");
@@ -200,9 +200,9 @@ ShellRoot {
                 "stale completion is rejected");
         require(coordinator.cancelInteractive(launcherEpoch), "Escape cancels current launcher");
         require(coordinator.ownerName === "expanded", "Escape restores the predecessor");
-        require(!coordinator.openTray(null),
-                "tray requires the current dashboard surface entry point");
-        require(coordinator.openTray(token), "visible dashboard tray intent opens");
+        require(coordinator.openTray(null),
+                "global tray intent opens through the attached surface");
+        require(coordinator.openTray(token), "visible dashboard tray intent renews focus");
         const trayEpoch = coordinator.ownerEpoch;
         require(coordinator.ownerName === "tray", "tray owns the island as an Interactive task");
         require(coordinator.acknowledgeVisible(generation, trayEpoch, coordinator.revision),
@@ -220,9 +220,9 @@ ShellRoot {
         require(coordinator.ownerName === "expanded",
                 "tray Back atomically restores its dashboard predecessor");
 
-        require(!coordinator.openAudio(null),
-                "audio requires the current dashboard surface entry point");
-        require(coordinator.openAudio(token), "visible dashboard audio intent opens");
+        require(coordinator.openAudio(null),
+                "global audio intent opens through the attached surface");
+        require(coordinator.openAudio(token), "visible dashboard audio intent renews focus");
         const audioEpoch = coordinator.ownerEpoch;
         require(coordinator.ownerName === "audio"
                 && coordinator.focusTarget === coordinator.focusAudio,
@@ -250,9 +250,9 @@ ShellRoot {
                 "audio Back atomically restores its dashboard predecessor");
 
 
-        require(!coordinator.openHistory(null),
-                "history requires the current dashboard surface entry point");
-        require(coordinator.openHistory(token), "visible dashboard history intent opens");
+        require(coordinator.openHistory(null),
+                "global history intent opens through the attached surface");
+        require(coordinator.openHistory(token), "visible dashboard history intent renews focus");
         const historyEpoch = coordinator.ownerEpoch;
         require(coordinator.ownerName === "history",
                 "history owns the island as an Interactive task");
@@ -267,7 +267,7 @@ ShellRoot {
         require(!coordinator.openLauncher(token),
                 "equal-rank launcher cannot replace active history");
 
-        require(coordinator.openSession(token), "session preempts visible history");
+        require(coordinator.openSession(null), "global session intent preempts visible history");
         const sessionEpoch = coordinator.ownerEpoch;
         require(coordinator.acknowledgeVisible(generation, sessionEpoch, coordinator.revision),
                 "matching session presentation is acknowledged");
@@ -486,6 +486,7 @@ ShellRoot {
                 === "notification-2",
                 "highest-rank oldest remaining transient is selected deterministically");
 
+
         verifyExpandedIntents();
 
         verifyReloadReattachment();
@@ -505,6 +506,7 @@ ShellRoot {
 
         monotonicNow: () => test.nowMs
     }
+
 
     Component.onCompleted: Qt.callLater(test.run)
 }

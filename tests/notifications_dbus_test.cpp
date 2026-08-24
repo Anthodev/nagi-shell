@@ -80,6 +80,8 @@ private:
     {
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("NAGI_NOTIFICATION_TEST_MODE"), mode);
+        environment.insert(QStringLiteral("NAGI_SKIP_DEFAULT_CONFIG_CREATION"),
+                           QStringLiteral("1"));
         const QString xdgRoot = testDirectory + QStringLiteral("/xdg");
         QDir().mkpath(xdgRoot + QStringLiteral("/home"));
         environment.insert(QStringLiteral("HOME"), xdgRoot + QStringLiteral("/home"));

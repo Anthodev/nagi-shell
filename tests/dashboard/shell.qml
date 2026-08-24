@@ -140,6 +140,10 @@ ShellRoot {
                         "text": "Notification history"
                     },
                     {
+                        "control": findObject(dashboard, "dashboardSettings"),
+                        "text": "System Settings"
+                    },
+                    {
                         "control": findObject(dashboard, "dashboardSession"),
                         "text": "Session"
                     }
@@ -581,34 +585,44 @@ ShellRoot {
         const trayButton = test.findObject(dashboard, "dashboardTray");
         const launcherButton = test.findObject(dashboard, "dashboardLauncher");
         const historyButton = test.findObject(dashboard, "dashboardHistory");
+        const settingsButton = test.findObject(dashboard, "dashboardSettings");
         const sessionButton = test.findObject(dashboard, "dashboardSession");
         require(trayButton !== null && launcherButton !== null && historyButton !== null
-                && sessionButton !== null && navigationRegion !== null,
-                "rail exposes all four actions and its containing region");
+                && settingsButton !== null && sessionButton !== null && navigationRegion !== null,
+                "rail exposes all five actions and its containing region");
         const trayPosition = trayButton.mapToItem(dashboard, 0, 0);
         const launcherPosition = launcherButton.mapToItem(dashboard, 0, 0);
         const historyPosition = historyButton.mapToItem(dashboard, 0, 0);
+        const settingsPosition = settingsButton.mapToItem(dashboard, 0, 0);
         const sessionPosition = sessionButton.mapToItem(dashboard, 0, 0);
         const navigationPosition = navigationRegion.mapToItem(dashboard, 0, 0);
         require(trayPosition.y < launcherPosition.y && launcherPosition.y < historyPosition.y
-                && sessionPosition.y >= historyPosition.y + historyButton.height + Theme.spacing.xl
+                && settingsPosition.y >= historyPosition.y + historyButton.height + Theme.spacing.xl
+                && settingsPosition.y < sessionPosition.y
                 && Math.abs(sessionPosition.y + sessionButton.height - navigationPosition.y
                             - navigationRegion.height) < 1,
-                "rail keeps its top cluster together and bottom-aligns separated Session: "
-                + trayPosition.y + "/" + launcherPosition.y + "/" + historyPosition.y + "/"
-                + sessionPosition.y + ", region " + navigationPosition.y + "+"
-                + navigationRegion.height + ", root/parent " + sessionButton.parent.height + "/"
-                + sessionButton.parent.parent.height);
+                "rail keeps its top cluster together and Settings immediately above final Session");
         require(trayButton.Accessible.name === "System tray" && launcherButton.Accessible.name
                 === "Launcher" && historyButton.Accessible.name === "Notification history"
+                && settingsButton.Accessible.name === "System Settings"
+                && settingsButton.Accessible.description === ""
                 && sessionButton.Accessible.name === "Session" && trayButton.implicitHeight
                 >= Theme.size.controlHeightMd,
                 "rail actions expose stable accessible names and adequate hit targets");
+        require(IconResolver.resolve("settings", "normal", "", "").source.indexOf(
+                    "preferences-system") !== -1,
+                "Settings uses the active KDE preferences-system semantic icon");
+        const navigationRoot = test.findObject(dashboard, "dashboardNavigation");
+        navigationRoot.settingsFailure = "System Settings could not be opened. Open it from the application launcher.";
+        require(settingsButton.Accessible.description === navigationRoot.settingsFailure,
+                "Settings launch rejection exposes one bounded actionable failure");
+        navigationRoot.settingsFailure = "";
         trayButton.clicked();
         launcherButton.clicked();
         historyButton.clicked();
+        settingsButton.clicked();
         sessionButton.clicked();
-        require(navigationActions.join(",") === "tray,launcher,history,session",
+        require(navigationActions.join(",") === "tray,launcher,history,settings,session",
                 "rail preserves each normalized open-request route");
 
         dashboard.focusInitialControl();
@@ -620,11 +634,12 @@ ShellRoot {
                           "dashboardBluetooth", "dashboardPinnedApplication",
                           "dashboardOutputVolume", "dashboardOutputMute", "dashboardInputVolume",
                           "dashboardInputMute", "dashboardTray", "dashboardLauncher",
-                          "dashboardHistory", "dashboardSession"];
+                          "dashboardHistory", "dashboardSettings", "dashboardSession"];
         require(names.indexOf("dashboardTray") < names.indexOf("dashboardLauncher") && names.indexOf(
                     "dashboardLauncher") < names.indexOf("dashboardHistory") && names.indexOf(
-                    "dashboardHistory") < names.indexOf("dashboardSession"),
-                "rail focus order remains Tray, Launcher, History, Session");
+                    "dashboardHistory") < names.indexOf("dashboardSettings") && names.indexOf(
+                    "dashboardSettings") < names.indexOf("dashboardSession"),
+                "rail focus order remains Tray, Launcher, History, Settings, Session");
         for (let index = 0; index < expected.length; ++index) {
             require(names.indexOf(expected[index]) !== -1, "focus traversal reaches "
                     + expected[index]);
@@ -1033,79 +1048,34 @@ ShellRoot {
             service: notificationService
         }
     }
-    Component {
-        id: navigationContent
-        Item {
-            implicitWidth: Math.max(navigationTopCluster.implicitWidth,
-                                    navigationSession.implicitWidth)
-            implicitHeight: navigationTopCluster.implicitHeight + Theme.spacing.xl
-                            + navigationSession.implicitHeight
+    QtObject {
+        id: navigationCoordinator
 
-            ColumnLayout {
-                id: navigationTopCluster
-                objectName: "dashboardNavigationTopCluster"
-                anchors.top: parent.top
-                anchors.right: parent.right
-                spacing: Theme.spacing.sm
-
-                RailButton {
-                    objectName: "dashboardTray"
-                    meaning: "tray"
-                    accessibleName: "System tray"
-                    actionName: "tray"
-                }
-                RailButton {
-                    objectName: "dashboardLauncher"
-                    meaning: "launcher"
-                    accessibleName: "Launcher"
-                    actionName: "launcher"
-                }
-                RailButton {
-                    objectName: "dashboardHistory"
-                    meaning: "history"
-                    accessibleName: "Notification history"
-                    actionName: "history"
-                }
-            }
-
-            RailButton {
-                id: navigationSession
-                objectName: "dashboardSession"
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                meaning: "session"
-                accessibleName: "Session"
-                actionName: "session"
-            }
+        function openTray(surfaceToken) {
+            test.navigationActions.push("tray");
+            return true;
+        }
+        function openLauncher(surfaceToken) {
+            test.navigationActions.push("launcher");
+            return true;
+        }
+        function openHistory(surfaceToken) {
+            test.navigationActions.push("history");
+            return true;
+        }
+        function openSession(surfaceToken) {
+            test.navigationActions.push("session");
+            return true;
         }
     }
 
-    component RailButton: AbstractButton {
-        id: control
+    Component {
+        id: navigationContent
 
-        required property string meaning
-        required property string accessibleName
-        required property string actionName
-
-        implicitWidth: Theme.size.controlHeightMd
-        implicitHeight: Theme.size.controlHeightMd
-        focusPolicy: Qt.StrongFocus
-        Accessible.role: Accessible.Button
-        Accessible.name: accessibleName
-        onClicked: test.navigationActions.push(actionName)
-
-        contentItem: Item {
-            IslandIcon {
-                anchors.centerIn: parent
-                meaning: control.meaning
-            }
+        DashboardNavigation {
+            coordinator: navigationCoordinator
+            onSystemSettingsRequested: test.navigationActions.push("settings")
         }
-        IslandFocusRing {
-            visible: control.visualFocus
-        }
-        ToolTip.delay: Theme.motion.durationSlow
-        ToolTip.visible: hovered || visualFocus
-        ToolTip.text: accessibleName
     }
 
     component MuteRasterSample: Item {

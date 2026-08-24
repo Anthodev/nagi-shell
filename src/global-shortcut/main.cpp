@@ -4,6 +4,7 @@
 #include <KGlobalShortcutInfo>
 
 #include "registration_policy.h"
+#include "shortcut_contract.h"
 
 #include <QAction>
 #include <QDBusConnection>
@@ -29,11 +30,10 @@
 namespace {
 constexpr auto kComponentId = "io.github.Anthodev.NagiShell";
 constexpr auto kComponentName = "Nagi Shell";
-constexpr auto kActionId = "open-launcher";
-constexpr auto kActionName = "Open Launcher";
 constexpr auto kPreferredShortcut = "Meta+Space";
 constexpr auto kServiceName = "org.kde.kglobalaccel";
-constexpr qsizetype kMaximumOutputLineBytes = 512;
+constexpr qsizetype kMaximumOutputLineBytes = 4096;
+
 
 int signalWriteFd = -1;
 
@@ -67,12 +67,11 @@ bool installTerminationPipe(std::array<int, 2> *pipeFds)
     return true;
 }
 
-class ShortcutHelper final : public QObject {
+class GlobalShortcutHelper final : public QObject {
 public:
-    explicit ShortcutHelper(QObject *parent = nullptr)
+    explicit GlobalShortcutHelper(QObject *parent = nullptr)
         : QObject(parent)
         , m_output()
-        , m_action(this)
         , m_serviceWatcher(QString::fromLatin1(kServiceName), QDBusConnection::sessionBus(),
                            QDBusServiceWatcher::WatchForOwnerChange, this)
     {
@@ -81,51 +80,77 @@ public:
             return;
         }
 
-        m_action.setObjectName(QString::fromLatin1(kActionId));
-        m_action.setText(QString::fromLatin1(kActionName));
-        m_action.setProperty("componentName", QString::fromLatin1(kComponentId));
-        m_action.setProperty("componentDisplayName", QString::fromLatin1(kComponentName));
-        m_action.setAutoRepeat(false);
+        for (qsizetype index = 0; index < std::ssize(kShortcutActionSpecs); ++index) {
+            const ShortcutActionSpec &spec = kShortcutActionSpecs.at(index);
+            auto *action = new QAction(this);
+            action->setObjectName(QString::fromLatin1(spec.id));
+            action->setText(QString::fromLatin1(spec.name));
+            action->setProperty("componentName", QString::fromLatin1(kComponentId));
+            action->setProperty("componentDisplayName", QString::fromLatin1(kComponentName));
+            action->setAutoRepeat(false);
+            connect(action, &QAction::triggered, this, [this, activation = spec.activation] {
+                publish(QJsonObject {{QStringLiteral("type"), QStringLiteral("activation")},
+                                     {QStringLiteral("action"),
+                                      QString::fromLatin1(activation)}});
+            });
+            m_actions.at(index) = action;
+        }
 
-        connect(&m_action, &QAction::triggered, this, [this] {
-            publish(QJsonObject {{QStringLiteral("type"), QStringLiteral("activation")},
-                                 {QStringLiteral("action"), QStringLiteral("openLauncher")}});
-        });
         connect(KGlobalAccel::self(), &KGlobalAccel::globalShortcutChanged, this,
                 [this](QAction *action, const QKeySequence &) {
-                    if (m_initialized && action == &m_action) {
+                    if (m_initialized && actionIndex(action) >= 0) {
                         publishState(true);
                     }
                 });
         connect(&m_serviceWatcher, &QDBusServiceWatcher::serviceUnregistered, this,
-                [this] { publishUnavailable(); });
+                [this] { publishState(false); });
         connect(&m_serviceWatcher, &QDBusServiceWatcher::serviceRegistered, this, [this] {
             QTimer::singleShot(250, this, [this] { publishState(true); });
         });
 
-        registerAction();
+        registerActions();
     }
 
 private:
-    void registerAction()
+    qsizetype actionIndex(const QAction *action) const
     {
-        const QKeySequence preferred =
-            QKeySequence::fromString(QString::fromLatin1(kPreferredShortcut),
-                                     QKeySequence::PortableText);
-        const bool defaultRegistered = KGlobalAccel::self()->setDefaultShortcut(
-            &m_action, {preferred}, KGlobalAccel::NoAutoloading);
-        const QList<QKeySequence> persisted = KGlobalAccel::self()->globalShortcut(
-            QString::fromLatin1(kComponentId), QString::fromLatin1(kActionId));
-        const bool preferredAvailable = KGlobalAccel::isGlobalShortcutAvailable(preferred);
-        const QList<QKeySequence> proposal =
-            initialShortcutProposal(persisted, preferred, preferredAvailable);
-        const bool actionRegistered = KGlobalAccel::self()->setShortcut(
-            &m_action, proposal, KGlobalAccel::Autoloading);
+        for (qsizetype index = 0; index < std::ssize(m_actions); ++index) {
+            if (m_actions.at(index) == action) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    void registerActions()
+    {
+        bool actionsRegistered = true;
+        for (qsizetype index = 0; index < std::ssize(kShortcutActionSpecs); ++index) {
+            QAction *action = m_actions.at(index);
+            const ShortcutActionSpec &spec = kShortcutActionSpecs.at(index);
+            const QList<QKeySequence> persisted = KGlobalAccel::self()->globalShortcut(
+                QString::fromLatin1(kComponentId), QString::fromLatin1(spec.id));
+            QList<QKeySequence> proposal = persisted;
+            if (spec.launcherDefault) {
+                const QKeySequence preferred =
+                    QKeySequence::fromString(QString::fromLatin1(kPreferredShortcut),
+                                             QKeySequence::PortableText);
+                actionsRegistered = KGlobalAccel::self()->setDefaultShortcut(
+                                        action, {preferred}, KGlobalAccel::NoAutoloading)
+                    && actionsRegistered;
+                proposal = initialShortcutProposal(
+                    persisted, preferred, KGlobalAccel::isGlobalShortcutAvailable(preferred));
+            }
+            actionsRegistered =
+                KGlobalAccel::self()->setShortcut(action, proposal, KGlobalAccel::Autoloading)
+                && actionsRegistered;
+        }
+
         const QDBusReply<bool> serviceRegistered =
             QDBusConnection::sessionBus().interface()->isServiceRegistered(
                 QString::fromLatin1(kServiceName));
         m_initialized = true;
-        publishState(defaultRegistered && actionRegistered && serviceRegistered.isValid()
+        publishState(actionsRegistered && serviceRegistered.isValid()
                      && serviceRegistered.value());
     }
 
@@ -137,7 +162,7 @@ private:
         const QList<KGlobalShortcutInfo> matches = KGlobalAccel::globalShortcutsByKey(preferred);
         for (const KGlobalShortcutInfo &match : matches) {
             if (match.componentUniqueName() != QString::fromLatin1(kComponentId)
-                || match.uniqueName() != QString::fromLatin1(kActionId)) {
+                || match.uniqueName() != QStringLiteral("open-launcher")) {
                 return true;
             }
         }
@@ -146,32 +171,23 @@ private:
 
     void publishState(bool available)
     {
-        const QList<QKeySequence> active = KGlobalAccel::self()->shortcut(&m_action);
-        QJsonValue activeShortcut = QJsonValue::Null;
-        for (const QKeySequence &sequence : active) {
-            if (!sequence.isEmpty()) {
-                activeShortcut = sequence.toString(QKeySequence::PortableText);
-                break;
+        ShortcutValues activeShortcuts {};
+        for (qsizetype index = 0; index < std::ssize(kShortcutActionSpecs); ++index) {
+            activeShortcuts.at(index) = QJsonValue::Null;
+            if (!available) {
+                continue;
+            }
+            const QList<QKeySequence> active = KGlobalAccel::self()->shortcut(m_actions.at(index));
+            for (const QKeySequence &sequence : active) {
+                if (!sequence.isEmpty()) {
+                    activeShortcuts.at(index) =
+                        sequence.toString(QKeySequence::PortableText);
+                    break;
+                }
             }
         }
-        publish(QJsonObject {
-            {QStringLiteral("type"), QStringLiteral("state")},
-            {QStringLiteral("available"), available},
-            {QStringLiteral("activeShortcut"), activeShortcut},
-            {QStringLiteral("preferredShortcut"), QString::fromLatin1(kPreferredShortcut)},
-            {QStringLiteral("preferredConflict"), preferredConflict()},
-        });
-    }
-
-    void publishUnavailable()
-    {
-        publish(QJsonObject {
-            {QStringLiteral("type"), QStringLiteral("state")},
-            {QStringLiteral("available"), false},
-            {QStringLiteral("activeShortcut"), QJsonValue::Null},
-            {QStringLiteral("preferredShortcut"), QString::fromLatin1(kPreferredShortcut)},
-            {QStringLiteral("preferredConflict"), false},
-        });
+        publish(shortcutStateMessage(available, activeShortcuts, preferredConflict(),
+                                     QString::fromLatin1(kPreferredShortcut)));
     }
 
     void publish(const QJsonObject &message)
@@ -186,7 +202,7 @@ private:
     }
 
     QFile m_output;
-    QAction m_action;
+    std::array<QAction *, kShortcutActionSpecs.size()> m_actions {};
     QDBusServiceWatcher m_serviceWatcher;
     bool m_initialized = false;
 };
@@ -202,7 +218,7 @@ int main(int argc, char **argv)
     if (runtimeDirectory.isEmpty()) {
         return 2;
     }
-    QLockFile processLock(runtimeDirectory + QStringLiteral("/nagi-shell-launcher-shortcut.lock"));
+    QLockFile processLock(runtimeDirectory + QStringLiteral("/nagi-shell-global-shortcut.lock"));
     if (!processLock.tryLock(0)) {
         return 3;
     }
@@ -216,7 +232,7 @@ int main(int argc, char **argv)
         application.quit();
     });
 
-    ShortcutHelper helper;
+    GlobalShortcutHelper helper;
     const int result = application.exec();
     signalWriteFd = -1;
     ::close(pipeFds[0]);

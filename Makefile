@@ -32,10 +32,12 @@ SESSION_MOC := $(BUILD_DIR)/session/main.moc
 SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
 SESSION_DBUS_TEST_MOC := $(BUILD_DIR)/session_dbus_test.moc
 APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
-LAUNCHER_SHORTCUT_BUILD_DIR := $(BUILD_DIR)/launcher-shortcut
-LAUNCHER_SHORTCUT_HELPER := $(LAUNCHER_SHORTCUT_BUILD_DIR)/nagi-launcher-shortcut
-LAUNCHER_SHORTCUT_TEST := $(LAUNCHER_SHORTCUT_BUILD_DIR)/nagi-launcher-shortcut-test
-LAUNCHER_SHORTCUT_TEST_DIR := $(BUILD_DIR)/launcher-shortcut-test
+GLOBAL_SHORTCUT_BUILD_DIR := $(BUILD_DIR)/global-shortcut
+GLOBAL_SHORTCUT_HELPER := $(GLOBAL_SHORTCUT_BUILD_DIR)/nagi-global-shortcut
+GLOBAL_SHORTCUT_TEST := $(GLOBAL_SHORTCUT_BUILD_DIR)/nagi-global-shortcut-test
+GLOBAL_SHORTCUT_LIVE_TEST := $(GLOBAL_SHORTCUT_BUILD_DIR)/nagi-global-shortcut-live-test
+GLOBAL_SHORTCUT_TEST_DIR := $(BUILD_DIR)/global-shortcut-test
+THEME_QML_SOURCES := qml/UserConfig.qml qml/Theme.qml
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 BRIGHTNESS_TEST_DIR := $(BUILD_DIR)/brightness-test
@@ -54,6 +56,7 @@ POLKIT_UI_TEST_DIR := $(BUILD_DIR)/polkit-ui-test
 DASHBOARD_TEST_DIR := $(BUILD_DIR)/dashboard-test
 IDLE_TEST_DIR := $(BUILD_DIR)/idle-test
 THEME_CONFIG_TEST_DIR := $(BUILD_DIR)/theme-config-test
+ONBOARDING_TEST_DIR := $(BUILD_DIR)/onboarding-test
 ICON_TEST_DIR := $(BUILD_DIR)/icon-test
 SUBVIEW_FRAME_TEST_DIR := $(BUILD_DIR)/subview-frame-test
 TYPOGRAPHY_TEST_DIR := $(BUILD_DIR)/typography-test
@@ -109,14 +112,16 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-launcher-shortcut-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop
 .PHONY: test-dashboard
 .PHONY: test-polkit-ui
 .PHONY: test-theme-config
+.PHONY: test-onboarding
 .PHONY: test-icons
 .PHONY: test-subview-frame
 .PHONY: check-wallpaper-toolchain wallpaper-helper test-wallpaper test-wallpaper-dbus test-wallpaper-live
 .PHONY: test-typography
+.PHONY: test-global-shortcut-live
 
 help:
 	@printf '%s\n' \
@@ -127,7 +132,7 @@ help:
 		'make brightness-helper  Build the PowerDevil brightness bridge' \
 		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
-		'make launcher-shortcut-helper  Build the KF6 KGlobalAccel launcher shortcut helper' \
+		'make global-shortcut-helper  Build the KF6 KGlobalAccel global shortcut helper' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make wallpaper-helper  Build the read-only Plasma wallpaper palette helper' \
 		'make test-native     Test KWin tuple normalization' \
@@ -145,7 +150,8 @@ help:
 		'make test-session   Test session service and interaction state' \
 		'make test-launcher   Test launcher search, ordering, pin actions, and dispatch' \
 		'make test-applications  Test desktop discovery and persistence bridge' \
-		'make test-launcher-shortcut  Test KGlobalAccel conflict, persistence, activation, and lifecycle' \
+		'make test-global-shortcut  Test KGlobalAccel conflict, persistence, activation, and lifecycle' \
+		'make test-global-shortcut-live  Verify KGlobalAccel assignments and activation on live KDE' \
 		'make test-notifications  Test notification lifecycle, bounds, and history view' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
@@ -167,6 +173,7 @@ help:
 		'make test-polkit-ui  Test the dormant Polkit authentication presentation' \
 		'make test-dashboard   Test expanded dashboard composition and actions' \
 		'make test-idle       Test idle island composition and collapse' \
+		'make test-onboarding  Test first-launch onboarding and dismissal state' \
 		'make test-typography  Render the live typography comparison matrix' \
 		'make launch          Run this checkout in the foreground' \
 		'make diagnose        Run with authoritative verbose diagnostics' \
@@ -189,7 +196,7 @@ requirements:
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
 	@$(MAKE) --no-print-directory check-application-toolchain
-	@$(MAKE) --no-print-directory check-launcher-shortcut-toolchain
+	@$(MAKE) --no-print-directory check-global-shortcut-toolchain
 	@$(MAKE) --no-print-directory check-notification-toolchain
 	@$(MAKE) --no-print-directory check-wallpaper-toolchain
 	@$(MAKE) --no-print-directory check-tray-toolchain
@@ -208,9 +215,9 @@ check-application-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core gio-unix-2.0
 
 
-check-launcher-shortcut-toolchain:
+check-global-shortcut-toolchain:
 	@command -v '$(CMAKE)' >/dev/null
-	@$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)' >/dev/null
+	@$(CMAKE) -S src/global-shortcut -B '$(GLOBAL_SHORTCUT_BUILD_DIR)' >/dev/null
 
 check-wallpaper-toolchain:
 	@command -v '$(CMAKE)' >/dev/null
@@ -309,14 +316,18 @@ $(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(B
 $(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) $(GIO_CFLAGS) $(APPLICATION_HELPER_SOURCE) -o $@ $(LDFLAGS) $(QT_LIBS) $(GIO_LIBS)
 
-$(LAUNCHER_SHORTCUT_HELPER): src/launcher-shortcut/main.cpp src/launcher-shortcut/registration_policy.h src/launcher-shortcut/CMakeLists.txt | $(BUILD_DIR)
-	$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)'
-	$(CMAKE) --build '$(LAUNCHER_SHORTCUT_BUILD_DIR)' --target nagi-launcher-shortcut
+$(GLOBAL_SHORTCUT_HELPER): src/global-shortcut/main.cpp src/global-shortcut/registration_policy.h src/global-shortcut/shortcut_contract.h src/global-shortcut/CMakeLists.txt | $(BUILD_DIR)
+	$(CMAKE) -S src/global-shortcut -B '$(GLOBAL_SHORTCUT_BUILD_DIR)'
+	$(CMAKE) --build '$(GLOBAL_SHORTCUT_BUILD_DIR)' --target nagi-global-shortcut
 
 
-$(LAUNCHER_SHORTCUT_TEST): tests/launcher_shortcut_test.cpp src/launcher-shortcut/registration_policy.h src/launcher-shortcut/CMakeLists.txt | $(BUILD_DIR)
-	$(CMAKE) -S src/launcher-shortcut -B '$(LAUNCHER_SHORTCUT_BUILD_DIR)'
-	$(CMAKE) --build '$(LAUNCHER_SHORTCUT_BUILD_DIR)' --target nagi-launcher-shortcut-test
+$(GLOBAL_SHORTCUT_TEST): tests/global_shortcut_test.cpp src/global-shortcut/registration_policy.h src/global-shortcut/shortcut_contract.h src/global-shortcut/CMakeLists.txt | $(BUILD_DIR)
+	$(CMAKE) -S src/global-shortcut -B '$(GLOBAL_SHORTCUT_BUILD_DIR)'
+	$(CMAKE) --build '$(GLOBAL_SHORTCUT_BUILD_DIR)' --target nagi-global-shortcut-test
+
+$(GLOBAL_SHORTCUT_LIVE_TEST): tests/global_shortcut_live_test.cpp src/global-shortcut/shortcut_contract.h src/global-shortcut/CMakeLists.txt | $(BUILD_DIR)
+	$(CMAKE) -S src/global-shortcut -B '$(GLOBAL_SHORTCUT_BUILD_DIR)'
+	$(CMAKE) --build '$(GLOBAL_SHORTCUT_BUILD_DIR)' --target nagi-global-shortcut-live-test
 
 $(APPLICATION_TEST): tests/applications_helper_test.cpp | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) tests/applications_helper_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
@@ -346,7 +357,7 @@ session-helper: check-helper-toolchain $(SESSION_HELPER)
 
 application-helper: check-application-toolchain $(APPLICATION_HELPER)
 
-launcher-shortcut-helper: check-launcher-shortcut-toolchain $(LAUNCHER_SHORTCUT_HELPER)
+global-shortcut-helper: check-global-shortcut-toolchain $(GLOBAL_SHORTCUT_HELPER)
 
 wallpaper-helper: check-wallpaper-toolchain
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper
@@ -375,13 +386,13 @@ test-notifications: check-quickshell check-notification-toolchain $(NOTIFICATION
 	rm -rf $(NOTIFICATION_HISTORY_TEST_DIR)
 	mkdir -p $(NOTIFICATION_HISTORY_TEST_DIR)/qml $(NOTIFICATION_HISTORY_TEST_DIR)/assets/icons/nagi
 	cp tests/notification-history/shell.qml $(NOTIFICATION_HISTORY_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/NotificationHistoryView.qml $(NOTIFICATION_HISTORY_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/NotificationHistoryView.qml $(NOTIFICATION_HISTORY_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(NOTIFICATION_HISTORY_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(NOTIFICATION_HISTORY_TEST_DIR) --no-duplicate
 	rm -rf $(NOTIFICATION_QML_TEST_DIR)
 	mkdir -p $(NOTIFICATION_QML_TEST_DIR)/qml $(NOTIFICATION_QML_TEST_DIR)/assets/icons/nagi
 	cp tests/notifications/shell.qml $(NOTIFICATION_QML_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/NotificationHistoryView.qml qml/NotificationService.qml $(NOTIFICATION_QML_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/NotificationHistoryView.qml qml/NotificationService.qml $(NOTIFICATION_QML_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(NOTIFICATION_QML_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' GTK_USE_PORTAL='0' $(DBUS_RUN_SESSION) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(NOTIFICATION_DBUS_TEST) '$(QS)' '$(abspath $(NOTIFICATION_QML_TEST_DIR))'
 
@@ -413,7 +424,7 @@ test-session-dbus: check-helper-toolchain $(SESSION_HELPER) $(SESSION_DBUS_TEST)
 test-session: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SESSION_TEST_DIR)/qml $(SESSION_TEST_DIR)/assets/icons/nagi
 	cp tests/session/shell.qml $(SESSION_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/SessionBridge.qml qml/SessionService.qml qml/SessionEntry.qml qml/SessionView.qml $(SESSION_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/SessionBridge.qml qml/SessionService.qml qml/SessionEntry.qml qml/SessionView.qml $(SESSION_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SESSION_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(SESSION_TEST_DIR) --no-duplicate
 
@@ -438,7 +449,7 @@ test-coordinator: check-quickshell | $(BUILD_DIR)
 test-transients: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(TRANSIENT_TEST_DIR)/qml $(TRANSIENT_TEST_DIR)/assets/icons/nagi
 	cp tests/transients/shell.qml $(TRANSIENT_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/TransientView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml $(TRANSIENT_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandText.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/TransientView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml $(TRANSIENT_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(TRANSIENT_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(TRANSIENT_TEST_DIR) --no-duplicate
 
@@ -457,7 +468,7 @@ test-media: check-quickshell | $(BUILD_DIR)
 test-audio: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(AUDIO_TEST_DIR)/qml $(AUDIO_TEST_DIR)/assets/icons/nagi
 	cp tests/audio/shell.qml $(AUDIO_TEST_DIR)/shell.qml
-	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml qml/AudioSelectionView.qml qml/Theme.qml qml/SubviewFrame.qml qml/IslandText.qml qml/IslandIcon.qml qml/IconResolver.qml qml/IslandFocusRing.qml $(AUDIO_TEST_DIR)/qml/
+	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml qml/AudioSelectionView.qml $(THEME_QML_SOURCES) qml/SubviewFrame.qml qml/IslandText.qml qml/IslandIcon.qml qml/IconResolver.qml qml/IslandFocusRing.qml $(AUDIO_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(AUDIO_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(AUDIO_TEST_DIR) --no-duplicate
 
@@ -494,7 +505,7 @@ test-connectivity-live-write: check-quickshell connectivity-helper | $(BUILD_DIR
 test-tray: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(TRAY_TEST_DIR)/qml $(TRAY_TEST_DIR)/assets/icons/nagi
 	cp tests/tray/shell.qml $(TRAY_TEST_DIR)/shell.qml
-	cp qml/TrayAdapter.qml qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandButton.qml qml/IslandFocusRing.qml qml/IconResolver.qml qml/IslandIcon.qml qml/DashboardQuickControls.qml qml/SubviewFrame.qml qml/TrayView.qml $(TRAY_TEST_DIR)/qml/
+	cp qml/TrayAdapter.qml $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandButton.qml qml/IslandFocusRing.qml qml/IconResolver.qml qml/IslandIcon.qml qml/DashboardQuickControls.qml qml/SubviewFrame.qml qml/TrayView.qml $(TRAY_TEST_DIR)/qml/
 	cp assets/icons/nagi/navigation-back.svg assets/icons/nagi/placeholder.svg $(TRAY_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(TRAY_TEST_DIR) --no-duplicate
 
@@ -504,24 +515,27 @@ test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUIL
 	cp qml/TrayAdapter.qml $(TRAY_LIVE_TEST_DIR)/qml/
 	$(TRAY_LIVE_TEST) '$(QS)' '$(abspath $(TRAY_LIVE_TEST_DIR))'
 
-test-launcher-shortcut: check-launcher-shortcut-toolchain $(LAUNCHER_SHORTCUT_HELPER) $(LAUNCHER_SHORTCUT_TEST)
-	rm -rf $(LAUNCHER_SHORTCUT_TEST_DIR)
-	mkdir -p $(LAUNCHER_SHORTCUT_TEST_DIR)/config $(LAUNCHER_SHORTCUT_TEST_DIR)/data $(LAUNCHER_SHORTCUT_TEST_DIR)/cache $(LAUNCHER_SHORTCUT_TEST_DIR)/state $(LAUNCHER_SHORTCUT_TEST_DIR)/runtime
-	chmod 0700 $(LAUNCHER_SHORTCUT_TEST_DIR)/runtime
-	QT_QPA_PLATFORM='offscreen' QT_ACCESSIBILITY='0' GTK_USE_PORTAL='0' XDG_CURRENT_DESKTOP='KDE' XDG_CONFIG_HOME='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/config' XDG_DATA_HOME='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/data' XDG_CACHE_HOME='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/cache' XDG_STATE_HOME='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/state' XDG_RUNTIME_DIR='$(abspath $(LAUNCHER_SHORTCUT_TEST_DIR))/runtime' $(DBUS_RUN_SESSION) -- $(LAUNCHER_SHORTCUT_TEST) '$(abspath $(LAUNCHER_SHORTCUT_HELPER))'
+test-global-shortcut: check-global-shortcut-toolchain $(GLOBAL_SHORTCUT_HELPER) $(GLOBAL_SHORTCUT_TEST)
+	rm -rf $(GLOBAL_SHORTCUT_TEST_DIR)
+	mkdir -p $(GLOBAL_SHORTCUT_TEST_DIR)/config $(GLOBAL_SHORTCUT_TEST_DIR)/data $(GLOBAL_SHORTCUT_TEST_DIR)/cache $(GLOBAL_SHORTCUT_TEST_DIR)/state $(GLOBAL_SHORTCUT_TEST_DIR)/runtime
+	chmod 0700 $(GLOBAL_SHORTCUT_TEST_DIR)/runtime
+	QT_QPA_PLATFORM='offscreen' QT_ACCESSIBILITY='0' GTK_USE_PORTAL='0' XDG_CURRENT_DESKTOP='KDE' XDG_CONFIG_HOME='$(abspath $(GLOBAL_SHORTCUT_TEST_DIR))/config' XDG_DATA_HOME='$(abspath $(GLOBAL_SHORTCUT_TEST_DIR))/data' XDG_CACHE_HOME='$(abspath $(GLOBAL_SHORTCUT_TEST_DIR))/cache' XDG_STATE_HOME='$(abspath $(GLOBAL_SHORTCUT_TEST_DIR))/state' XDG_RUNTIME_DIR='$(abspath $(GLOBAL_SHORTCUT_TEST_DIR))/runtime' $(DBUS_RUN_SESSION) -- $(GLOBAL_SHORTCUT_TEST) '$(abspath $(GLOBAL_SHORTCUT_HELPER))'
+
+test-global-shortcut-live: check-global-shortcut-toolchain $(GLOBAL_SHORTCUT_HELPER) $(GLOBAL_SHORTCUT_LIVE_TEST)
+	$(GLOBAL_SHORTCUT_LIVE_TEST) '$(abspath $(GLOBAL_SHORTCUT_HELPER))'
 
 test-launcher: check-quickshell | $(BUILD_DIR)
 	rm -rf $(LAUNCHER_TEST_DIR)
 	mkdir -p $(LAUNCHER_TEST_DIR)/qml $(LAUNCHER_TEST_DIR)/assets/icons/nagi
 	cp tests/launcher/shell.qml $(LAUNCHER_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/LauncherView.qml qml/LauncherShortcutAdapter.qml $(LAUNCHER_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/LauncherView.qml qml/GlobalShortcutAdapter.qml $(LAUNCHER_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(LAUNCHER_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' $(QS) -p $(LAUNCHER_TEST_DIR) --no-duplicate
 
 test-surface-state: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
@@ -529,7 +543,7 @@ test-polkit-ui: check-quickshell | $(BUILD_DIR)
 	rm -rf $(POLKIT_UI_TEST_DIR)
 	mkdir -p $(POLKIT_UI_TEST_DIR)/qml $(POLKIT_UI_TEST_DIR)/assets/icons/nagi
 	cp tests/polkit-ui/shell.qml $(POLKIT_UI_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/PolkitView.qml $(POLKIT_UI_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/PolkitView.qml $(POLKIT_UI_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(POLKIT_UI_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' $(QS) -p $(POLKIT_UI_TEST_DIR) --no-duplicate
 
@@ -543,7 +557,7 @@ test-wallpaper: check-quickshell wallpaper-helper | $(BUILD_DIR)
 	rm -rf $(WALLPAPER_TEST_DIR)
 	mkdir -p $(WALLPAPER_TEST_DIR)/qml $(WALLPAPER_TEST_DIR)/config/nagi-shell
 	cp tests/wallpaper/shell.qml $(WALLPAPER_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/WallpaperPaletteBridge.qml $(WALLPAPER_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/WallpaperPaletteBridge.qml $(WALLPAPER_TEST_DIR)/qml/
 	printf '%s\n' '[theme]' 'mode=wallpaper' 'accent=#FF8A00' > $(WALLPAPER_TEST_DIR)/config/nagi-shell/theme.conf
 	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(WALLPAPER_TEST_DIR))/config' NAGI_WALLPAPER_HELPER='$(abspath tests/wallpaper_stub_helper.py)' $(QS) -p $(WALLPAPER_TEST_DIR) --no-duplicate
 
@@ -555,13 +569,23 @@ test-theme-config: check-quickshell | $(BUILD_DIR)
 	rm -rf $(THEME_CONFIG_TEST_DIR)
 	mkdir -p $(THEME_CONFIG_TEST_DIR)/qml $(THEME_CONFIG_TEST_DIR)/config
 	cp tests/theme-config/shell.qml $(THEME_CONFIG_TEST_DIR)/shell.qml
-	cp qml/Theme.qml $(THEME_CONFIG_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) $(THEME_CONFIG_TEST_DIR)/qml/
 	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/config' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	rm -rf $(THEME_CONFIG_TEST_DIR)/race-config
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/race-config
+	QT_QPA_PLATFORM='offscreen' NAGI_THEME_CONFIG_TEST_PHASE='race' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/race-config' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+test-onboarding: check-quickshell | $(BUILD_DIR)
+	rm -rf $(ONBOARDING_TEST_DIR)
+	mkdir -p $(ONBOARDING_TEST_DIR)/qml $(ONBOARDING_TEST_DIR)/config $(ONBOARDING_TEST_DIR)/state
+	cp tests/onboarding/shell.qml $(ONBOARDING_TEST_DIR)/shell.qml
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/OnboardingWindow.qml $(ONBOARDING_TEST_DIR)/qml/
+	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(ONBOARDING_TEST_DIR))/config' XDG_STATE_HOME='$(abspath $(ONBOARDING_TEST_DIR))/state' $(QS) -p $(ONBOARDING_TEST_DIR) --no-duplicate
+
 
 test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml $(UI_PRIMITIVES_TEST_DIR)/assets/icons/nagi
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(UI_PRIMITIVES_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
@@ -569,7 +593,7 @@ test-icons: check-quickshell | $(BUILD_DIR)
 	rm -rf $(ICON_TEST_DIR)
 	mkdir -p $(ICON_TEST_DIR)/qml $(ICON_TEST_DIR)/assets/icons/nagi
 	cp tests/icons/shell.qml $(ICON_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IconResolver.qml qml/IslandIcon.qml $(ICON_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IconResolver.qml qml/IslandIcon.qml $(ICON_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(ICON_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' $(QS) -p $(ICON_TEST_DIR) --no-duplicate
 
@@ -577,7 +601,7 @@ test-subview-frame: check-quickshell | $(BUILD_DIR)
 	rm -rf $(SUBVIEW_FRAME_TEST_DIR)
 	mkdir -p $(SUBVIEW_FRAME_TEST_DIR)/qml $(SUBVIEW_FRAME_TEST_DIR)/assets/icons/nagi
 	cp tests/subview-frame/shell.qml $(SUBVIEW_FRAME_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IconResolver.qml qml/IslandIcon.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/SubviewFrame.qml $(SUBVIEW_FRAME_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IconResolver.qml qml/IslandIcon.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/SubviewFrame.qml $(SUBVIEW_FRAME_TEST_DIR)/qml/
 	cp assets/icons/nagi/navigation-back.svg assets/icons/nagi/placeholder.svg $(SUBVIEW_FRAME_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' $(QS) -p $(SUBVIEW_FRAME_TEST_DIR) --no-duplicate
 
@@ -585,14 +609,14 @@ test-dashboard: check-quickshell | $(BUILD_DIR)
 	rm -rf $(DASHBOARD_TEST_DIR)
 	mkdir -p $(DASHBOARD_TEST_DIR)/qml $(DASHBOARD_TEST_DIR)/assets/icons/nagi
 	cp tests/dashboard/shell.qml $(DASHBOARD_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/TrayView.qml $(DASHBOARD_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/TrayView.qml $(DASHBOARD_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(DASHBOARD_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' $(QS) -p $(DASHBOARD_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(IDLE_TEST_DIR)/qml
 	cp tests/idle/shell.qml $(IDLE_TEST_DIR)/shell.qml
-	cp qml/Theme.qml qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/ReducedMotion.qml $(IDLE_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/ReducedMotion.qml $(IDLE_TEST_DIR)/qml/
 	$(QS) -p $(IDLE_TEST_DIR) --no-duplicate
 
 test-typography: check-quickshell | $(BUILD_DIR)
@@ -602,7 +626,7 @@ test-typography: check-quickshell | $(BUILD_DIR)
 	test -f '$(TYPOGRAPHY_NOTO_SANS_FONT)'
 	test -f '$(TYPOGRAPHY_SOURCE_SANS_FONT)'
 	cp tests/typography/shell.qml $(TYPOGRAPHY_TEST_DIR)/shell.qml
-	cp qml/Theme.qml $(TYPOGRAPHY_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) $(TYPOGRAPHY_TEST_DIR)/qml/
 	cp '$(TYPOGRAPHY_INTER_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/Inter-Regular.ttf
 	cp '$(TYPOGRAPHY_NOTO_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/NotoSans-Regular.ttf
 	cp '$(TYPOGRAPHY_SOURCE_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/SourceSans3-Regular.ttf
@@ -622,10 +646,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper wallpaper-helper notification-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper wallpaper-helper notification-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -672,7 +696,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper launcher-shortcut-helper wallpaper-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-launcher-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -39,6 +39,7 @@ Item {
     readonly property int workspaceIndicatorHeight: Theme.size.islandWorkspaceIndicatorHeight
     readonly property int weatherGap: Theme.spacing.sm
     readonly property int weatherLabelGap: Theme.spacing.xs
+    readonly property int clockDateGap: Theme.spacing.md
     readonly property int verticalPadding: Theme.spacing.sm
 
     // Height formula: caption + body tight bounds, their semantic gap, and
@@ -71,7 +72,9 @@ Item {
     readonly property bool workspaceVisible: workspaceText !== ""
     readonly property bool clockVisible: clock !== null && typeof clock.text === "string"
                                          && clock.text !== ""
-
+    readonly property bool idleDateVisible: clockVisible && clock.showIdleDate === true
+                                            && typeof clock.dateText === "string" && clock.dateText
+                                            !== ""
     readonly property bool weatherAvailable: weather !== null && weather.available === true
     readonly property string temperatureText: weatherAvailable ? Math.round(weather.temperatureC)
                                                                  + "°" : ""
@@ -88,6 +91,8 @@ Item {
     readonly property alias workspaceLabelItem: workspaceLabel
     readonly property alias workspaceBoundary: workspaceSeparator
     readonly property alias clockBlock: clockLabel
+    readonly property alias clockGroupBlock: clockGroup
+    readonly property alias clockDateBlock: clockDateLabel
     readonly property alias clockBoundary: clockSeparator
     readonly property alias weatherBlock: weatherGroup
     readonly property alias weatherBoundary: weatherSeparator
@@ -208,7 +213,7 @@ Item {
         id: contentRow
         x: idle.contentPadding
 
-        implicitWidth: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockLabel,
+        implicitWidth: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup,
                                          clockSeparator, weatherGroup, weatherSeparator, mediaText])
         implicitHeight: idle.implicitHeight
 
@@ -242,32 +247,53 @@ Item {
             id: workspaceSeparator
 
             x: idle.offsetAfter([workspaceIndicator])
-            visible: workspaceIndicator.visible && (clockLabel.visible || weatherGroup.visible
+            visible: workspaceIndicator.visible && (clockGroup.visible || weatherGroup.visible
                                                     || mediaText.visible)
         }
 
-        IslandText {
-            id: clockLabel
+        Item {
+            id: clockGroup
 
             x: idle.offsetAfter([workspaceIndicator, workspaceSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.clockVisible
-            text: visible ? idle.clock.text : ""
-            size: "body"
-            font.weight: Theme.type.weightMedium
+            implicitWidth: clockLabel.implicitWidth + (clockDateLabel.visible ? idle.clockDateGap
+                                                                                + clockDateLabel.implicitWidth :
+                                                                                0)
+            implicitHeight: Math.max(clockLabel.implicitHeight, clockDateLabel.implicitHeight)
+
+            IslandText {
+                id: clockLabel
+
+                anchors.verticalCenter: parent.verticalCenter
+                text: clockGroup.visible ? idle.clock.text : ""
+                size: "body"
+                font.weight: Theme.type.weightMedium
+            }
+
+            IslandText {
+                id: clockDateLabel
+
+                x: clockLabel.implicitWidth + idle.clockDateGap
+                anchors.verticalCenter: parent.verticalCenter
+                visible: idle.idleDateVisible
+                text: visible ? idle.clock.dateText : ""
+                size: "body"
+                font.weight: Theme.type.weightMedium
+            }
         }
 
         GroupSeparator {
             id: clockSeparator
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockLabel])
-            visible: clockLabel.visible && (weatherGroup.visible || mediaText.visible)
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup])
+            visible: clockGroup.visible && (weatherGroup.visible || mediaText.visible)
         }
 
         Item {
             id: weatherGroup
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockLabel,
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup,
                                  clockSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.weatherAvailable
@@ -317,7 +343,7 @@ Item {
         GroupSeparator {
             id: weatherSeparator
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockLabel, clockSeparator,
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup, clockSeparator,
                                  weatherGroup])
             visible: weatherGroup.visible && mediaText.visible
         }
@@ -325,7 +351,7 @@ Item {
         IdleMediaText {
             id: mediaText
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockLabel, clockSeparator,
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup, clockSeparator,
                                  weatherGroup, weatherSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.mediaAvailable && idle.mediaSummary !== ""

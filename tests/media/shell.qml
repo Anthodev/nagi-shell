@@ -197,6 +197,38 @@ ShellRoot {
         printErrors: false
     }
 
+    function runDisabledStage() {
+        console.warn("media: disabled stage");
+        const player = makePlayer({
+                                      "dbusName": "org.mpris.disabled",
+                                      "identity": "Disabled",
+                                      "desktopEntry": "disabled",
+                                      "uniqueId": 1,
+                                      "playbackState": MprisPlaybackState.Playing,
+                                      "trackTitle": "Hidden"
+                                  });
+        const bundle = makeAdapter({"enabled": false});
+        setPlayers(bundle, [player]);
+        require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                && bundle.adapter.artworkRequest === "" && !bundle.adapter.positionTimerRunning,
+                "disabled media performs no model, artwork, or timer work");
+        bundle.adapter.enabled = true;
+        bundle.adapter.processPendingChanges();
+        require(bundle.adapter.available && bundle.adapter.trackedPlayerCount === 1,
+                "enabling media adopts the injected player model");
+        bundle.adapter.enabled = false;
+        bundle.adapter.processPendingChanges();
+        require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0,
+                "disabling media disconnects existing player watchers");
+        player.trackTitle = "Still hidden";
+        bundle.adapter.processPendingChanges();
+        require(bundle.adapter.trackedPlayerCount === 0,
+                "disabled player changes do not restart MPRIS work");
+        destroyBundle(bundle);
+        player.destroy();
+        runUnavailableStage();
+    }
+
     function runUnavailableStage() {
         console.warn("media: unavailable stage");
         const bundle = makeAdapter({});
@@ -670,5 +702,5 @@ ShellRoot {
         Qt.exit(0);
     }
 
-    Component.onCompleted: Qt.callLater(test.runUnavailableStage)
+    Component.onCompleted: Qt.callLater(test.runDisabledStage)
 }

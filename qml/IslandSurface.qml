@@ -596,8 +596,9 @@ PanelWindow {
         anchors.fill: parent
         radius: Theme.radius.outer
         color: "transparent"
-        border.color: Theme.color.surface
+        border.color: Theme.color.surfaceOpaque
         border.width: Theme.size.hairlineWidth
+        opacity: Theme.opacity.surface
         visible: surface.visible && !surface.geometryAnimationRunning
 
         layer.enabled: visible
@@ -619,6 +620,8 @@ PanelWindow {
         objectName: "surfaceBackground"
         anchors.fill: parent
         radius: Theme.radius.outer
+        color: Theme.color.surfaceOpaque
+        opacity: Theme.opacity.surface
     }
 
     Loader {

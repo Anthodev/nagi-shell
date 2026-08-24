@@ -38,6 +38,7 @@ Singleton {
                                                             "mediaNext": "media-next.svg"
                                                         })
     readonly property var _systemIcons: Object.freeze({
+                                                          "settings": "preferences-system",
                                                           "lock": "system-lock-screen",
                                                           "suspend": "system-suspend",
                                                           "logout": "system-log-out",
@@ -50,6 +51,7 @@ Singleton {
                                                      "history": "Notification history",
                                                      "tray": "System tray",
                                                      "session": "Session",
+                                                     "settings": "System Settings",
                                                      "restartShell": "Restart shell",
                                                      "wifi": "Wi-Fi",
                                                      "bluetooth": "Bluetooth",

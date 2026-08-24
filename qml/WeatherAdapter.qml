@@ -21,6 +21,7 @@ Scope {
 
     // Project version reported in the provider User-Agent. Bump with releases.
     property string version: "0.1.0"
+    property bool enabled: false
 
     // Opt-in location. Invalid or missing values keep weather unavailable
     // without any request. Altitude is optional whole metres; the label is
@@ -44,7 +45,7 @@ Scope {
 
     // True while a valid current timestep is exposed, including the bounded
     // stale window before the six-hour cutoff.
-    readonly property bool available: engine.available
+    readonly property bool available: root.enabled && engine.available
     // True while available content comes from an expired cache record.
     readonly property bool stale: engine.stale
     readonly property real temperatureC: engine.snapshot === null ? Number.NaN :
@@ -96,6 +97,7 @@ Scope {
     onLongitudeChanged: engine.scheduleLocationSync()
     onAltitudeChanged: engine.scheduleLocationSync()
     onVersionChanged: engine.scheduleLocationSync()
+    onEnabledChanged: engine.scheduleLocationSync()
 
     FileView {
         id: cacheFileView
@@ -213,9 +215,10 @@ Scope {
         }
 
         function validatedLocation() {
-            if (typeof root.latitude !== "number" || !Number.isFinite(root.latitude) || typeof root.longitude
-                    !== "number" || !Number.isFinite(root.longitude) || root.latitude < -90
-                    || root.latitude > 90 || root.longitude < -180 || root.longitude > 180) {
+            if (!root.enabled || typeof root.latitude !== "number" || !Number.isFinite(root.latitude)
+                    || typeof root.longitude !== "number" || !Number.isFinite(root.longitude)
+                    || root.latitude < -90 || root.latitude > 90 || root.longitude < -180
+                    || root.longitude > 180) {
                 return null;
             }
 
