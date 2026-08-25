@@ -23,10 +23,11 @@
   <img src="https://img.shields.io/badge/Fedora-44+-51A2DA?logo=fedora" alt="Fedora 44 or newer">
   <img src="https://img.shields.io/badge/KDE_Plasma-6.7+-1D99F3?logo=kde" alt="KDE Plasma 6.7 or newer">
   <img src="https://img.shields.io/badge/Quickshell-0.3.0+-8B5CF6" alt="Quickshell 0.3.0 or newer">
+  <img src="https://img.shields.io/badge/status-alpha-F59E0B" alt="Alpha — not stable">
 </p>
 
 > [!IMPORTANT]
-> Nagi Shell runs from a source checkout on its target Fedora, KDE Plasma, and Wayland platform. It has no tagged stable release yet. Expect setup and behavior to change while the implementation is refined.
+> Nagi Shell is **alpha software**. It is not stable and not yet suitable as a daily driver: expect breaking changes, incomplete features, and rough edges while the implementation is refined. It runs from a source checkout on its target KDE Plasma and Wayland platform and has no tagged release yet.
 
 ## About
 
@@ -48,9 +49,9 @@ weather · media       connectivity · audio      tray · audio · session
 
 - **One real surface.** Idle, Expanded, focused subviews, and transients share one `PanelWindow`; a central coordinator owns priority, timeouts, preemption, and restoration.
 - **Adaptive geometry.** Content determines the island size. Empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
-- **Useful Idle state.** A two-digit workspace badge, clock, optional weather, and available media fit a metrics-derived 44 to 48 px bar. Media and its separator collapse when the selected MPRIS source disappears.
+- **Useful Idle state.** A two-digit workspace badge, clock, optional weather, and available media fit a metrics-derived 44 to 48 px bar. Media and its separator collapse when the selected MPRIS source disappears; a paused player with valid metadata stays visible.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail.
-- **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling.
+- **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
 - **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, D-Bus connectivity and session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, and the Plasma wallpaper palette feed normalized adapters.
 - **Semantic theme and icons.** A live theme snapshot provides contrast-checked roles. Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback; muted input has its own slashed-microphone shape.
 - **Restrained motion.** Focused content enters and exits over 120 ms while the outer geometry interpolates over 190 ms. Reduced-motion preferences settle both layers and focus synchronously.
@@ -76,7 +77,7 @@ The Polkit presentation is implemented and tested with synthetic controllers, bu
 | Shell | Stable Quickshell 0.3.0 or newer from `errornointernet/quickshell` |
 | UI font | Inter through `rsms-inter-fonts`; Fontconfig supplies fallbacks |
 | Native build | C++20, Qt 6, PipeWire, GIO Unix, KF6 GlobalAccel, and CMake |
-| Runtime services | PipeWire, MPRIS, KDE D-Bus services, and Plasma wallpaper services as available |
+| Runtime services | PipeWire, MPRIS, KDE D-Bus services, PowerDevil 6.7 or newer for brightness, and Plasma wallpaper analysis as available |
 
 The [`Makefile`](Makefile) is the source of truth for versions, packages, helper builds, and commands.
 
@@ -92,6 +93,12 @@ sudo dnf install quickshell rsms-inter-fonts pipewire-devel glib2-devel kf6-kglo
 make requirements
 ```
 
+### Scripted setup
+
+From a cloned checkout, `sudo ./install.sh` performs the full setup on any distribution running KDE Plasma Wayland: it verifies prerequisites and offers the missing ones through the detected package manager, builds the native helpers, installs the tree under `/usr/share/nagi-shell` (`--dest` overrides this), registers the **Nagi Shell** section in KDE keyboard settings immediately, creates a default `theme.conf` without ever overwriting an existing one, enables session autostart, and installs a `nagi-shell` launcher wrapper that hands `org.freedesktop.Notifications` from plasmashell to Nagi for each session. It asks for confirmation before acting; see `./install.sh --help`.
+
+`./uninstall.sh --dest /usr/share/nagi-shell` reverses everything: it stops the instance, removes the **Nagi Shell** shortcut category through the KGlobalAccel D-Bus API (never by editing raw config files), deletes the installation, launcher, desktop and autostart entries plus `~/.config/nagi-shell` and `~/.local/state/nagi-shell`, and offers a plasmashell restart so Plasma reclaims notification delivery.
+
 ### First use
 
 Run the checkout in the foreground. `make launch` builds the native helpers and notification plugin before starting Quickshell.
@@ -100,13 +107,16 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window points to the configuration file and KDE shortcut settings. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window points to the configuration file and KDE shortcut settings. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. While it runs, Nagi acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
 ## Configuration
 
 Nagi reads `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/theme.conf`. If the file is missing, Nagi creates this default without replacing an existing file:
+
+> [!WARNING]
+> Weather is opt-in and performs no request until both valid coordinates exist. Enabling it means direct requests reveal your IP address and two-decimal truncated coordinates to MET Norway. Nagi never geolocates by IP address and never contacts a geocoding service; use the linked Nominatim page to look up coordinates manually.
 
 ```ini
 [theme]
@@ -153,6 +163,18 @@ The strict parser accepts only these sections and keys. The file is limited to 4
 
 Wallpaper mode derives a bounded accent from the current Plasma static-image wallpaper, then falls back through `theme.accent` to `#5B6FF5`. Accent mode requires `theme.accent`. Both paths keep the existing contrast floors. Disabling media stops MPRIS observation. Disabling weather or omitting valid coordinates performs no weather request. Nagi never uses IP geolocation or calls a geocoding service.
 
+## Data storage
+
+Everything below stays on this machine; Nagi has no telemetry or sync.
+
+**Launcher data.** Pins persist in `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/application-pins.json` and recency in `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/application-recency.json`. Both files hold versioned JSON with exact desktop-file IDs only — never names, commands, paths, or icons — capped at 8 ordered pins and 20 recent IDs. Search returns at most eight eligible results, and the viewport shows up to five rows before scrolling. An uninstalled application's pin stays dormant within the cap and returns only if the same ID is reinstalled; ineligible recency entries are pruned, and identities are never migrated when an application changes its desktop-file ID. A corrupt or oversized file starts that store empty and is replaced canonically at the next change. To recover manually, stop Nagi with `make stop` and move or remove the affected file; never edit either file while the shell runs.
+
+**Notification history.** Memory-only: no history file or database exists, and history is lost entirely when the process exits. It keeps at most 50 records for at most 24 hours, newest first, with the four most recent mirrored on the dashboard. Transient notifications never enter history. Expired notifications remain as text-only records until evicted; dismissed, action-consumed, and sender-closed records are removed immediately. A separate safety cap of 50 tracked protocol notifications expires the lowest-ranked item deterministically under pressure, even critical or never-expiring ones. Notification actions remain disabled on current supported Quickshell versions.
+
+**Weather cache.** One record per configured location lives in Quickshell's per-shell cache directory as `weather.json`, written atomically and reused at startup. Refreshes follow provider cache headers with bounded backoff, and content older than six hours is discarded automatically. Clearing the configured location also clears its cache.
+
+**Onboarding record.** First-launch dismissal persists under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`.
+
 ## Controls and behavior
 
 | Input | Result |
@@ -164,8 +186,6 @@ Wallpaper mode derives a bounded accent from the current Plasma static-image wal
 | Expanded or Tray application icon, right click | Keep the island open while showing the native context menu; selecting an entry returns Idle, while dismissal preserves the current state |
 | Accepted application launch or reliable external focus loss | Clear non-modal state and return directly to Idle |
 | Back or `Escape` | Return through the shared cancellation path |
-| Session `Restart shell` | Soft-reload Nagi with `Quickshell.reload(false)` |
-| Session Restart or Power off | Open the matching KDE confirmation path |
 
 KDE lists these actions under **Nagi Shell**:
 
@@ -179,9 +199,21 @@ KDE lists these actions under **Nagi Shell**:
 | Open Session Controls | Unbound |
 | Open System Settings | Unbound |
 
-Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's Settings action remains available even when every global shortcut is unbound.
+Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's right rail keeps the launcher reachable when no global shortcut is active, and the Settings action remains available even when every binding is unbound.
 
 Backend-confirmed state is authoritative for audio, connectivity, brightness, and session operations. Pending and failure states do not report success.
+
+### Feedback timing
+
+Transient feedback holds while its content is visible: notifications for 3 seconds, volume and brightness for 1.8 seconds, and workspace changes for 1.2 seconds. Feedback arriving mid-interaction waits briefly and is dropped — not replayed afterward — past 6 seconds for notifications, 3 seconds for volume and brightness, or 2 seconds for workspace changes. Repeated backend-confirmed values coalesce into one presentation. Authentication always outranks interactive views: requests raised during authentication are rejected rather than deferred, and completing it does not open a launcher or session action requested while it was locked.
+
+### Session actions
+
+The Session view offers exactly six actions. **Lock** locks the KDE session immediately and **Suspend** suspends the computer. **Restart shell** soft-reloads Nagi in place through `Quickshell.reload(false)`. **Log out**, **Restart**, and **Power off** open the matching KDE confirmation dialog and act only after you confirm there.
+
+### Brightness
+
+Brightness uses PowerDevil 6.7's `org.kde.ScreenBrightness` interface exclusively. Only displays PowerDevil enumerates there are controllable; Nagi requests no hardware privileges and never uses brightnessctl, ddcutil, sysfs, or another backend. Displays absent from PowerDevil cannot be adjusted from the island. External monitors may be only partially observable because PowerDevil supplies a label but no reliable screen identity — Nagi treats display entries as opaque, and their naming can change across replug or driver events. To troubleshoot, check that the PowerDevil brightness service responds and how many displays it enumerates; avoid sharing connector names, EDIDs, hardware labels, or raw D-Bus dumps, which identify your hardware without aiding diagnosis.
 
 ## Privacy
 
@@ -193,12 +225,13 @@ Polkit credentials never enter the production shell because the backend is dorma
 
 ## Limitations
 
-- The runtime creates one island on the display Qt selects when the surface starts. It does not infer persistent output identity or provide a multi-display island set.
+- The runtime creates one island on the primary/default display Qt selects when the surface starts; there is no per-monitor island set. Changing the desktop primary while that display stays connected does not move the island dynamically — losing the output or recreating the surface selects the then-current primary/default again. Events without reliable output identity, including global shortcut activation, target the one live surface; a Nagi-initiated brightness confirmation may return only to the surface that started it.
 - Moving pointer focus between outputs with different current virtual desktops updates Idle state without presenting a workspace-switch transient.
 - Wi-Fi supports state and toggle only. Network selection is outside the island.
 - Bluetooth supports adapter state and toggle only. Discovery, pairing, and device management are outside the island.
 - Audio covers default output/input selection, volume, and mute. It has no per-application mixer.
 - The dashboard has no calendar panel, pre-sized geometry, or hardware-monitoring view.
+- External monitors may be only partially observable for brightness: PowerDevil supplies a label without a reliable screen identity, so display entries are opaque and their naming can change across replug or driver events.
 - The Polkit view is presentation-only and dormant in production.
 - Isolated virtual-KWin checks prove QML surface, focus, topology, scaling, and lifecycle contracts but cannot prove physical HDR/VRR, hardware behavior, or frame pacing at the monitor's real refresh rate. Missing physical evidence is reported rather than obtained through host-session mutation.
 
