@@ -8,6 +8,8 @@ ShellRoot {
 
     property var calls: []
     property real cancelledEpoch: 0
+    property int menuActionCount: 0
+    property int lastMenuActionToken: 0
 
     function require(condition, message) {
         if (!condition) {
@@ -164,6 +166,10 @@ ShellRoot {
         id: tray
 
         itemsModel: trayModel
+        onMenuActionTriggered: token => {
+            test.menuActionCount += 1;
+            test.lastMenuActionToken = token;
+        }
     }
 
     function runLifecycleStage() {
@@ -340,11 +346,16 @@ ShellRoot {
 
         require(tray.activate(alphaSnapshot.token) === "rejected",
                 "menu-only items reject unsupported primary activation");
-        require(tray.openMenu(alphaSnapshot.token, test, -99999999999, 99999999999) === "dispatched",
-                "supported native menus dispatch through the adapter");
-        require(calls.length === 1 && calls[0].action === "menu" && calls[0].argument.x ===
-                -2147483648 && calls[0].argument.y === 2147483647,
+        require(tray.openMenu(alphaSnapshot.token, test, -99999999999, 99999999999)
+                === "dispatched" && tray.menuTrackingActive
+                && tray.activeMenuToken === alphaSnapshot.token,
+                "supported native menu dispatch starts one bounded selection observer");
+        require(calls.length === 1 && calls[0].action === "menu" && calls[0].argument.x
+                === -2147483648 && calls[0].argument.y === 2147483647,
                 "menu dispatch keeps the real parent and clamps qint32 coordinates");
+        require(tray.notifyMenuAction(alphaSnapshot.token) && !tray.menuTrackingActive
+                && menuActionCount === 1 && lastMenuActionToken === alphaSnapshot.token,
+                "selecting a menu entry ends observation and emits one external action");
 
         require(tray.activate(betaSnapshot.token) === "dispatched" && tray.secondaryActivate(
                     betaSnapshot.token) === "dispatched",
@@ -430,6 +441,7 @@ ShellRoot {
             adapter: tray
             ownerEpoch: 42
             reducedMotion: true
+            menuParentWindow: trayWindow
             onCancelled: epoch => test.cancelledEpoch = epoch
         }
         DashboardQuickControls {
@@ -439,6 +451,7 @@ ShellRoot {
             connectivity: connectivity
             applicationModel: applications
             tray: tray
+            menuParentWindow: trayWindow
         }
     }
 

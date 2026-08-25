@@ -48,12 +48,12 @@ weather · media       connectivity · audio      tray · audio · session
 
 - **One real surface.** Idle, Expanded, focused subviews, and transients share one `PanelWindow`; a central coordinator owns priority, timeouts, preemption, and restoration.
 - **Adaptive geometry.** Content determines the island size. Empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
-- **Useful Idle state.** A two-digit workspace badge, clock, optional weather, and active media fit a metrics-derived 44 to 48 px bar.
+- **Useful Idle state.** A two-digit workspace badge, clock, optional weather, and available media fit a metrics-derived 44 to 48 px bar. Media and its separator collapse when the selected MPRIS source disappears.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail.
-- **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island.
+- **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling.
 - **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, D-Bus connectivity and session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, and the Plasma wallpaper palette feed normalized adapters.
 - **Semantic theme and icons.** A live theme snapshot provides contrast-checked roles. Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback; muted input has its own slashed-microphone shape.
-- **Restrained motion.** Focused content enters and exits over 180 ms while the outer geometry interpolates over 300 ms. Reduced-motion preferences settle both layers and focus synchronously.
+- **Restrained motion.** Focused content enters and exits over 120 ms while the outer geometry interpolates over 190 ms. Reduced-motion preferences settle both layers and focus synchronously.
 
 ## State model
 
@@ -160,6 +160,9 @@ Wallpaper mode derives a bounded accent from the current Plasma static-image wal
 | Hover the Idle island | Open the Expanded dashboard |
 | Dashboard device name | Open output/input device selection |
 | Dashboard Tray, Launcher, History, Audio, Settings, or Session action | Open the corresponding view or KDE System Settings |
+| Expanded or Tray application icon, primary/middle click | Dispatch the tray action and return the non-modal island to Idle |
+| Expanded or Tray application icon, right click | Keep the island open while showing the native context menu; selecting an entry returns Idle, while dismissal preserves the current state |
+| Accepted application launch or reliable external focus loss | Clear non-modal state and return directly to Idle |
 | Back or `Escape` | Return through the shared cancellation path |
 | Session `Restart shell` | Soft-reload Nagi with `Quickshell.reload(false)` |
 | Session Restart or Power off | Open the matching KDE confirmation path |
@@ -191,12 +194,13 @@ Polkit credentials never enter the production shell because the backend is dorma
 ## Limitations
 
 - The runtime creates one island on the display Qt selects when the surface starts. It does not infer persistent output identity or provide a multi-display island set.
+- Moving pointer focus between outputs with different current virtual desktops updates Idle state without presenting a workspace-switch transient.
 - Wi-Fi supports state and toggle only. Network selection is outside the island.
 - Bluetooth supports adapter state and toggle only. Discovery, pairing, and device management are outside the island.
 - Audio covers default output/input selection, volume, and mute. It has no per-application mixer.
 - The dashboard has no calendar panel, pre-sized geometry, or hardware-monitoring view.
 - The Polkit view is presentation-only and dormant in production.
-- Headless checks do not replace final verification on a real KDE/KWin Wayland session, especially for rendering, multi-display behavior, HDR, and hardware integrations.
+- Isolated virtual-KWin checks prove QML surface, focus, topology, scaling, and lifecycle contracts but cannot prove physical HDR/VRR, hardware behavior, or frame pacing at the monitor's real refresh rate. Missing physical evidence is reported rather than obtained through host-session mutation.
 
 ## Architecture
 
@@ -230,7 +234,7 @@ make format-check
 make check
 ```
 
-`make check` runs the repository-defined native, adapter, coordinator, state, and headless surface checks. GitHub Actions runs display-independent checks and the real `PanelWindow` scenario under a software-rendered headless Wayland compositor. Live integration targets such as `make test-audio-live`, `make test-tray-live`, and `make test-wallpaper-live` are intentionally separate; `make help` lists the complete set.
+`make check` runs native, adapter, coordinator, and deterministic service tests, then exercises the real `PanelWindow` scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
 
 `qmllint-qt6` remains advisory because it cannot resolve the valid Quickshell `PanelWindow`. Runtime diagnostics and the focused checks are authoritative.
 
@@ -240,4 +244,4 @@ Nagi Shell takes its initial island interaction idea from saneAspect, then adapt
 
 ## Contributing
 
-Keep changes scoped, event-driven, keyboard accessible, and verified against the actual KDE Wayland surface when they affect rendering or platform integration. Open issues and pull requests against `develop`; run the relevant focused targets and `make check` before submission.
+Keep changes scoped, event-driven, keyboard accessible, and verified with the focused harnesses and isolated virtual-KWin surface gates. Open issues and pull requests against `develop`; run the relevant targets and `make check` before submission.

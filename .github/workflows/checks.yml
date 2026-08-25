@@ -15,12 +15,10 @@
 # Scope boundary:
 #   A successful run covers formatting, native normalization, D-Bus owner
 #   lifecycle, the native audio bridge protocol and volume math, QML adapter
-#   boundaries, coordinator determinism, the real PanelWindow state scenario,
-#   and the UI-primitive gallery under a software-rendered headless wlroots
-#   compositor. Success here does NOT replace the real KDE/KWin verification
-#   matrix tracked in issue #35
-#   (multi-display, hardware rendering, and final cross-state checks still
-#   require a real desktop session).
+#   boundaries, coordinator determinism, and the real PanelWindow state and
+#   UI-primitive scenarios inside disposable virtual KWin sessions. Success
+#   here does NOT prove physical HDR/VRR, hardware integration, or frame pacing
+#   at a monitor's real refresh rate.
 name: Repository checks
 
 on:
@@ -73,32 +71,36 @@ jobs:
         run: make check-nondisplay
 
   surface-state:
-    name: Surface checks (headless Wayland)
+    name: Surface checks (virtual KWin)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
       image: fedora:44
     env:
       XDG_RUNTIME_DIR: /tmp/xdg
-      WLR_BACKENDS: headless
-      WLR_LIBINPUT_NO_DEVICES: '1'
-      WLR_RENDERER: pixman
-      WLR_HEADLESS_OUTPUTS: '1'
-      # Force Qt Quick CPU rasterization so the scenario needs no GPU or GL stack.
+      # Qt Quick uses deterministic CPU rasterization inside virtual KWin.
       QT_QUICK_BACKEND: software
+      LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
 
       - name: Install the Fedora 44 toolchain
         uses: ./.github/actions/install-toolchain
-
-      - name: Install the headless layer-shell compositor
+      - name: Install the virtual KWin compositor
         run: |
-          dnf -y --setopt=install_weak_deps=False install sway
-          cp /usr/bin/sway /usr/local/bin/sway-headless
-          command -v sway-headless
-          command -v swaymsg
+          dnf -y --setopt=install_weak_deps=False install kwin
+          kwin_path="$(command -v kwin_wayland)"
+          # Fedora's binary carries file capabilities rejected by container
+          # runtimes. A fresh installed copy keeps the executable mode without
+          # carrying those extended attributes.
+          install -m 0755 "$kwin_path" /usr/local/bin/kwin_wayland
+          printf '%s\n' /usr/local/bin >>"$GITHUB_PATH"
+          export PATH="/usr/local/bin:$PATH"
+          hash -r
+          resolved_kwin_path="$(command -v kwin_wayland)"
+          printf 'Using capability-free KWin at %s\n' "$resolved_kwin_path"
+          test "$resolved_kwin_path" = /usr/local/bin/kwin_wayland
 
       - name: Prepare the runtime directory
         run: install -d -m 0700 "$XDG_RUNTIME_DIR"
@@ -106,55 +108,25 @@ jobs:
       - name: Verify repository requirements
         run: make requirements
 
-      - name: Run surface and UI-primitive checks under a headless compositor
+      - name: Run surface and UI-primitive checks in virtual KWin
         run: |
           logdir=/tmp/nagi-diagnostics
           rm -rf "$logdir"
           mkdir -p "$logdir"
-          status_file="$logdir/test-status"
 
-          cat >"$logdir/run-tests" <<'EOF'
-          #!/bin/bash
           set +e
-          make test-surface-state >"/tmp/nagi-diagnostics/quickshell.log" 2>&1 \
-            && make test-ui-primitives >>"/tmp/nagi-diagnostics/quickshell.log" 2>&1
+          make test-surface-state >"$logdir/quickshell.log" 2>&1 \
+            && make test-ui-primitives >>"$logdir/quickshell.log" 2>&1
           test_status=$?
-          printf '%s\n' "$test_status" >"/tmp/nagi-diagnostics/test-status"
-          swaymsg --quiet exit
-          exit "$test_status"
-          EOF
-          chmod +x "$logdir/run-tests"
-
-          cat >"$logdir/sway.conf" <<'EOF'
-          swaybg_command -
-          xwayland disable
-          output * resolution 1920x1080
-          exec /tmp/nagi-diagnostics/run-tests
-          EOF
-
-          # The Fedora binary carries a TTY capability that container runtimes
-          # may reject. The plain copy is sufficient for the headless backend.
-          set +e
-          timeout --kill-after=10s 300 \
-            sway-headless --config "$logdir/sway.conf" \
-            >"$logdir/compositor.log" 2>&1
-          wrapper_status=$?
           set -e
 
           # Diagnostics stay bounded so a failing run cannot flood artifact storage.
-          for log in quickshell compositor; do
-            tail -n 400 "$logdir/$log.log" >"$logdir/$log-bounded.log" 2>/dev/null || true
-          done
+          tail -n 400 "$logdir/quickshell.log" >"$logdir/quickshell-bounded.log" \
+            2>/dev/null || true
 
-          if [ ! -f "$status_file" ]; then
-            printf 'The headless compositor exited before the tests reported a status (wrapper status %s).\n' "$wrapper_status" >&2
-            exit 1
-          fi
-
-          test_status="$(cat "$status_file")"
-          if [ "$test_status" -ne 0 ] || [ "$wrapper_status" -ne 0 ]; then
-            printf 'Surface checks failed (test status %s, wrapper status %s).\n' "$test_status" "$wrapper_status" >&2
-            exit 1
+          if [ "$test_status" -ne 0 ]; then
+            printf 'Virtual KWin surface checks failed (status %s).\n' "$test_status" >&2
+            exit "$test_status"
           fi
 
       - name: Upload bounded diagnostics on failure

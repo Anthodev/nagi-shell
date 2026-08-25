@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Window
 
 // Presentation-only normalized tray content inside the shared interactive frame.
 FocusScope {
@@ -12,6 +11,7 @@ FocusScope {
     required property real ownerEpoch
     property bool active: true
     property bool reducedMotion: false
+    property var menuParentWindow: null
 
     readonly property int itemCount: adapter === null ? 0 : adapter.items.length
     readonly property bool empty: itemCount === 0
@@ -41,6 +41,26 @@ FocusScope {
     visible: active
 
     signal cancelled(real ownerEpoch)
+    signal externalActionDispatched
+    signal shellMenuOpening
+    signal shellMenuOpenResult(string result)
+
+    Connections {
+        target: root.adapter
+        ignoreUnknownSignals: true
+
+        function onMenuActionTriggered(token) {
+            if (!root.active) {
+                return;
+            }
+            for (let index = 0; index < root.adapter.items.length; ++index) {
+                if (root.adapter.items[index].token === token) {
+                    root.externalActionDispatched();
+                    return;
+                }
+            }
+        }
+    }
 
     function focusInitialControl() {
         if (trayList.count > 0) {
@@ -58,26 +78,37 @@ FocusScope {
         return button.mapToItem(null, button.width / 2, button.height);
     }
 
+    function completeExternalAction(result) {
+        if (result === "dispatched") {
+            externalActionDispatched();
+        }
+        return result;
+    }
+
     function openMenu(token, button) {
-        if (adapter === null || button === null || button.Window.window === null) {
+        if (adapter === null || button === null || menuParentWindow === null) {
             return "rejected";
         }
         const position = menuPosition(button);
-        return adapter.openMenu(token, button.Window.window, position.x, position.y);
+        shellMenuOpening();
+        const result = adapter.openMenu(token, menuParentWindow, position.x, position.y);
+        shellMenuOpenResult(result);
+        return result;
     }
 
     function primaryAction(item, button) {
         if (adapter === null || item === null) {
             return "rejected";
         }
-        return item.onlyMenu ? openMenu(item.token, button) : adapter.activate(item.token);
+        return item.onlyMenu ? openMenu(item.token, button) : completeExternalAction(
+                                   adapter.activate(item.token));
     }
 
     function secondaryAction(item) {
         if (adapter === null || item === null) {
             return "rejected";
         }
-        return adapter.secondaryActivate(item.token);
+        return completeExternalAction(adapter.secondaryActivate(item.token));
     }
 
     function moveFocus(index, offset) {
@@ -244,15 +275,16 @@ FocusScope {
                         ToolTip.text: cell.modelData.tooltip === "" ? cell.modelData.label :
                                                                       cell.modelData.tooltip
 
-                        TapHandler {
-                            acceptedButtons: Qt.RightButton
-                            enabled: cell.modelData.hasMenu
-                            onTapped: root.openMenu(cell.modelData.token, trayButton)
-                        }
-
-                        TapHandler {
-                            acceptedButtons: Qt.MiddleButton
-                            onTapped: root.secondaryAction(cell.modelData)
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton | Qt.MiddleButton
+                            onClicked: mouse => {
+                                if (mouse.button === Qt.RightButton && cell.modelData.hasMenu) {
+                                    root.openMenu(cell.modelData.token, trayButton);
+                                } else if (mouse.button === Qt.MiddleButton) {
+                                    root.secondaryAction(cell.modelData);
+                                }
+                            }
                         }
                     }
                 }

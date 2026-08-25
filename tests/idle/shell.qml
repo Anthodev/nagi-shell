@@ -140,8 +140,9 @@ ShellRoot {
                 "idle width follows groups, boundaries, and symmetric edge padding exactly");
         require(islandFull.implicitHeight === Theme.size.islandIdleHeight,
                 "current font metrics preserve the published Idle height token");
-        require(!islandFull.mediaBlock.overflowing && !islandFull.mediaBlock.marqueeEligible,
-                "fitting media stays settled with no marquee work");
+        require(!islandFull.mediaBlock.overflowing
+                && islandFull.mediaBlock.labelItem.elide === Text.ElideRight,
+                "fitting media stays settled on the static text path");
 
         require(!islandNoWeather.weatherBlock.visible, "unavailable weather collapses");
         require(islandFull.implicitWidth - islandNoWeather.implicitWidth
@@ -221,9 +222,8 @@ ShellRoot {
     function collapsedStage() {
         require(!islandMediaLifecycle.mediaBlock.visible, "stopped media collapses");
         require(islandMediaLifecycle.mediaSummary === "", "stopped media clears its summary");
-        require(!islandMediaLifecycle.mediaBlock.marqueeEligible &&
-                !islandMediaLifecycle.mediaBlock.marqueeRunning,
-                "cleared media performs no marquee work");
+        require(islandMediaLifecycle.mediaBlock.labelItem.x === 0,
+                "cleared media retains the static text position");
         require(islandMediaLifecycle.implicitHeight === Theme.size.islandIdleHeight,
                 "content changes do not alter the font-derived Idle height");
         require(pendingWithMedia - islandMediaLifecycle.implicitWidth === pendingMediaWidth
@@ -237,46 +237,33 @@ ShellRoot {
         require(islandMediaLifecycle.mediaBlock.visible && islandMediaLifecycle.implicitWidth
                 === pendingWithMedia, "recovered media restores its space");
 
-        // Bounded overflow: the island width caps and the marquee arms.
+        // Bounded overflow: the island caps width and keeps Idle event-driven.
         require(islandOverflow.mediaBlock.overflowing, "long media reports overflow");
         require(islandOverflow.implicitWidth <= islandOverflow.contentPadding * 2
                 + islandOverflow.workspaceBlock.width + islandOverflow.clockGroupBlock.width
                 + islandOverflow.weatherBlock.width + Theme.size.islandIdleMediaMaximumWidth
                 + islandOverflow.boundaryWidth * 3,
                 "overflowing media stays inside the island width cap");
-        require(!islandOverflow.reducedMotion,
-                "motion is allowed before the factor says otherwise");
-        require(islandOverflow.mediaBlock.labelItem.elide === Text.ElideNone,
-                "moving media does not elide");
+        require(islandOverflow.mediaBlock.labelItem.elide === Text.ElideRight
+                && islandOverflow.mediaBlock.labelItem.x === 0,
+                "overflowing media uses a settled static ellipsis");
 
-        // Reduced-motion media renders a static ellipsis with no marquee.
+        // Reduced motion preserves the same static presentation.
         require(islandStatic.mediaBlock.overflowing, "static scenario overflows too");
-        require(!islandStatic.mediaBlock.marqueeRunning,
-                "reduced motion keeps the marquee stopped");
-        require(islandStatic.mediaBlock.labelItem.elide === Text.ElideRight,
-                "reduced motion renders a static ellipsis");
+        require(islandStatic.mediaBlock.labelItem.elide === Text.ElideRight
+                && islandStatic.mediaBlock.labelItem.x === 0,
+                "reduced motion preserves the static ellipsis");
 
         console.warn("idle composition stage one passed");
         phaseTwoTimer.start();
     }
 
     function phaseTwo() {
-        // The armed marquee runs only while visible, overflowing, and allowed.
-        require(islandOverflow.mediaBlock.marqueeRunning,
-                "overflowing visible media marquees after the delay");
+        require(islandOverflow.mediaBlock.labelItem.x === 0
+                && islandOverflow.mediaBlock.labelItem.elide === Text.ElideRight,
+                "visible overflowing media creates no recurring motion");
 
-        islandOverflow.reducedMotion = true;
-        require(!islandOverflow.mediaBlock.marqueeRunning,
-                "reduced motion stops a running marquee");
-        require(islandOverflow.mediaBlock.labelItem.x === 0, "stopped marquee resets its offset");
-        islandOverflow.reducedMotion = false;
-
-        islandOverflow.visible = false;
-        require(!islandOverflow.mediaBlock.marqueeEligible &&
-                !islandOverflow.mediaBlock.marqueeRunning, "hidden media performs no marquee work");
-        islandOverflow.visible = true;
-
-        // The watched reduced-motion preference drives the same fallback.
+        // The watched reduced-motion preference still drives surface motion.
         pendingMotionStage = "reduced";
         motionWriter.setText("[KDE]\nAnimationDurationFactor=0\n");
     }
@@ -284,9 +271,9 @@ ShellRoot {
     function motionReducedStage() {
         require(motion.active, "zero animation factor enables reduced motion");
         require(islandWatched.reducedMotion, "the watched preference reaches the island");
-        require(islandWatched.mediaBlock.labelItem.elide === Text.ElideRight,
-                "watched preference renders the static ellipsis");
-        require(!islandWatched.mediaBlock.marqueeRunning, "watched preference stops the marquee");
+        require(islandWatched.mediaBlock.labelItem.elide === Text.ElideRight
+                && islandWatched.mediaBlock.labelItem.x === 0,
+                "watched preference preserves settled Idle media");
 
         pendingMotionStage = "restored";
         motionWriter.setText("[KDE]\nAnimationDurationFactor=1\n");
@@ -294,8 +281,9 @@ ShellRoot {
 
     function motionRestoredStage() {
         require(!motion.active, "normal animation factor re-enables motion");
-        require(islandWatched.mediaBlock.marqueeRunning,
-                "marquee resumes after the preference returns");
+        require(islandWatched.mediaBlock.labelItem.elide === Text.ElideRight
+                && islandWatched.mediaBlock.labelItem.x === 0,
+                "normal motion settings do not create an Idle animation loop");
         console.warn("idle composition tests passed");
         Qt.exit(0);
     }

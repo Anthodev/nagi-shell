@@ -150,6 +150,8 @@ ShellRoot {
         id: modelFactory
 
         QtObject {
+            signal objectInsertedPost(var object, int index)
+            signal objectRemovedPost(var object, int index)
             property var values: []
         }
     }
@@ -679,7 +681,9 @@ ShellRoot {
         require(bundle.adapter.previous() === "dispatched",
                 "cleanup scenario starts from dispatched pending state");
 
-        setPlayers(bundle, []);
+        bundle.model.values.splice(0, 1);
+        bundle.model.objectRemovedPost(player, 0);
+        bundle.adapter.processPendingChanges();
         require(!bundle.adapter.available && bundle.adapter.trackKey === ""
                 && bundle.adapter.trackedPlayerCount === 0,
                 "session loss clears availability, track key, and tracked players");

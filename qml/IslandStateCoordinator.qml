@@ -71,6 +71,10 @@ Scope {
         return reducer.finishInteractive(epoch);
     }
 
+    function resetToIdle(initiatingSurfaceToken) {
+        return reducer.resetToIdle(initiatingSurfaceToken);
+    }
+
     function detachSurface(token, generation) {
         return reducer.detachSurface(token, generation);
     }
@@ -415,6 +419,28 @@ Scope {
 
             schedule(now);
             return false;
+        }
+
+        function resetToIdle(initiatingSurfaceToken) {
+            const now = currentTime();
+            expireDue(now);
+            if (!matchingSurface(initiatingSurfaceToken) || modalPresent || ownerKind
+                    === root.ownerPolkitModal) {
+                schedule(now);
+                return false;
+            }
+
+            hoverIntent = false;
+            explicitExpandedIntent = false;
+            pending = [];
+            restoration = [];
+            focusPending = false;
+            focusTarget = root.focusNone;
+            if (ownerKind !== root.ownerIdle) {
+                enterOwner(root.ownerIdle, null, null, now);
+            }
+            schedule(now);
+            return true;
         }
 
         function focusFor(kind) {

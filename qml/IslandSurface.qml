@@ -1,6 +1,7 @@
 import Quickshell
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Window
 
 PanelWindow {
     id: surface
@@ -195,6 +196,9 @@ PanelWindow {
     property real sessionRequestOwnerEpoch: 0
     property int launcherRequestId: 0
     property real launcherRequestOwnerEpoch: 0
+    readonly property var backingWindow: surface.contentItem.Window.window
+    property bool shellWindowWasActive: false
+    property bool shellMenuOpen: false
 
     function isInteractiveKind(kind) {
         return kind === coordinator.ownerLauncher || kind === coordinator.ownerHistory || kind
@@ -416,11 +420,58 @@ PanelWindow {
     }
 
     function reportHover(hovered) {
+        if (shellMenuOpen && !hovered) {
+            return true;
+        }
         return coordinator.setHover(hostSurfaceGeneration, hovered);
     }
 
     function requestDeliberateExpansion() {
         return coordinator.setExplicitExpanded(hostSurfaceGeneration, true);
+    }
+
+    function beginShellMenu() {
+        shellMenuOpen = true;
+        return true;
+    }
+
+    function cancelShellMenu() {
+        shellMenuOpen = false;
+        if (trayAdapter !== null && typeof trayAdapter.cancelMenuTracking === "function") {
+            trayAdapter.cancelMenuTracking();
+        }
+    }
+
+    function finishShellMenuOpen(result) {
+        if (result !== "dispatched") {
+            cancelShellMenu();
+            return false;
+        }
+        return true;
+    }
+
+    function completeShellMenuAction() {
+        cancelShellMenu();
+        return coordinator.resetToIdle(coordinator.surfaceToken);
+    }
+
+    function handleWindowActivation(active) {
+        if (active) {
+            if (shellMenuOpen) {
+                cancelShellMenu();
+            }
+            shellWindowWasActive = true;
+            return false;
+        }
+        if (shellMenuOpen) {
+            shellWindowWasActive = false;
+            return false;
+        }
+        if (!shellWindowWasActive) {
+            return false;
+        }
+        shellWindowWasActive = false;
+        return coordinator.resetToIdle(coordinator.surfaceToken);
     }
 
     function safeLogicalSize(preferredSize, screenSize) {
@@ -449,6 +500,12 @@ PanelWindow {
     }
 
     onExpandedChanged: syncDashboardReveal()
+    onBackingWindowChanged: {
+        shellWindowWasActive = false;
+        if (backingWindow !== null) {
+            handleWindowActivation(backingWindow.active);
+        }
+    }
     onReducedMotionChanged: {
         syncDashboardReveal();
         if (reducedMotion && exitingOwnerKind >= 0) {
@@ -460,6 +517,9 @@ PanelWindow {
         previousOwnerKind = ownerKind;
         syncDashboardReveal();
         queuePresentationAcknowledgement();
+        if (backingWindow !== null) {
+            handleWindowActivation(backingWindow.active);
+        }
     }
     onOwnerKindChanged: {
         const outgoingKind = previousOwnerKind;
@@ -472,6 +532,15 @@ PanelWindow {
         queuePresentationAcknowledgement();
         if (hostSurfaceGeneration > 0 && hoverHandler.hovered) {
             reportHover(true);
+        }
+    }
+
+    Connections {
+        target: surface.backingWindow
+        ignoreUnknownSignals: true
+
+        function onActiveChanged() {
+            surface.handleWindowActivation(target.active);
         }
     }
 
@@ -506,10 +575,9 @@ PanelWindow {
             if (requestId !== surface.launcherRequestId) {
                 return;
             }
-            const epoch = surface.launcherRequestOwnerEpoch;
             surface.launcherRequestId = 0;
             surface.launcherRequestOwnerEpoch = 0;
-            surface.coordinator.completeInteractive(epoch);
+            surface.coordinator.resetToIdle(surface.coordinator.surfaceToken);
         }
 
         function onLaunchRejected(requestId, category) {
@@ -803,9 +871,13 @@ PanelWindow {
             TrayView {
                 active: trayLoader.visible
                 adapter: surface.trayAdapter
+                menuParentWindow: surface
                 ownerEpoch: surface.ownerEpoch
                 reducedMotion: surface.reducedMotion
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+                onShellMenuOpening: surface.beginShellMenu()
+                onShellMenuOpenResult: result => surface.finishShellMenuOpen(result)
+                onExternalActionDispatched: surface.completeShellMenuAction()
             }
         }
 

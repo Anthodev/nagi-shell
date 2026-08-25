@@ -11,6 +11,14 @@ QT_PATHS ?= qtpaths6
 MOC ?= $(shell $(QT_PATHS) --query QT_HOST_LIBEXECS)/moc
 DBUS_RUN_SESSION ?= dbus-run-session
 BUILD_DIR := build
+KWIN_VIRTUAL_RUNNER ?= $(abspath tests/run-kwin-virtual.sh)
+KWIN_TEST_SCALE ?= 1
+KWIN_TEST_MATRIX ?= 0
+KWIN_TEST_OUTPUTS ?= 2
+KWIN_TEST_WIDTH ?= 1280
+KWIN_TEST_HEIGHT ?= 720
+KWIN_TEST_SCALE_ARGS = $(if $(filter 1,$(KWIN_TEST_MATRIX)),--matrix,--scale '$(KWIN_TEST_SCALE)')
+KWIN_TEST_ARGS = $(KWIN_TEST_SCALE_ARGS) --outputs '$(KWIN_TEST_OUTPUTS)' --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)'
 HELPER := $(BUILD_DIR)/nagi-kwin-virtual-desktops
 HELPER_TEST := $(BUILD_DIR)/kwin-virtual-desktops-test
 HELPER_MOC := $(BUILD_DIR)/main.moc
@@ -156,7 +164,7 @@ help:
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-transients  Test workspace, brightness, audio, and notification routing' \
-		'make test-surface-state  Exercise coordinator in the actual island surface' \
+		'make test-surface-state  Exercise the actual island surface in isolated virtual KWin' \
 		'make test-weather    Test compact clock and weather adapter state' \
 		'make test-media      Test the MPRIS media adapter state' \
 		'make test-audio      Test the PipeWire audio adapter state' \
@@ -166,7 +174,7 @@ help:
 		'make test-connectivity-live-write  Change and restore live radios' \
 		'make test-tray       Test system tray lifecycle and actions' \
 		'make test-tray-live  Exercise a controlled real tray item on KDE' \
-		'make test-ui-primitives  Render theme tokens and primitives in the island surface' \
+		'make test-ui-primitives  Render theme tokens and primitives in isolated virtual KWin' \
 		'make test-theme-config  Test XDG theme parsing, live reload, fallback, and failures' \
 		'make test-icons       Test semantic icon resolution, rendering, and fallback' \
 		'make test-subview-frame  Test shared subview structure, focus, bounds, and motion' \
@@ -537,7 +545,7 @@ test-surface-state: check-quickshell | $(BUILD_DIR)
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
+	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- $(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
 test-polkit-ui: check-quickshell | $(BUILD_DIR)
 	rm -rf $(POLKIT_UI_TEST_DIR)
@@ -587,7 +595,7 @@ test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(UI_PRIMITIVES_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
+	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- $(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 
 test-icons: check-quickshell | $(BUILD_DIR)
 	rm -rf $(ICON_TEST_DIR)

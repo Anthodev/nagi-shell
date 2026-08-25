@@ -218,7 +218,9 @@ Singleton {
                                      "kind": "system",
                                      "source": source,
                                      "tint": tintFor(requestedState),
-                                     "tintable": true,
+                                     // preferences-system is commonly a full-color application
+                                     // icon; colorizing its opaque plate destroys its identity.
+                                     "tintable": meaning !== "settings",
                                      "attention": requestedState === "attention",
                                      "disabled": requestedState === "disabled",
                                      "accessibleName": root._labels[meaning]

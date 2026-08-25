@@ -40,21 +40,58 @@ class FakeVirtualDesktopManager final : public QObject {
 public:
     QList<FakeDesktop> desktops() const
     {
-        return {{0, desktopId, QStringLiteral("Test Desktop")}};
+        if (replacementOwner) {
+            return {{0, QStringLiteral("new-owner-desktop"), QStringLiteral("New Desktop")}};
+        }
+        return {
+            {0, QStringLiteral("desktop-one"), QStringLiteral("Desktop 1")},
+            {1, QStringLiteral("desktop-two"), QStringLiteral("Desktop 2")},
+        };
     }
 
     QString current() const
     {
-        return desktopId;
+        return currentId;
+    }
+
+    void setCurrent(const QString &id)
+    {
+        currentId = id;
+        emit currentChanged(id);
     }
 
     void replaceDesktop()
     {
-        desktopId = QStringLiteral("new-owner-desktop");
+        replacementOwner = true;
+        currentId = QStringLiteral("new-owner-desktop");
+    }
+
+signals:
+    void currentChanged(const QString &id);
+
+private:
+    QString currentId = QStringLiteral("desktop-one");
+    bool replacementOwner = false;
+};
+
+class FakeKWinRoot final : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kde.KWin")
+
+public:
+    void setActiveOutputName(const QString &name)
+    {
+        outputName = name;
+    }
+
+public slots:
+    QString activeOutputName() const
+    {
+        return outputName;
     }
 
 private:
-    QString desktopId = QStringLiteral("old-owner-desktop");
+    QString outputName = QStringLiteral("output-one");
 };
 
 class OwnerLifecycleTest final : public QObject {
@@ -74,9 +111,12 @@ public:
             || !bus.registerObject(
                 QStringLiteral("/VirtualDesktopManager"),
                 &manager,
-                QDBusConnection::ExportAllProperties)
+                QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals)
+            || !bus.registerObject(
+                QStringLiteral("/KWin"),
+                &root,
+                QDBusConnection::ExportAllSlots)
             || !bus.registerService(QStringLiteral("org.kde.KWin"))) {
-            fail("could not register fake KWin service");
             return;
         }
 
@@ -95,7 +135,9 @@ public:
 
 private:
     enum class Stage {
-        OldOwner,
+        Initial,
+        OutputChange,
+        DesktopChange,
         Unavailable,
         NewOwner,
     };
@@ -119,14 +161,45 @@ private:
     {
         const bool available = snapshot.value(QStringLiteral("available")).toBool();
         const QString currentId = snapshot.value(QStringLiteral("currentId")).toString();
-        if (stage == Stage::OldOwner && available
-            && currentId == QStringLiteral("old-owner-desktop")) {
+        const bool showTransient = snapshot.value(QStringLiteral("showTransient")).toBool();
+        if (stage == Stage::Initial && available && currentId == QStringLiteral("desktop-one")) {
+            if (showTransient) {
+                fail("initial snapshot requested transient feedback");
+                return;
+            }
+            stage = Stage::OutputChange;
+            root.setActiveOutputName(QStringLiteral("output-two"));
+            manager.setCurrent(QStringLiteral("desktop-two"));
+            return;
+        }
+
+        if (stage == Stage::OutputChange && available
+            && currentId == QStringLiteral("desktop-two")) {
+            if (showTransient) {
+                fail("active-output change requested workspace feedback");
+                return;
+            }
+            stage = Stage::DesktopChange;
+            manager.setCurrent(QStringLiteral("desktop-one"));
+            return;
+        }
+
+        if (stage == Stage::DesktopChange && available
+            && currentId == QStringLiteral("desktop-one")) {
+            if (!showTransient) {
+                fail("same-output desktop switch suppressed workspace feedback");
+                return;
+            }
             stage = Stage::Unavailable;
             bus.unregisterService(QStringLiteral("org.kde.KWin"));
             return;
         }
 
         if (stage == Stage::Unavailable && !available) {
+            if (showTransient) {
+                fail("unavailable snapshot requested transient feedback");
+                return;
+            }
             stage = Stage::NewOwner;
             manager.replaceDesktop();
             QTimer::singleShot(0, this, [this] {
@@ -139,6 +212,10 @@ private:
 
         if (stage == Stage::NewOwner && available
             && currentId == QStringLiteral("new-owner-desktop")) {
+            if (showTransient) {
+                fail("replacement owner replayed workspace feedback");
+                return;
+            }
             timeout.stop();
             helper.terminate();
             helper.waitForFinished(1000);
@@ -161,10 +238,11 @@ private:
     QString helperPath;
     QDBusConnection bus;
     FakeVirtualDesktopManager manager;
+    FakeKWinRoot root;
     QProcess helper;
     QTimer timeout;
     QByteArray bufferedOutput;
-    Stage stage = Stage::OldOwner;
+    Stage stage = Stage::Initial;
 };
 
 int main(int argc, char **argv)
