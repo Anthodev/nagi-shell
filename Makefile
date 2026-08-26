@@ -130,6 +130,14 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: check-wallpaper-toolchain wallpaper-helper test-wallpaper test-wallpaper-dbus test-wallpaper-live
 .PHONY: test-typography
 .PHONY: test-global-shortcut-live
+.PHONY: test-multi-surface
+.PHONY: test-ipc-activation
+.PHONY: test-appearance-watcher
+.PHONY: test-settings-writer
+.PHONY: test-networkmanager-contract
+.PHONY: test-bluez-contract
+.PHONY: test-gaming-power-contract
+.PHONY: test-wallpaper-write-contract
 
 help:
 	@printf '%s\n' \
@@ -640,6 +648,43 @@ test-typography: check-quickshell | $(BUILD_DIR)
 	cp '$(TYPOGRAPHY_SOURCE_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/SourceSans3-Regular.ttf
 	NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
 
+# Issue #70 gate: one PanelWindow per connected screen, independent
+# assignment, destruction/recreation, and scale behavior in virtual KWin.
+test-multi-surface: check-quickshell
+	@$(KWIN_VIRTUAL_RUNNER) --outputs 3 --scale 1 -- env NAGI_PROBE_OUTPUTS=3 \
+		bash $(CURDIR)/tests/multi-surface/run-probe.sh
+	@$(KWIN_VIRTUAL_RUNNER) --outputs 2 --scale 1.5 -- env NAGI_PROBE_OUTPUTS=2 \
+		bash $(CURDIR)/tests/multi-surface/run-probe.sh
+
+# Issue #70 gate: same-process singleton activation via IpcHandler/`qs ipc`.
+test-ipc-activation: check-quickshell
+	@$(KWIN_VIRTUAL_RUNNER) --outputs 1 --scale 1 -- \
+		bash $(CURDIR)/tests/ipc-activation/run-probe.sh
+
+# Issue #70 gate: event-first KDE appearance observation from a synthetic
+# kdeglobals (light/dark, accent, reduced motion, malformed, deletion).
+test-appearance-watcher: check-quickshell
+	@bash $(CURDIR)/tests/appearance-watcher/run-probe.sh
+
+# Issue #70 gate: settings writer/watch semantics - private atomic
+# replacement, migration backup, own-write stability, last-good, symlinks.
+test-settings-writer: check-quickshell
+	@bash $(CURDIR)/tests/settings-writer/run-probe.sh
+
+# Issue #70 gates: private D-Bus fixture probes for downstream integration
+# contracts (NetworkManager, BlueZ, gaming performance, Plasma wallpaper).
+test-networkmanager-contract:
+	@bash $(CURDIR)/tests/networkmanager-contract/run-probe.sh
+
+test-bluez-contract:
+	@bash $(CURDIR)/tests/bluez-contract/run-probe.sh
+
+test-gaming-power-contract: check-helper-toolchain
+	@bash $(CURDIR)/tests/gaming-power-contract/run-probe.sh
+
+test-wallpaper-write-contract:
+	@bash $(CURDIR)/tests/wallpaper-write-contract/run-probe.sh
+
 check-quickshell:
 	@set -eu; \
 	version="$$($(QS) --version | sed -n 's/^Quickshell \([0-9][0-9.]*\).*/\1/p')"; \
@@ -702,7 +747,7 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state test-ui-primitives
+check: check-nondisplay test-surface-state test-ui-primitives test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
 
 check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
