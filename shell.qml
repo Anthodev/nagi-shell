@@ -8,6 +8,9 @@ import "qml"
 ShellRoot {
     property int systemSettingsRequestId: 0
     property string systemSettingsFailure: ""
+    readonly property string visibleSettingsFailure: systemSettingsFailure !== ""
+                                                     ? systemSettingsFailure :
+                                                       UserConfig.errorMessage
 
     function launchSystemSettings(initiatingSurfaceToken) {
         systemSettingsFailure = "";
@@ -97,7 +100,7 @@ ShellRoot {
     }
 
     OnboardingWindow {
-        settingsFailure: systemSettingsFailure
+        settingsFailure: visibleSettingsFailure
         onSystemSettingsRequested: launchSystemSettings(islandHost.routeSurfaceToken(null))
     }
 
@@ -159,7 +162,7 @@ ShellRoot {
         volumeTransientSource: audioAdapter
         notificationTransientSource: notificationService
         reducedMotion: motion.active
-        settingsFailure: systemSettingsFailure
+        settingsFailure: visibleSettingsFailure
         onSystemSettingsRequested: token => launchSystemSettings(token)
     }
 
