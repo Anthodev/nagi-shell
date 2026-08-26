@@ -434,7 +434,7 @@ log_info "Building native helpers in the checkout..."
     # shellcheck disable=SC2086
     make -s helper audio-helper connectivity-helper brightness-helper \
         session-helper application-helper global-shortcut-helper \
-        wallpaper-helper notification-plugin
+        wallpaper-helper notification-plugin platform-plugin
 )
 
 # Required artifacts, relative to the checkout root (paths mirror what
@@ -450,6 +450,8 @@ build/global-shortcut/nagi-global-shortcut
 build/wallpaper/nagi-wallpaper
 build/qml/Nagi/Notifications/libnaginotificationsplugin.so
 build/qml/Nagi/Notifications/qmldir
+build/qml/Nagi/Platform/libnagiplatformplugin.so
+build/qml/Nagi/Platform/qmldir
 "
 for artifact in $ARTIFACTS; do
     [ -f "$SOURCE_DIR/$artifact" ] || log_fatal "Expected artifact is missing after build: $artifact"

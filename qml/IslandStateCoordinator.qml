@@ -31,273 +31,224 @@ Scope {
     readonly property int focusTray: 6
     readonly property int focusAudio: 7
 
-    readonly property int surfaceGeneration: reducer.surfaceGeneration
-    readonly property var surfaceToken: reducer.surfaceToken
-    readonly property int ownerKind: reducer.ownerKind
-    readonly property string ownerName: reducer.ownerName(reducer.ownerKind)
-    readonly property int ownerRank: reducer.ownerRank
-    readonly property real ownerEpoch: reducer.ownerEpoch
-    readonly property real revision: reducer.revision
-    readonly property var ownerSourceToken: reducer.ownerSourceToken
-    readonly property int ownerSourceGeneration: reducer.ownerSourceGeneration
-    readonly property int ownerSourceRevision: reducer.ownerSourceRevision
-    readonly property bool presentationVisible: reducer.presentationVisible
-    readonly property int focusTarget: reducer.focusTarget
-    readonly property real focusRequestSerial: reducer.focusRequestSerial
-    readonly property bool hoverIntent: reducer.hoverIntent
-    readonly property bool explicitExpandedIntent: reducer.explicitExpandedIntent
-    readonly property int pendingTransientCount: reducer.pending.length
-    readonly property int restorationDepth: reducer.restoration.length
-    readonly property bool modalPresent: reducer.modalPresent
-    readonly property int modalFlowGeneration: reducer.modalFlowGeneration
+    readonly property int stateSerial: state.serial
+    readonly property int surfaceCount: state.surfaces.length
+    readonly property int pendingTransientCount: state.transients.length
+    readonly property bool modalPresent: state.modalIsActive || state.modalFlowPresent
+    readonly property int modalFlowGeneration: state.modalFlowGeneration
+    readonly property var modalHostToken: state.modalHostToken
+    readonly property var interactiveHostToken: state.interactiveHostToken()
+    readonly property bool anyExpanded: state.anyOwner(root.ownerExpanded)
 
-    // Tests may inject a monotonic millisecond source. Production uses Quickshell's
-    // QElapsedTimer-backed clock and one relative one-shot scheduler.
+    // IslandSurfaceHost implements routeSurfaceToken(excludedToken) using only
+    // live surface tokens, QWindow->QScreen equality, and configured fallback.
+    property var surfaceRouter: null
     property var monotonicNow: null
 
-    function acknowledgeVisible(generation, epoch, contentRevision) {
-        return reducer.acknowledgeVisible(generation, epoch, contentRevision);
+    function acknowledgeVisible(token, generation, epoch, contentRevision) {
+        return state.acknowledgeVisible(token, generation, epoch, contentRevision);
     }
 
     function attachSurface(token, generation) {
-        return reducer.attachSurface(token, generation);
+        return state.attachSurface(token, generation);
     }
 
     function cancelInteractive(epoch) {
-        return reducer.finishInteractive(epoch);
+        return state.finishInteractive(epoch);
     }
 
     function completeInteractive(epoch) {
-        return reducer.finishInteractive(epoch);
-    }
-
-    function resetToIdle(initiatingSurfaceToken) {
-        return reducer.resetToIdle(initiatingSurfaceToken);
+        return state.finishInteractive(epoch);
     }
 
     function detachSurface(token, generation) {
-        return reducer.detachSurface(token, generation);
+        return state.detachSurface(token, generation);
+    }
+
+    function invalidateTransient(sourceToken, sourceGeneration) {
+        return state.invalidateTransient(sourceToken, sourceGeneration);
+    }
+
+    function openAudio(initiatingSurfaceToken) {
+        return state.openInteractive(root.ownerAudio, initiatingSurfaceToken);
     }
 
     function openDashboard(initiatingSurfaceToken) {
-        if (!reducer.matchingSurface(initiatingSurfaceToken)) {
-            return false;
-        }
-        return reducer.setExplicitExpanded(reducer.surfaceGeneration, true);
-    }
-
-    function openLauncher(initiatingSurfaceToken) {
-        return reducer.openLauncher(initiatingSurfaceToken);
+        const token = state.routedToken(initiatingSurfaceToken, null);
+        const record = state.recordForToken(token);
+        return record !== null && state.setBaselineIntent(record.token, record.generation, true,
+                                                          true);
     }
 
     function openHistory(initiatingSurfaceToken) {
-        return reducer.openHistory(initiatingSurfaceToken);
+        return state.openInteractive(root.ownerHistory, initiatingSurfaceToken);
     }
-    function openTray(initiatingSurfaceToken) {
-        return reducer.openTray(initiatingSurfaceToken);
-    }
-    function openAudio(initiatingSurfaceToken) {
-        return reducer.openAudio(initiatingSurfaceToken);
+
+    function openLauncher(initiatingSurfaceToken) {
+        return state.openInteractive(root.ownerLauncher, initiatingSurfaceToken);
     }
 
     function openSession(initiatingSurfaceToken) {
-        return reducer.openSession(initiatingSurfaceToken);
+        return state.openInteractive(root.ownerSession, initiatingSurfaceToken);
+    }
+
+    function openTray(initiatingSurfaceToken) {
+        return state.openInteractive(root.ownerTray, initiatingSurfaceToken);
+    }
+
+    function ownerNameFor(kind) {
+        return state.ownerName(kind);
+    }
+
+    function prepareSurfaceDisable(token) {
+        return state.prepareSurfaceDisable(token);
     }
 
     function requestBrightness(sourceToken, sourceGeneration, sourceRevision,
                                initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerBrightness, sourceToken, sourceGeneration,
-                                        sourceRevision, initiatingSurfaceToken);
+        return state.requestTransient(root.ownerBrightness, sourceToken, sourceGeneration,
+                                      sourceRevision, initiatingSurfaceToken, false);
     }
 
     function requestNotification(sourceToken, sourceGeneration, sourceRevision,
                                  initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerNotification, sourceToken, sourceGeneration,
-                                        sourceRevision, initiatingSurfaceToken);
+        return state.requestTransient(root.ownerNotification, sourceToken, sourceGeneration,
+                                      sourceRevision, initiatingSurfaceToken, true);
     }
 
     function requestVolume(sourceToken, sourceGeneration, sourceRevision, initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerVolume, sourceToken, sourceGeneration,
-                                        sourceRevision, initiatingSurfaceToken);
+        return state.requestTransient(root.ownerVolume, sourceToken, sourceGeneration,
+                                      sourceRevision, initiatingSurfaceToken, true);
     }
 
     function requestWorkspace(sourceToken, sourceGeneration, sourceRevision,
                               initiatingSurfaceToken) {
-        return reducer.requestTransient(root.ownerWorkspace, sourceToken, sourceGeneration,
-                                        sourceRevision, initiatingSurfaceToken);
+        return state.requestTransient(root.ownerWorkspace, sourceToken, sourceGeneration,
+                                      sourceRevision, initiatingSurfaceToken, false);
     }
 
-    function invalidateTransient(sourceToken, sourceGeneration) {
-        return reducer.invalidateTransient(sourceToken, sourceGeneration);
+    function resetToIdle(initiatingSurfaceToken) {
+        return state.resetToIdle(initiatingSurfaceToken);
     }
 
-    function setExplicitExpanded(generation, expanded) {
-        return reducer.setExplicitExpanded(generation, expanded);
+    function setExplicitExpanded(token, generation, expanded) {
+        return state.setBaselineIntent(token, generation, expanded, true);
     }
 
-    function setHover(generation, hovered) {
-        return reducer.setHover(generation, hovered);
+    function setHover(token, generation, hovered) {
+        return state.setBaselineIntent(token, generation, hovered, false);
+    }
+
+    function surfaceSnapshot(token) {
+        return state.surfaceSnapshot(token);
     }
 
     function syncPolkitModal(isActive, flowPresent, flowGeneration) {
-        return reducer.syncPolkitModal(isActive, flowPresent, flowGeneration);
+        return state.syncPolkitModal(isActive, flowPresent, flowGeneration);
     }
 
     QtObject {
-        id: reducer
+        id: state
 
-        property int surfaceGeneration: 0
-        property var surfaceToken: null
-        property bool hoverIntent: false
-        property bool explicitExpandedIntent: false
-        readonly property bool baselineExpanded: hoverIntent || explicitExpandedIntent
-
-        property int ownerKind: root.ownerNone
-        property int ownerRank: -1
-        property real ownerEpoch: 0
-        property real revision: 0
-        property var ownerSourceToken: null
-        property int ownerSourceGeneration: 0
-        property int ownerSourceRevision: 0
-        property real ownerAdmission: 0
-        property real ownerFreshUntil: -1
-        property real ownerHoldDuration: 0
-        property real ownerHoldUntil: -1
-        property bool presentationVisible: false
-        property bool focusPending: false
-
-        property var pending: []
-        property var restoration: []
+        property var surfaces: []
+        property var transients: []
         property real nextAdmission: 0
         property real nextOwnerEpoch: 0
+        property real lastNow: -1
+        property int serial: 0
 
         property bool modalIsActive: false
         property bool modalFlowPresent: false
         property int modalFlowGeneration: 0
-        readonly property bool modalPresent: modalIsActive || modalFlowPresent
+        property var modalHostToken: null
 
-        property int focusTarget: root.focusNone
-        property real focusRequestSerial: 0
-
-        property real lastNow: -1
-        property real scheduleSerial: 0
-        property int scheduledSurfaceGeneration: 0
-        property real scheduledOwnerEpoch: 0
-        property real scheduledRevision: 0
-        property real armedScheduleSerial: 0
-
-        function acknowledgeVisible(generation, epoch, contentRevision) {
+        function acknowledgeVisible(token, generation, epoch, contentRevision) {
             const now = currentTime();
             expireDue(now);
-
-            if (generation !== surfaceGeneration || epoch !== ownerEpoch || contentRevision
-                    !== revision || ownerKind === root.ownerNone) {
+            const record = recordForToken(token);
+            if (record === null || record.generation !== generation || record.owner.epoch !== epoch
+                    || record.owner.revision !== contentRevision || record.owner.kind
+                    === root.ownerNone) {
                 schedule(now);
                 return false;
             }
 
-            if (!presentationVisible) {
-                presentationVisible = true;
-                if (isTransient(ownerKind)) {
-                    ownerHoldUntil = now + ownerHoldDuration;
+            record.owner.presentationVisible = true;
+            if (record.owner.focusPending) {
+                record.owner.focusPending = false;
+                record.focusRequestSerial += 1;
+            }
+            if (isTransient(record.owner.kind)) {
+                const event = eventForId(record.owner.eventId);
+                if (event !== null && event.visibleTokens.indexOf(token) < 0) {
+                    event.visibleTokens.push(token);
+                    let everyProjectionVisible = true;
+                    for (let index = 0; index < surfaces.length; index += 1) {
+                        const candidate = surfaces[index];
+                        if (candidate.owner.eventId === event.id && event.visibleTokens.indexOf(
+                                    candidate.token) < 0) {
+                            everyProjectionVisible = false;
+                            break;
+                        }
+                    }
+                    if (everyProjectionVisible) {
+                        event.holdUntil = now + event.holdDuration;
+                    }
                 }
             }
-
-            if (focusPending) {
-                focusPending = false;
-                focusRequestSerial += 1;
-            }
-
+            publish();
             schedule(now);
             return true;
+        }
+
+        function anyOwner(kind) {
+            for (let index = 0; index < surfaces.length; index += 1) {
+                if (surfaces[index].owner.kind === kind) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         function attachSurface(token, generation) {
             if (token === null || token === undefined || !Number.isInteger(generation) || generation
-                    <= 0) {
+                    <= 0 || recordForToken(token) !== null) {
                 return false;
             }
-
-            const now = currentTime();
-            expireDue(now);
-
-            if (surfaceToken === token && surfaceGeneration === generation) {
-                schedule(now);
-                return true;
+            surfaces.push({
+                              "explicitExpanded": false,
+                              "focusRequestSerial": 0,
+                              "generation": generation,
+                              "hover": false,
+                              "owner": baselineOwner(false),
+                              "restoration": [],
+                              "token": token
+                          });
+            if (root.modalPresent && modalHostToken === null) {
+                rehomeModal(null, false);
             }
-
-            clearLocalState();
-            surfaceToken = token;
-            surfaceGeneration = generation;
-            enterOwner(baselineExpanded ? root.ownerExpanded : root.ownerIdle, null, null, now);
-
-            if (modalPresent) {
-                captureCurrent(now);
-                enterOwner(root.ownerPolkitModal, null, null, now);
-            }
-
-            schedule(now);
+            publish();
+            schedule(currentTime());
             return true;
         }
 
-        function captureCurrent(now) {
-            if (ownerKind === root.ownerNone || ownerKind === root.ownerIdle || ownerKind
-                    === root.ownerPolkitModal) {
-                return;
-            }
-
-            if (restoration.length >= root.maximumRestorationDepth) {
-                return;
-            }
-
-            if (restoration.length > 0 && restoration[restoration.length - 1].rank >= ownerRank) {
-                return;
-            }
-
-            let holdRemaining = ownerHoldDuration;
-            if (isTransient(ownerKind) && presentationVisible) {
-                holdRemaining = Math.max(0, ownerHoldUntil - now);
-            }
-
-            const frames = restoration.slice();
-            frames.push({
-                            "admission": ownerAdmission,
-                            "freshUntil": ownerFreshUntil,
-                            "holdDuration": holdRemaining,
-                            "kind": ownerKind,
-                            "rank": ownerRank,
-                            "revision": revision,
-                            "taskEpoch": isInteractiveKind(ownerKind) ? ownerEpoch : 0,
-                            "sourceToken": ownerSourceToken,
-                            "sourceGeneration": ownerSourceGeneration,
-                            "sourceRevision": ownerSourceRevision,
-                            "surfaceGeneration": surfaceGeneration
-                        });
-            restoration = frames;
+        function baselineKind(record) {
+            return record.hover || record.explicitExpanded ? root.ownerExpanded : root.ownerIdle;
         }
 
-        function clearLocalState() {
-            scheduler.stop();
-            surfaceToken = null;
-            surfaceGeneration = 0;
-            hoverIntent = false;
-            explicitExpandedIntent = false;
-            ownerKind = root.ownerNone;
-            ownerRank = -1;
-            ownerEpoch = 0;
-            revision = 0;
-            ownerSourceToken = null;
-            ownerSourceGeneration = 0;
-            ownerSourceRevision = 0;
-            ownerAdmission = 0;
-            ownerFreshUntil = -1;
-            ownerHoldDuration = 0;
-            ownerHoldUntil = -1;
-            presentationVisible = false;
-            focusPending = false;
-            focusTarget = root.focusNone;
-            pending = [];
-            restoration = [];
+        function baselineOwner(expanded) {
+            return ownerRecord(expanded ? root.ownerExpanded : root.ownerIdle, null, null, false);
+        }
+
+        function captureCurrent(record) {
+            if (record.owner.kind === root.ownerNone || record.owner.kind === root.ownerIdle
+                    || record.owner.kind === root.ownerPolkitModal || record.restoration.length
+                    >= root.maximumRestorationDepth) {
+                return;
+            }
+            const frames = record.restoration.slice();
+            frames.push(Object.assign({}, record.owner));
+            record.restoration = frames;
         }
 
         function currentTime() {
@@ -315,132 +266,96 @@ Scope {
         }
 
         function detachSurface(token, generation) {
-            if (surfaceToken !== token || surfaceGeneration !== generation) {
+            const record = recordForToken(token);
+            if (record === null || record.generation !== generation) {
                 return false;
             }
-
-            clearLocalState();
+            const modalLost = modalHostToken === token;
+            const interactiveLost = isInteractiveKind(record.owner.kind);
+            const interactiveKind = interactiveLost ? record.owner.kind : root.ownerNone;
+            const interactiveEpoch = interactiveLost ? record.owner.epoch : 0;
+            const next = [];
+            for (let index = 0; index < surfaces.length; index += 1) {
+                if (surfaces[index] !== record) {
+                    next.push(surfaces[index]);
+                }
+            }
+            surfaces = next;
+            removeTargetFromEvents(token);
+            if (modalLost) {
+                modalHostToken = null;
+                rehomeModal(token, false);
+            } else if (interactiveLost) {
+                transferInteractiveAfterLoss(interactiveKind, interactiveEpoch, token);
+            }
+            publish();
+            schedule(currentTime());
             return true;
         }
 
-        function enterOwner(kind, sourceToken, record, now) {
-            const restoredTaskEpoch = record === null ? 0 : record.taskEpoch;
-            if (isInteractiveKind(kind) && typeof restoredTaskEpoch === "number"
-                    && restoredTaskEpoch > 0) {
-                ownerEpoch = restoredTaskEpoch;
-                revision = Math.max(1, record.revision + 1);
-            } else {
-                nextOwnerEpoch += 1;
-                ownerEpoch = nextOwnerEpoch;
-                revision = 1;
+        function enterOwner(record, kind, event, preservedEpoch, preservedRevision) {
+            const epoch = preservedEpoch > 0 ? preservedEpoch : ++nextOwnerEpoch;
+            const revision = preservedRevision > 0 ? preservedRevision : 1;
+            record.owner = ownerRecord(kind, event, epoch, true);
+            record.owner.revision = revision;
+        }
+
+        function eventForId(id) {
+            if (id === 0) {
+                return null;
             }
-            ownerKind = kind;
-            ownerRank = rankFor(kind);
-            ownerSourceToken = sourceToken;
-            ownerSourceGeneration = record === null ? 0 : record.sourceGeneration;
-            ownerSourceRevision = record === null ? 0 : record.sourceRevision;
-            ownerAdmission = record === null ? 0 : record.admission;
-            ownerFreshUntil = record === null ? -1 : record.freshUntil;
-            ownerHoldDuration = record === null ? holdFor(kind) : record.holdDuration;
-            ownerHoldUntil = -1;
-            presentationVisible = false;
-            focusPending = isInteractiveKind(kind) || kind === root.ownerPolkitModal || (kind
-                                                                                         === root.ownerExpanded
-                                                                                         && explicitExpandedIntent);
-            focusTarget = focusFor(kind);
+            for (let index = 0; index < transients.length; index += 1) {
+                if (transients[index].id === id) {
+                    return transients[index];
+                }
+            }
+            return null;
+        }
+
+        function eventMatches(event, kind, sourceToken, sourceGeneration) {
+            return event.kind === kind && event.sourceToken === sourceToken
+                    && event.sourceGeneration === sourceGeneration;
         }
 
         function expireDue(now) {
-            if (surfaceToken === null) {
-                return;
-            }
-
-            let pendingExpired = false;
-            for (let index = 0; index < pending.length; index += 1) {
-                if (pending[index].freshUntil <= now) {
-                    pendingExpired = true;
-                    break;
+            const expired = [];
+            for (let index = 0; index < transients.length; index += 1) {
+                const event = transients[index];
+                if (event.freshUntil <= now || (event.holdUntil >= 0 && event.holdUntil <= now)) {
+                    expired.push(event.id);
                 }
             }
-            if (pendingExpired) {
-                const nextPending = [];
-                for (let index = 0; index < pending.length; index += 1) {
-                    if (pending[index].freshUntil > now) {
-                        nextPending.push(pending[index]);
-                    }
-                }
-                pending = nextPending;
-            }
-
-            let restorationExpired = false;
-            for (let index = 0; index < restoration.length; index += 1) {
-                const frame = restoration[index];
-                if (isTransient(frame.kind) && frame.freshUntil <= now) {
-                    restorationExpired = true;
-                    break;
-                }
-            }
-            if (restorationExpired) {
-                const nextRestoration = [];
-                for (let index = 0; index < restoration.length; index += 1) {
-                    const frame = restoration[index];
-                    if (!isTransient(frame.kind) || frame.freshUntil > now) {
-                        nextRestoration.push(frame);
-                    }
-                }
-                restoration = nextRestoration;
-            }
-
-            if (isTransient(ownerKind) && (ownerFreshUntil <= now || (presentationVisible
-                                                                      && ownerHoldUntil <= now))) {
-                restoreNext(now);
+            for (let index = 0; index < expired.length; index += 1) {
+                removeEvent(expired[index], now);
             }
         }
+
         function finishInteractive(epoch) {
             const now = currentTime();
             expireDue(now);
-
-            if (isInteractiveKind(ownerKind) && ownerEpoch === epoch) {
-                restoreNext(now);
-                schedule(now);
-                return true;
-            }
-
-            for (let index = restoration.length - 1; index >= 0; index -= 1) {
-                const frame = restoration[index];
-                if (isInteractiveKind(frame.kind) && frame.taskEpoch === epoch) {
-                    const frames = restoration.slice();
-                    frames.splice(index, 1);
-                    restoration = frames;
+            for (let index = 0; index < surfaces.length; index += 1) {
+                const record = surfaces[index];
+                if (isInteractiveKind(record.owner.kind) && record.owner.epoch === epoch) {
+                    restoreNext(record, now);
+                    publish();
                     schedule(now);
                     return true;
                 }
+                for (let frameIndex = record.restoration.length - 1; frameIndex >= 0; frameIndex
+                     -= 1) {
+                    if (isInteractiveKind(record.restoration[frameIndex].kind)
+                            && record.restoration[frameIndex].epoch === epoch) {
+                        const frames = record.restoration.slice();
+                        frames.splice(frameIndex, 1);
+                        record.restoration = frames;
+                        publish();
+                        schedule(now);
+                        return true;
+                    }
+                }
             }
-
             schedule(now);
             return false;
-        }
-
-        function resetToIdle(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-            if (!matchingSurface(initiatingSurfaceToken) || modalPresent || ownerKind
-                    === root.ownerPolkitModal) {
-                schedule(now);
-                return false;
-            }
-
-            hoverIntent = false;
-            explicitExpandedIntent = false;
-            pending = [];
-            restoration = [];
-            focusPending = false;
-            focusTarget = root.focusNone;
-            if (ownerKind !== root.ownerIdle) {
-                enterOwner(root.ownerIdle, null, null, now);
-            }
-            schedule(now);
-            return true;
         }
 
         function focusFor(kind) {
@@ -456,16 +371,23 @@ Scope {
             if (kind === root.ownerAudio) {
                 return root.focusAudio;
             }
-            if (kind === root.ownerPolkitModal) {
-                return root.focusPolkitModal;
-            }
-            if (kind === root.ownerExpanded && explicitExpandedIntent) {
-                return root.focusExpandedDashboard;
-            }
             if (kind === root.ownerSession) {
                 return root.focusSessionActions;
             }
+            if (kind === root.ownerPolkitModal) {
+                return root.focusPolkitModal;
+            }
+            if (kind === root.ownerExpanded) {
+                return root.focusExpandedDashboard;
+            }
             return root.focusNone;
+        }
+
+        function forceIdle(record) {
+            record.hover = false;
+            record.explicitExpanded = false;
+            record.restoration = [];
+            record.owner = baselineOwner(false);
         }
 
         function freshnessFor(kind) {
@@ -475,10 +397,7 @@ Scope {
             if (kind === root.ownerVolume || kind === root.ownerBrightness) {
                 return 3000;
             }
-            if (kind === root.ownerWorkspace) {
-                return 2000;
-            }
-            return 0;
+            return kind === root.ownerWorkspace ? 2000 : 0;
         }
 
         function holdFor(kind) {
@@ -488,21 +407,31 @@ Scope {
             if (kind === root.ownerVolume || kind === root.ownerBrightness) {
                 return 1800;
             }
-            if (kind === root.ownerWorkspace) {
-                return 1200;
-            }
-            return 0;
+            return kind === root.ownerWorkspace ? 1200 : 0;
         }
 
-        function isRelevantFrame(frame, now) {
-            if (frame.surfaceGeneration !== surfaceGeneration) {
-                return false;
+        function interactiveHostToken() {
+            for (let index = 0; index < surfaces.length; index += 1) {
+                if (isInteractiveKind(surfaces[index].owner.kind)) {
+                    return surfaces[index].token;
+                }
             }
+            return null;
+        }
+
+        function isInteractiveKind(kind) {
+            return kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray || kind
+                    === root.ownerAudio || kind === root.ownerSession;
+        }
+
+        function isRelevantFrame(frame, record, now) {
             if (isTransient(frame.kind)) {
-                return frame.freshUntil > now && frame.holdDuration > 0;
+                const event = eventForId(frame.eventId);
+                return event !== null && event.freshUntil > now && event.targets.indexOf(
+                            record.token) >= 0;
             }
             if (frame.kind === root.ownerExpanded) {
-                return baselineExpanded;
+                return record.hover || record.explicitExpanded;
             }
             return isInteractiveKind(frame.kind);
         }
@@ -511,552 +440,531 @@ Scope {
             return (typeof token === "string" && token.length > 0 && token.length <= 128) || (
                         typeof token === "number" && Number.isSafeInteger(token));
         }
+
         function isSourceVersion(sourceGeneration, sourceRevision) {
             return Number.isInteger(sourceGeneration) && sourceGeneration > 0 && sourceGeneration
                     <= root.maximumSourceVersion && Number.isInteger(sourceRevision)
                     && sourceRevision > 0 && sourceRevision <= root.maximumSourceVersion;
         }
 
-        function matchesSource(record, kind, sourceToken, sourceGeneration) {
-            return record.kind === kind && record.sourceToken === sourceToken
-                    && record.sourceGeneration === sourceGeneration;
+        function invalidateTransient(sourceToken, sourceGeneration) {
+            if (!isSourceToken(sourceToken) || !Number.isInteger(sourceGeneration)
+                    || sourceGeneration <= 0) {
+                return false;
+            }
+            const now = currentTime();
+            const matches = [];
+            for (let index = 0; index < transients.length; index += 1) {
+                if (transients[index].sourceToken === sourceToken
+                        && transients[index].sourceGeneration === sourceGeneration) {
+                    matches.push(transients[index].id);
+                }
+            }
+            for (let index = 0; index < matches.length; index += 1) {
+                removeEvent(matches[index], now);
+            }
+            if (matches.length > 0) {
+                publish();
+            }
+            schedule(now);
+            return matches.length > 0;
         }
 
-        function matchesInvalidation(record, sourceToken, sourceGeneration) {
-            return isTransient(record.kind) && record.sourceToken === sourceToken
-                    && record.sourceGeneration === sourceGeneration;
-        }
-
-        function isInteractiveKind(kind) {
-            return kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray || kind
-                    === root.ownerAudio || kind === root.ownerSession;
-        }
         function isTransient(kind) {
             return kind === root.ownerWorkspace || kind === root.ownerBrightness || kind === root.ownerVolume || kind
                     === root.ownerNotification;
         }
 
-        function matchingSurface(initiatingSurfaceToken) {
-            if (surfaceToken === null) {
+        function openInteractive(kind, initiatingSurfaceToken) {
+            if (!isInteractiveKind(kind) || root.modalPresent) {
                 return false;
             }
-            return initiatingSurfaceToken === null || initiatingSurfaceToken === undefined
-                    || initiatingSurfaceToken === surfaceToken;
-        }
+            const token = routedToken(initiatingSurfaceToken, null);
+            const target = recordForToken(token);
+            if (target === null) {
+                return false;
+            }
 
-        function nextPendingIndex(now) {
-            let selected = -1;
-            for (let index = 0; index < pending.length; index += 1) {
-                const candidate = pending[index];
-                if (candidate.freshUntil <= now) {
+            for (let index = 0; index < surfaces.length; index += 1) {
+                const current = surfaces[index];
+                if (!isInteractiveKind(current.owner.kind)) {
                     continue;
                 }
-                if (selected < 0 || candidate.rank > pending[selected].rank || (candidate.rank
-                                                                                === pending[selected].rank
-                                                                                && candidate.admission
-                                                                                < pending[selected].admission)) {
-                    selected = index;
+                if (rankFor(kind) < current.owner.rank) {
+                    return false;
                 }
-            }
-            return selected;
-        }
-
-        function openLauncher(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
-                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
-                                         !== root.ownerLauncher)) {
-                schedule(now);
-                return false;
-            }
-
-            if (ownerKind === root.ownerLauncher) {
-                if (presentationVisible) {
-                    focusRequestSerial += 1;
-                } else {
-                    focusPending = true;
+                if (current === target && current.owner.kind === kind) {
+                    if (current.owner.presentationVisible) {
+                        current.focusRequestSerial += 1;
+                    } else {
+                        current.owner.focusPending = true;
+                    }
+                    publish();
+                    return true;
                 }
-                schedule(now);
-                return true;
+                forceIdle(current);
             }
 
-            captureCurrent(now);
-            enterOwner(root.ownerLauncher, null, null, now);
-            schedule(now);
-            return true;
-        }
-
-        function openHistory(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
-                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
-                                         !== root.ownerHistory)) {
-                schedule(now);
-                return false;
-            }
-
-            if (ownerKind === root.ownerHistory) {
-                if (presentationVisible) {
-                    focusRequestSerial += 1;
-                } else {
-                    focusPending = true;
-                }
-                schedule(now);
-                return true;
-            }
-
-            captureCurrent(now);
-            enterOwner(root.ownerHistory, null, null, now);
-            schedule(now);
-            return true;
-        }
-        function openTray(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
-                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
-                                         !== root.ownerTray)) {
-                schedule(now);
-                return false;
-            }
-
-            if (ownerKind === root.ownerTray) {
-                if (presentationVisible) {
-                    focusRequestSerial += 1;
-                } else {
-                    focusPending = true;
-                }
-                schedule(now);
-                return true;
-            }
-
-            captureCurrent(now);
-            enterOwner(root.ownerTray, null, null, now);
-            schedule(now);
-            return true;
-        }
-
-        function openAudio(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal
-                    || ownerRank > 6 || (isInteractiveKind(ownerKind) && ownerKind
-                                         !== root.ownerAudio)) {
-                schedule(now);
-                return false;
-            }
-
-            if (ownerKind === root.ownerAudio) {
-                if (presentationVisible) {
-                    focusRequestSerial += 1;
-                } else {
-                    focusPending = true;
-                }
-                schedule(now);
-                return true;
-            }
-
-            captureCurrent(now);
-            enterOwner(root.ownerAudio, null, null, now);
-            schedule(now);
-            return true;
-        }
-
-        function openSession(initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!matchingSurface(initiatingSurfaceToken) || ownerKind === root.ownerPolkitModal) {
-                schedule(now);
-                return false;
-            }
-
-            if (ownerKind === root.ownerSession) {
-                schedule(now);
-                return true;
-            }
-
-            captureCurrent(now);
-            enterOwner(root.ownerSession, null, null, now);
-            schedule(now);
+            captureCurrent(target);
+            enterOwner(target, kind, null, 0, 0);
+            publish();
+            schedule(currentTime());
             return true;
         }
 
         function ownerName(kind) {
-            if (kind === root.ownerIdle) {
+            if (kind === root.ownerIdle)
                 return "idle";
-            }
-            if (kind === root.ownerWorkspace) {
+            if (kind === root.ownerWorkspace)
                 return "workspace";
-            }
-            if (kind === root.ownerBrightness) {
+            if (kind === root.ownerBrightness)
                 return "brightness";
-            }
-            if (kind === root.ownerVolume) {
+            if (kind === root.ownerVolume)
                 return "volume";
-            }
-            if (kind === root.ownerNotification) {
+            if (kind === root.ownerNotification)
                 return "notification";
-            }
-            if (kind === root.ownerExpanded) {
+            if (kind === root.ownerExpanded)
                 return "expanded";
-            }
-            if (kind === root.ownerLauncher) {
+            if (kind === root.ownerLauncher)
                 return "launcher";
-            }
-            if (kind === root.ownerSession) {
+            if (kind === root.ownerSession)
                 return "session";
-            }
-            if (kind === root.ownerHistory) {
+            if (kind === root.ownerHistory)
                 return "history";
-            }
-            if (kind === root.ownerTray) {
+            if (kind === root.ownerTray)
                 return "tray";
-            }
-            if (kind === root.ownerAudio) {
+            if (kind === root.ownerAudio)
                 return "audio";
-            }
-            if (kind === root.ownerPolkitModal) {
+            if (kind === root.ownerPolkitModal)
                 return "polkitModal";
-            }
             return "none";
         }
 
-        function queueTransient(record) {
-            let eviction = -1;
-            if (pending.length >= root.maximumPendingTransients) {
-                eviction = 0;
-                for (let index = 1; index < pending.length; index += 1) {
-                    if (pending[index].rank < pending[eviction].rank || (pending[index].rank
-                                                                         === pending[eviction].rank
-                                                                         && pending[index].admission
-                                                                         < pending[eviction].admission)) {
-                        eviction = index;
-                    }
-                }
+        function ownerRecord(kind, event, epoch, focusPending) {
+            return {
+                "epoch": epoch === null || epoch === undefined ? 0 : epoch,
+                "eventId": event === null ? 0 : event.id,
+                "focusPending": focusPending === true && (isInteractiveKind(kind) || kind
+                                                          === root.ownerPolkitModal || kind
+                                                          === root.ownerExpanded),
+                "focusTarget": focusFor(kind),
+                "kind": kind,
+                "presentationVisible": false,
+                "rank": rankFor(kind),
+                "revision": 1,
+                "sourceGeneration": event === null ? 0 : event.sourceGeneration,
+                "sourceRevision": event === null ? 0 : event.sourceRevision,
+                "sourceToken": event === null ? null : event.sourceToken
+            };
+        }
 
-                if (record.rank < pending[eviction].rank) {
-                    return false;
-                }
+        function prepareSurfaceDisable(token) {
+            const record = recordForToken(token);
+            if (record === null || modalHostToken === token) {
+                return false;
             }
-
-            const records = pending.slice();
-            if (eviction >= 0) {
-                records.splice(eviction, 1);
+            if (!isInteractiveKind(record.owner.kind)) {
+                return true;
             }
-            records.push(record);
-            pending = records;
+            const replacementToken = routedToken(null, token);
+            const replacement = recordForToken(replacementToken);
+            if (replacement === null) {
+                return false;
+            }
+            const kind = record.owner.kind;
+            const epoch = record.owner.epoch;
+            const revision = record.owner.revision;
+            forceIdle(record);
+            captureCurrent(replacement);
+            enterOwner(replacement, kind, null, epoch, revision + 1);
+            publish();
             return true;
         }
 
+        function projectEvent(event, now) {
+            for (let index = 0; index < event.targets.length; index += 1) {
+                const record = recordForToken(event.targets[index]);
+                if (record === null || record.owner.eventId === event.id) {
+                    continue;
+                }
+                if (event.rank > record.owner.rank) {
+                    captureCurrent(record);
+                    enterOwner(record, event.kind, event, 0, 0);
+                }
+            }
+        }
+
+        function publish() {
+            surfaces = surfaces.slice();
+            transients = transients.slice();
+            serial += 1;
+        }
+
         function rankFor(kind) {
-            if (kind === root.ownerIdle) {
+            if (kind === root.ownerIdle)
                 return 0;
-            }
-            if (kind === root.ownerWorkspace) {
+            if (kind === root.ownerWorkspace)
                 return 1;
-            }
-            if (kind === root.ownerBrightness) {
+            if (kind === root.ownerBrightness)
                 return 2;
-            }
-            if (kind === root.ownerVolume) {
+            if (kind === root.ownerVolume)
                 return 3;
-            }
-            if (kind === root.ownerNotification) {
+            if (kind === root.ownerNotification)
                 return 4;
-            }
-            if (kind === root.ownerExpanded) {
+            if (kind === root.ownerExpanded)
                 return 5;
-            }
-            if (kind === root.ownerLauncher) {
+            if (kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray
+                    || kind === root.ownerAudio)
                 return 6;
-            }
-            if (kind === root.ownerHistory) {
-                return 6;
-            }
-            if (kind === root.ownerTray) {
-                return 6;
-            }
-            if (kind === root.ownerAudio) {
-                return 6;
-            }
-            if (kind === root.ownerSession) {
+            if (kind === root.ownerSession)
                 return 7;
-            }
-            if (kind === root.ownerPolkitModal) {
+            if (kind === root.ownerPolkitModal)
                 return 8;
-            }
             return -1;
         }
 
-        function transientRecord(kind, sourceToken, sourceGeneration, sourceRevision, admission,
-                                 freshUntil) {
-            return {
-                "admission": admission,
-                "freshUntil": freshUntil,
+        function recordForToken(token) {
+            if (token === null || token === undefined) {
+                return null;
+            }
+            for (let index = 0; index < surfaces.length; index += 1) {
+                if (surfaces[index].token === token) {
+                    return surfaces[index];
+                }
+            }
+            return null;
+        }
+
+        function rehomeModal(excludedToken, capturePredecessor) {
+            if (!(modalIsActive || modalFlowPresent) || modalHostToken !== null) {
+                return;
+            }
+            const token = routedToken(null, excludedToken);
+            const record = recordForToken(token);
+            if (record === null) {
+                return;
+            }
+            if (capturePredecessor) {
+                for (let index = 0; index < surfaces.length; index += 1) {
+                    const current = surfaces[index];
+                    if (current !== record && isInteractiveKind(current.owner.kind)) {
+                        forceIdle(current);
+                    }
+                }
+            }
+            if (capturePredecessor) {
+                captureCurrent(record);
+            } else {
+                forceIdle(record);
+            }
+            enterOwner(record, root.ownerPolkitModal, null, 0, 0);
+            modalHostToken = token;
+        }
+
+        function removeEvent(eventId, now) {
+            const next = [];
+            for (let index = 0; index < transients.length; index += 1) {
+                if (transients[index].id !== eventId) {
+                    next.push(transients[index]);
+                }
+            }
+            transients = next;
+            for (let index = 0; index < surfaces.length; index += 1) {
+                const record = surfaces[index];
+                const frames = [];
+                for (let frameIndex = 0; frameIndex < record.restoration.length; frameIndex += 1) {
+                    if (record.restoration[frameIndex].eventId !== eventId) {
+                        frames.push(record.restoration[frameIndex]);
+                    }
+                }
+                record.restoration = frames;
+                if (record.owner.eventId === eventId) {
+                    restoreNext(record, now);
+                }
+            }
+        }
+
+        function removeTargetFromEvents(token) {
+            const now = currentTime();
+            const emptyEvents = [];
+            for (let index = 0; index < transients.length; index += 1) {
+                const event = transients[index];
+                event.targets = event.targets.filter(candidate => candidate !== token);
+                event.visibleTokens = event.visibleTokens.filter(candidate => candidate !== token);
+                if (event.targets.length === 0) {
+                    emptyEvents.push(event.id);
+                }
+            }
+            for (let index = 0; index < emptyEvents.length; index += 1) {
+                removeEvent(emptyEvents[index], now);
+            }
+        }
+
+        function requestTransient(kind, sourceToken, sourceGeneration, sourceRevision,
+                                  initiatingSurfaceToken, broadcast) {
+            const now = currentTime();
+            expireDue(now);
+            if (!isTransient(kind) || !isSourceToken(sourceToken) || !isSourceVersion(
+                        sourceGeneration, sourceRevision)) {
+                return false;
+            }
+
+            let event = null;
+            for (let index = 0; index < transients.length; index += 1) {
+                if (eventMatches(transients[index], kind, sourceToken, sourceGeneration)) {
+                    event = transients[index];
+                    break;
+                }
+            }
+            if (event !== null) {
+                if (sourceRevision <= event.sourceRevision) {
+                    schedule(now);
+                    return false;
+                }
+                event.sourceRevision = sourceRevision;
+                event.freshUntil = now + freshnessFor(kind);
+                event.holdUntil = -1;
+                event.visibleTokens = [];
+                for (let index = 0; index < surfaces.length; index += 1) {
+                    const record = surfaces[index];
+                    if (record.owner.eventId === event.id) {
+                        record.owner.revision += 1;
+                        record.owner.sourceRevision = sourceRevision;
+                        record.owner.presentationVisible = false;
+                    }
+                }
+                projectEvent(event, now);
+                publish();
+                schedule(now);
+                return true;
+            }
+
+            let targets = [];
+            if (broadcast) {
+                for (let index = 0; index < surfaces.length; index += 1) {
+                    targets.push(surfaces[index].token);
+                }
+            } else {
+                const token = routedToken(initiatingSurfaceToken, null);
+                if (token !== null) {
+                    targets.push(token);
+                }
+            }
+            if (targets.length === 0) {
+                return false;
+            }
+
+            nextAdmission += 1;
+            event = {
+                "admission": nextAdmission,
+                "freshUntil": now + freshnessFor(kind),
                 "holdDuration": holdFor(kind),
+                "holdUntil": -1,
+                "id": nextAdmission,
                 "kind": kind,
                 "rank": rankFor(kind),
                 "sourceGeneration": sourceGeneration,
                 "sourceRevision": sourceRevision,
                 "sourceToken": sourceToken,
-                "surfaceGeneration": surfaceGeneration
+                "targets": targets,
+                "visibleTokens": []
             };
-        }
-
-        function invalidateTransient(sourceToken, sourceGeneration) {
-            if (!isSourceToken(sourceToken) || !isSourceVersion(sourceGeneration, 1)) {
-                return false;
-            }
-
-            const now = currentTime();
-            expireDue(now);
-            let removed = false;
-            const nextPending = [];
-            for (let index = 0; index < pending.length; index += 1) {
-                if (matchesInvalidation(pending[index], sourceToken, sourceGeneration)) {
-                    removed = true;
-                } else {
-                    nextPending.push(pending[index]);
+            if (transients.length >= root.maximumPendingTransients) {
+                let eviction = 0;
+                for (let index = 1; index < transients.length; index += 1) {
+                    if (transients[index].rank < transients[eviction].rank || (
+                                transients[index].rank === transients[eviction].rank
+                                && transients[index].admission < transients[eviction].admission)) {
+                        eviction = index;
+                    }
                 }
-            }
-            pending = nextPending;
-
-            const nextRestoration = [];
-            for (let index = 0; index < restoration.length; index += 1) {
-                if (matchesInvalidation(restoration[index], sourceToken, sourceGeneration)) {
-                    removed = true;
-                } else {
-                    nextRestoration.push(restoration[index]);
-                }
-            }
-            restoration = nextRestoration;
-
-            if (isTransient(ownerKind) && ownerSourceToken === sourceToken && ownerSourceGeneration
-                    === sourceGeneration) {
-                removed = true;
-                restoreNext(now);
-            }
-
-            schedule(now);
-            return removed;
-        }
-
-        function requestTransient(kind, sourceToken, sourceGeneration, sourceRevision,
-                                  initiatingSurfaceToken) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (!isTransient(kind) || !matchingSurface(initiatingSurfaceToken) || !isSourceToken(
-                        sourceToken) || !isSourceVersion(sourceGeneration, sourceRevision)) {
-                schedule(now);
-                return false;
-            }
-
-            const freshUntil = now + freshnessFor(kind);
-            if (ownerKind === kind && ownerSourceToken === sourceToken && ownerSourceGeneration
-                    === sourceGeneration) {
-                if (sourceRevision <= ownerSourceRevision) {
-                    schedule(now);
+                if (event.rank < transients[eviction].rank) {
                     return false;
                 }
-                revision += 1;
-                ownerSourceRevision = sourceRevision;
-                ownerFreshUntil = freshUntil;
-                ownerHoldDuration = holdFor(kind);
-                ownerHoldUntil = -1;
-                presentationVisible = false;
-                schedule(now);
-                return true;
+                removeEvent(transients[eviction].id, now);
             }
-
-            for (let index = restoration.length - 1; index >= 0; index -= 1) {
-                if (matchesSource(restoration[index], kind, sourceToken, sourceGeneration)) {
-                    if (sourceRevision <= restoration[index].sourceRevision) {
-                        schedule(now);
-                        return false;
-                    }
-                    const frames = restoration.slice();
-                    frames[index] = transientRecord(kind, sourceToken, sourceGeneration,
-                                                    sourceRevision, restoration[index].admission,
-                                                    freshUntil);
-                    restoration = frames;
-                    schedule(now);
-                    return true;
-                }
-            }
-
-            for (let index = 0; index < pending.length; index += 1) {
-                if (matchesSource(pending[index], kind, sourceToken, sourceGeneration)) {
-                    if (sourceRevision <= pending[index].sourceRevision) {
-                        schedule(now);
-                        return false;
-                    }
-                    const records = pending.slice();
-                    records[index] = transientRecord(kind, sourceToken, sourceGeneration,
-                                                     sourceRevision, pending[index].admission,
-                                                     freshUntil);
-                    pending = records;
-                    schedule(now);
-                    return true;
-                }
-            }
-
-            nextAdmission += 1;
-            const record = transientRecord(kind, sourceToken, sourceGeneration, sourceRevision,
-                                           nextAdmission, freshUntil);
-
-            if (record.rank > ownerRank) {
-                captureCurrent(now);
-                enterOwner(kind, sourceToken, record, now);
-                schedule(now);
-                return true;
-            }
-
-            const accepted = queueTransient(record);
-            schedule(now);
-            return accepted;
-        }
-
-        function restoreNext(now) {
-            let frames = restoration.slice();
-            while (frames.length > 0 && !isRelevantFrame(frames[frames.length - 1], now)) {
-                frames.pop();
-            }
-            restoration = frames;
-
-            const predecessor = frames.length === 0 ? null : frames[frames.length - 1];
-            const pendingIndex = nextPendingIndex(now);
-            const pendingRecord = pendingIndex < 0 ? null : pending[pendingIndex];
-            const baselineKind = baselineExpanded ? root.ownerExpanded : root.ownerIdle;
-            const baselineRank = rankFor(baselineKind);
-            const predecessorRank = predecessor === null ? -1 : predecessor.rank;
-            const pendingRank = pendingRecord === null ? -1 : pendingRecord.rank;
-
-            if (predecessor !== null && predecessorRank >= pendingRank && predecessorRank
-                    >= baselineRank) {
-                frames.pop();
-                restoration = frames;
-                enterOwner(predecessor.kind, predecessor.sourceToken, predecessor, now);
-                return;
-            }
-
-            if (pendingRecord !== null && pendingRank > baselineRank) {
-                const records = pending.slice();
-                records.splice(pendingIndex, 1);
-                pending = records;
-                enterOwner(pendingRecord.kind, pendingRecord.sourceToken, pendingRecord, now);
-                return;
-            }
-
-            restoration = [];
-            enterOwner(baselineKind, null, null, now);
-        }
-
-        function schedule(now) {
-            if (surfaceToken === null) {
-                scheduler.stop();
-                return;
-            }
-
-            let deadline = -1;
-            if (isTransient(ownerKind)) {
-                deadline = ownerFreshUntil;
-                if (presentationVisible) {
-                    deadline = Math.min(deadline, ownerHoldUntil);
-                }
-            }
-
-            for (let index = 0; index < pending.length; index += 1) {
-                if (deadline < 0 || pending[index].freshUntil < deadline) {
-                    deadline = pending[index].freshUntil;
-                }
-            }
-            for (let index = 0; index < restoration.length; index += 1) {
-                if (isTransient(restoration[index].kind) && (deadline < 0
-                                                             || restoration[index].freshUntil
-                                                             < deadline)) {
-                    deadline = restoration[index].freshUntil;
-                }
-            }
-
-            if (deadline < 0) {
-                scheduler.stop();
-                return;
-            }
-
-            scheduleSerial += 1;
-            armedScheduleSerial = scheduleSerial;
-            scheduledSurfaceGeneration = surfaceGeneration;
-            scheduledOwnerEpoch = ownerEpoch;
-            scheduledRevision = revision;
-            scheduler.interval = Math.max(1, Math.min(2147483647, Math.ceil(deadline - now)));
-            scheduler.restart();
-        }
-
-        function schedulerTriggered(generation, epoch, contentRevision, serial) {
-            if (generation !== surfaceGeneration || epoch !== ownerEpoch || contentRevision
-                    !== revision || serial !== armedScheduleSerial) {
-                return;
-            }
-
-            const now = currentTime();
-            expireDue(now);
-            schedule(now);
-        }
-
-        function setBaselineIntent(generation, value, explicitIntent) {
-            const now = currentTime();
-            expireDue(now);
-
-            if (typeof value !== "boolean" || generation !== surfaceGeneration || surfaceToken
-                    === null) {
-                schedule(now);
-                return false;
-            }
-
-            const wasExpanded = baselineExpanded;
-            const wasExplicit = explicitExpandedIntent;
-            if (explicitIntent) {
-                explicitExpandedIntent = value;
-            } else {
-                hoverIntent = value;
-            }
-
-            if (!wasExpanded && baselineExpanded && ownerRank < rankFor(root.ownerExpanded)) {
-                captureCurrent(now);
-                enterOwner(root.ownerExpanded, null, null, now);
-            } else if (wasExpanded && !baselineExpanded && ownerKind === root.ownerExpanded) {
-                restoreNext(now);
-            } else if (explicitIntent && value && ownerKind === root.ownerExpanded) {
-                focusTarget = root.focusExpandedDashboard;
-                if (presentationVisible) {
-                    focusRequestSerial += 1;
-                } else {
-                    focusPending = true;
-                }
-            } else if (explicitIntent && wasExplicit && !value && ownerKind
-                       === root.ownerExpanded) {
-                focusPending = false;
-                focusTarget = root.focusNone;
-            }
-
+            transients.push(event);
+            projectEvent(event, now);
+            publish();
             schedule(now);
             return true;
         }
 
-        function setExplicitExpanded(generation, expanded) {
-            return setBaselineIntent(generation, expanded, true);
+        function resetToIdle(initiatingSurfaceToken) {
+            const record = recordForToken(initiatingSurfaceToken);
+            if (record === null || modalHostToken === record.token) {
+                return false;
+            }
+            forceIdle(record);
+            publish();
+            schedule(currentTime());
+            return true;
         }
 
-        function setHover(generation, hovered) {
-            return setBaselineIntent(generation, hovered, false);
+        function restoreNext(record, now) {
+            let predecessor = null;
+            while (record.restoration.length > 0) {
+                const candidate = record.restoration[record.restoration.length - 1];
+                record.restoration = record.restoration.slice(0, -1);
+                if (isRelevantFrame(candidate, record, now)) {
+                    predecessor = candidate;
+                    break;
+                }
+            }
+            let pendingEvent = null;
+            for (let index = 0; index < transients.length; index += 1) {
+                const candidate = transients[index];
+                if (candidate.freshUntil <= now || candidate.targets.indexOf(record.token) < 0
+                        || record.owner.eventId === candidate.id) {
+                    continue;
+                }
+                if (pendingEvent === null || candidate.rank > pendingEvent.rank || (candidate.rank
+                                                                                    === pendingEvent.rank
+                                                                                    && candidate.admission
+                                                                                    < pendingEvent.admission)) {
+                    pendingEvent = candidate;
+                }
+            }
+            const baseline = baselineKind(record);
+            const predecessorRank = predecessor === null ? -1 : predecessor.rank;
+            const pendingRank = pendingEvent === null ? -1 : pendingEvent.rank;
+            const baselineRank = rankFor(baseline);
+            if (predecessor !== null && predecessorRank >= pendingRank && predecessorRank
+                    >= baselineRank) {
+                record.owner = predecessor;
+                record.owner.revision += 1;
+                record.owner.presentationVisible = false;
+                record.owner.focusPending = isInteractiveKind(record.owner.kind) || (
+                            record.owner.kind === root.ownerExpanded && record.explicitExpanded);
+                record.owner.focusTarget = record.owner.focusPending ? focusFor(record.owner.kind) :
+                                                                       root.focusNone;
+                return;
+            }
+            if (pendingEvent !== null && pendingRank > baselineRank) {
+                enterOwner(record, pendingEvent.kind, pendingEvent, 0, 0);
+                return;
+            }
+            record.restoration = [];
+            record.owner = baselineOwner(baseline === root.ownerExpanded);
+            if (baseline === root.ownerExpanded && record.explicitExpanded) {
+                record.owner.focusPending = true;
+            }
+        }
+
+        function routedToken(initiatingSurfaceToken, excludedToken) {
+            const initiated = recordForToken(initiatingSurfaceToken);
+            if (initiated !== null && initiated.token !== excludedToken) {
+                return initiated.token;
+            }
+            if (root.surfaceRouter !== null && root.surfaceRouter !== undefined
+                    && typeof root.surfaceRouter.routeSurfaceToken === "function") {
+                const routed = root.surfaceRouter.routeSurfaceToken(excludedToken);
+                if (recordForToken(routed) !== null && routed !== excludedToken) {
+                    return routed;
+                }
+            }
+            for (let index = 0; index < surfaces.length; index += 1) {
+                if (surfaces[index].token !== excludedToken) {
+                    return surfaces[index].token;
+                }
+            }
+            return null;
+        }
+
+        function schedule(now) {
+            let deadline = -1;
+            for (let index = 0; index < transients.length; index += 1) {
+                const event = transients[index];
+                const candidate = event.holdUntil >= 0 ? Math.min(event.freshUntil,
+                                                                  event.holdUntil) :
+                                                         event.freshUntil;
+                if (deadline < 0 || candidate < deadline) {
+                    deadline = candidate;
+                }
+            }
+            if (deadline < 0) {
+                scheduler.stop();
+                return;
+            }
+            scheduler.interval = Math.max(1, Math.min(2147483647, Math.ceil(deadline - now)));
+            scheduler.restart();
+        }
+
+        function setBaselineIntent(token, generation, value, explicitIntent) {
+            const now = currentTime();
+            expireDue(now);
+            const record = recordForToken(token);
+            if (record === null || record.generation !== generation || typeof value !== "boolean") {
+                return false;
+            }
+            const wasExpanded = record.hover || record.explicitExpanded;
+            if (explicitIntent) {
+                record.explicitExpanded = value;
+            } else {
+                record.hover = value;
+            }
+            const expanded = record.hover || record.explicitExpanded;
+            if (!wasExpanded && expanded && record.owner.rank < rankFor(root.ownerExpanded)) {
+                captureCurrent(record);
+                enterOwner(record, root.ownerExpanded, null, 0, 0);
+                record.owner.focusPending = record.explicitExpanded;
+                record.owner.focusTarget = record.explicitExpanded ? root.focusExpandedDashboard :
+                                                                     root.focusNone;
+            } else if (wasExpanded && !expanded && record.owner.kind === root.ownerExpanded) {
+                restoreNext(record, now);
+            } else if (explicitIntent && value && record.owner.kind === root.ownerExpanded) {
+                record.owner.focusTarget = root.focusExpandedDashboard;
+                if (record.owner.presentationVisible) {
+                    record.focusRequestSerial += 1;
+                } else {
+                    record.owner.focusPending = true;
+                }
+            } else if (explicitIntent && !value && record.owner.kind === root.ownerExpanded) {
+                record.owner.focusPending = false;
+                record.owner.focusTarget = root.focusNone;
+            }
+            publish();
+            schedule(now);
+            return true;
+        }
+
+        function surfaceSnapshot(token) {
+            const ignored = serial;
+            const record = recordForToken(token);
+            if (record === null) {
+                return Object.freeze({
+                                         "explicitExpandedIntent": false,
+                                         "focusRequestSerial": 0,
+                                         "focusTarget": root.focusNone,
+                                         "generation": 0,
+                                         "hoverIntent": false,
+                                         "ownerEpoch": 0,
+                                         "ownerKind": root.ownerNone,
+                                         "ownerName": "none",
+                                         "ownerSourceGeneration": 0,
+                                         "ownerSourceRevision": 0,
+                                         "ownerSourceToken": null,
+                                         "presentationVisible": false,
+                                         "restorationDepth": 0,
+                                         "revision": 0
+                                     });
+            }
+            return Object.freeze({
+                                     "explicitExpandedIntent": record.explicitExpanded,
+                                     "focusRequestSerial": record.focusRequestSerial,
+                                     "focusTarget": record.owner.focusTarget,
+                                     "generation": record.generation,
+                                     "hoverIntent": record.hover,
+                                     "ownerEpoch": record.owner.epoch,
+                                     "ownerKind": record.owner.kind,
+                                     "ownerName": ownerName(record.owner.kind),
+                                     "ownerSourceGeneration": record.owner.sourceGeneration,
+                                     "ownerSourceRevision": record.owner.sourceRevision,
+                                     "ownerSourceToken": record.owner.sourceToken,
+                                     "presentationVisible": record.owner.presentationVisible,
+                                     "restorationDepth": record.restoration.length,
+                                     "revision": record.owner.revision
+                                 });
         }
 
         function syncPolkitModal(isActive, flowPresent, flowGeneration) {
@@ -1064,33 +972,42 @@ Scope {
                     !Number.isInteger(flowGeneration) || flowGeneration < 0) {
                 return false;
             }
-
-            const now = currentTime();
-            expireDue(now);
-            const wasPresent = modalPresent;
+            const wasPresent = modalIsActive || modalFlowPresent;
             const snapshotChanged = modalIsActive !== isActive || modalFlowPresent !== flowPresent
                   || modalFlowGeneration !== flowGeneration;
-
             modalIsActive = isActive;
             modalFlowPresent = flowPresent;
             modalFlowGeneration = flowGeneration;
-
-            if (!wasPresent && modalPresent) {
-                if (surfaceToken !== null) {
-                    captureCurrent(now);
-                    enterOwner(root.ownerPolkitModal, null, null, now);
+            const present = modalIsActive || modalFlowPresent;
+            if (!wasPresent && present) {
+                rehomeModal(null, true);
+            } else if (wasPresent && present && snapshotChanged) {
+                const record = recordForToken(modalHostToken);
+                if (record !== null && record.owner.kind === root.ownerPolkitModal) {
+                    record.owner.revision += 1;
+                    record.owner.presentationVisible = false;
+                    record.owner.focusPending = true;
                 }
-            } else if (wasPresent && modalPresent && snapshotChanged && ownerKind
-                       === root.ownerPolkitModal) {
-                revision += 1;
-                presentationVisible = false;
-                focusPending = true;
-            } else if (wasPresent && !modalPresent && ownerKind === root.ownerPolkitModal) {
-                restoreNext(now);
+            } else if (wasPresent && !present) {
+                const record = recordForToken(modalHostToken);
+                modalHostToken = null;
+                if (record !== null && record.owner.kind === root.ownerPolkitModal) {
+                    restoreNext(record, currentTime());
+                }
             }
-
-            schedule(now);
+            publish();
+            schedule(currentTime());
             return true;
+        }
+
+        function transferInteractiveAfterLoss(kind, epoch, excludedToken) {
+            const token = routedToken(null, excludedToken);
+            const target = recordForToken(token);
+            if (target === null) {
+                return;
+            }
+            captureCurrent(target);
+            enterOwner(target, kind, null, epoch, 1);
         }
     }
 
@@ -1102,9 +1019,11 @@ Scope {
         id: scheduler
 
         repeat: false
-        onTriggered: reducer.schedulerTriggered(reducer.scheduledSurfaceGeneration,
-                                                reducer.scheduledOwnerEpoch,
-                                                reducer.scheduledRevision,
-                                                reducer.armedScheduleSerial)
+        onTriggered: {
+            const now = state.currentTime();
+            state.expireDue(now);
+            state.publish();
+            state.schedule(now);
+        }
     }
 }

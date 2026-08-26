@@ -59,6 +59,7 @@ AUDIO_TEST_DIR := $(BUILD_DIR)/audio-test
 AUDIO_LIVE_TEST_DIR := $(BUILD_DIR)/audio-live-test
 AUDIO_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/audio-live-write-test
 SURFACE_STATE_TEST_DIR := $(BUILD_DIR)/surface-state-test
+DISPLAY_TEST_DIR := $(BUILD_DIR)/display-orchestration-test
 UI_PRIMITIVES_TEST_DIR := $(BUILD_DIR)/ui-primitives-test
 POLKIT_UI_TEST_DIR := $(BUILD_DIR)/polkit-ui-test
 DASHBOARD_TEST_DIR := $(BUILD_DIR)/dashboard-test
@@ -88,6 +89,11 @@ NOTIFICATION_MODULE_DIR := $(BUILD_DIR)/qml/Nagi/Notifications
 NOTIFICATION_PLUGIN := $(NOTIFICATION_MODULE_DIR)/libnaginotificationsplugin.so
 NOTIFICATION_RUNTIME_MOC := $(NOTIFICATION_BUILD_DIR)/moc_runtime.cpp
 NOTIFICATION_PLUGIN_MOC := $(NOTIFICATION_BUILD_DIR)/plugin.moc
+PLATFORM_BUILD_DIR := $(BUILD_DIR)/platform
+PLATFORM_MODULE_DIR := $(BUILD_DIR)/qml/Nagi/Platform
+PLATFORM_PLUGIN := $(PLATFORM_MODULE_DIR)/libnagiplatformplugin.so
+PLATFORM_PLUGIN_MOC := $(PLATFORM_BUILD_DIR)/plugin.moc
+PLATFORM_ROUTER_MOC := $(PLATFORM_BUILD_DIR)/moc_pointer_router.cpp
 NOTIFICATION_TEST := $(BUILD_DIR)/notification-runtime-test
 NOTIFICATION_TEST_MOC := $(NOTIFICATION_BUILD_DIR)/notification_runtime_test.moc
 NOTIFICATION_DBUS_TEST := $(BUILD_DIR)/notification-dbus-test
@@ -105,6 +111,8 @@ QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
 QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus)
 NOTIFICATION_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus Qt6Qml)
 NOTIFICATION_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6DBus Qt6Qml)
+PLATFORM_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6Gui Qt6Qml)
+PLATFORM_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6Gui Qt6Qml)
 TRAY_QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6Gui Qt6Widgets)
 TRAY_QT_LIBS := $(shell $(PKG_CONFIG) --libs Qt6Core Qt6Gui Qt6Widgets)
 PIPEWIRE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpipewire-0.3)
@@ -120,7 +128,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-idle test-surface-state test-ui-primitives check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-platform-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-surface-state test-ui-primitives test-idle test-dashboard test-polkit-ui test-theme-config test-onboarding test-icons test-subview-frame test-typography test-global-shortcut-live test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract format format-check lint-advisory launch diagnose instances logs logs-follow stop check check-nondisplay clean
 .PHONY: test-dashboard
 .PHONY: test-polkit-ui
 .PHONY: test-theme-config
@@ -131,6 +139,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-typography
 .PHONY: test-global-shortcut-live
 .PHONY: test-multi-surface
+.PHONY: test-display-orchestration
 .PHONY: test-ipc-activation
 .PHONY: test-appearance-watcher
 .PHONY: test-settings-writer
@@ -150,6 +159,7 @@ help:
 		'make application-helper  Build desktop-entry and persistence bridge' \
 		'make global-shortcut-helper  Build the KF6 KGlobalAccel global shortcut helper' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
+		'make platform-plugin  Build the pointer-to-live-surface routing bridge' \
 		'make wallpaper-helper  Build the read-only Plasma wallpaper palette helper' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
@@ -173,6 +183,7 @@ help:
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-transients  Test workspace, brightness, audio, and notification routing' \
 		'make test-surface-state  Exercise the actual island surface in isolated virtual KWin' \
+		'make test-display-orchestration  Test live multi-island display routing and visibility' \
 		'make test-weather    Test compact clock and weather adapter state' \
 		'make test-media      Test the MPRIS media adapter state' \
 		'make test-audio      Test the PipeWire audio adapter state' \
@@ -215,6 +226,7 @@ requirements:
 	@$(MAKE) --no-print-directory check-global-shortcut-toolchain
 	@$(MAKE) --no-print-directory check-notification-toolchain
 	@$(MAKE) --no-print-directory check-wallpaper-toolchain
+	@$(MAKE) --no-print-directory check-platform-toolchain
 	@$(MAKE) --no-print-directory check-tray-toolchain
 
 prepare:
@@ -242,6 +254,10 @@ check-notification-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core Qt6DBus Qt6Qml
 	@test -x '$(MOC)'
 
+check-platform-toolchain:
+	@$(PKG_CONFIG) --exists Qt6Core Qt6Gui Qt6Qml
+	@test -x '$(MOC)'
+
 check-tray-toolchain:
 	@$(PKG_CONFIG) --exists Qt6Core Qt6Gui Qt6Widgets
 
@@ -253,6 +269,12 @@ $(NOTIFICATION_BUILD_DIR):
 
 $(NOTIFICATION_MODULE_DIR):
 	mkdir -p $(NOTIFICATION_MODULE_DIR)
+
+$(PLATFORM_BUILD_DIR):
+	mkdir -p $(PLATFORM_BUILD_DIR)
+
+$(PLATFORM_MODULE_DIR):
+	mkdir -p $(PLATFORM_MODULE_DIR)
 
 $(HELPER_MOC): src/kwin-virtual-desktops/main.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
@@ -285,6 +307,12 @@ $(NOTIFICATION_RUNTIME_MOC): src/notifications/runtime.h | $(NOTIFICATION_BUILD_
 	$(MOC) $< -o $@
 
 $(NOTIFICATION_PLUGIN_MOC): src/notifications/plugin.cpp | $(NOTIFICATION_BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(PLATFORM_PLUGIN_MOC): src/platform/plugin.cpp | $(PLATFORM_BUILD_DIR)
+	$(MOC) $< -o $@
+
+$(PLATFORM_ROUTER_MOC): src/platform/pointer_router.h | $(PLATFORM_BUILD_DIR)
 	$(MOC) $< -o $@
 
 $(NOTIFICATION_TEST_MOC): tests/notification_runtime_test.cpp | $(NOTIFICATION_BUILD_DIR)
@@ -352,6 +380,10 @@ $(NOTIFICATION_PLUGIN): $(NOTIFICATION_SOURCES) $(NOTIFICATION_HEADERS) src/noti
 	cp src/notifications/qmldir $(NOTIFICATION_MODULE_DIR)/qmldir
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) -fPIC -shared $(NOTIFICATION_QT_CFLAGS) -Isrc/notifications -I$(NOTIFICATION_BUILD_DIR) $(NOTIFICATION_SOURCES) src/notifications/plugin.cpp $(NOTIFICATION_RUNTIME_MOC) -o $@ $(LDFLAGS) $(NOTIFICATION_QT_LIBS)
 
+$(PLATFORM_PLUGIN): src/platform/pointer_router.cpp src/platform/pointer_router.h src/platform/plugin.cpp src/platform/qmldir $(PLATFORM_ROUTER_MOC) $(PLATFORM_PLUGIN_MOC) | $(PLATFORM_MODULE_DIR)
+	cp src/platform/qmldir $(PLATFORM_MODULE_DIR)/qmldir
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) -fPIC -shared $(PLATFORM_QT_CFLAGS) -Isrc/platform -I$(PLATFORM_BUILD_DIR) src/platform/pointer_router.cpp src/platform/plugin.cpp $(PLATFORM_ROUTER_MOC) -o $@ $(LDFLAGS) $(PLATFORM_QT_LIBS)
+
 $(NOTIFICATION_TEST): tests/notification_runtime_test.cpp $(NOTIFICATION_TEST_MOC) $(NOTIFICATION_SOURCES) $(NOTIFICATION_HEADERS) $(NOTIFICATION_RUNTIME_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(NOTIFICATION_QT_CFLAGS) -Isrc/notifications -I$(NOTIFICATION_BUILD_DIR) tests/notification_runtime_test.cpp $(NOTIFICATION_SOURCES) $(NOTIFICATION_RUNTIME_MOC) -o $@ $(LDFLAGS) $(NOTIFICATION_QT_LIBS)
 
@@ -379,6 +411,8 @@ wallpaper-helper: check-wallpaper-toolchain
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper
 
 notification-plugin: check-notification-toolchain $(NOTIFICATION_PLUGIN)
+
+platform-plugin: check-platform-toolchain $(PLATFORM_PLUGIN)
 
 test-applications: check-application-toolchain $(APPLICATION_HELPER) $(APPLICATION_TEST)
 	$(APPLICATION_TEST) $(abspath $(APPLICATION_HELPER))
@@ -548,12 +582,23 @@ test-launcher: check-quickshell | $(BUILD_DIR)
 	cp assets/icons/nagi/*.svg $(LAUNCHER_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' $(QS) -p $(LAUNCHER_TEST_DIR) --no-duplicate
 
-test-surface-state: check-quickshell | $(BUILD_DIR)
+test-surface-state: check-quickshell platform-plugin | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/DisplayManager.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi/
-	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- $(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
+	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
+
+test-display-orchestration: check-quickshell platform-plugin | $(BUILD_DIR)
+	rm -rf $(DISPLAY_TEST_DIR)
+	mkdir -p $(DISPLAY_TEST_DIR)/qml $(DISPLAY_TEST_DIR)/assets/icons/nagi
+	cp tests/displays/shell.qml $(DISPLAY_TEST_DIR)/shell.qml
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/DisplayManager.qml qml/DisplaysPage.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(DISPLAY_TEST_DIR)/qml/
+	cp assets/icons/nagi/*.svg $(DISPLAY_TEST_DIR)/assets/icons/nagi/
+	@set -eu; \
+	for outputs in 1 2 3; do \
+		NAGI_TEST_OUTPUTS="$$outputs" $(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_SCALE_ARGS) --outputs "$$outputs" --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' NAGI_TEST_OUTPUTS="$$outputs" $(QS) -p $(DISPLAY_TEST_DIR) --no-duplicate; \
+	done
 
 test-polkit-ui: check-quickshell | $(BUILD_DIR)
 	rm -rf $(POLKIT_UI_TEST_DIR)
@@ -699,10 +744,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -747,9 +792,9 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state test-ui-primitives test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
+check: check-nondisplay test-surface-state test-ui-primitives test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)

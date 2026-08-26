@@ -7,7 +7,9 @@ PanelWindow {
     id: surface
 
     required property var coordinator
+    required property var hostSurfaceToken
     required property int hostSurfaceGeneration
+    required property var surfaceHost
 
     // Normalized idle data sources. Null keeps the matching block collapsed,
     // so harnesses can mount the surface without the full adapter set.
@@ -38,11 +40,27 @@ PanelWindow {
     property Component dashboardNotificationsContent: null
     property Component dashboardNavigationContent: null
 
-    readonly property int ownerKind: coordinator.ownerKind
-    readonly property real ownerEpoch: coordinator.ownerEpoch
-    readonly property real ownerRevision: coordinator.revision
-    readonly property int focusTarget: coordinator.focusTarget
-    readonly property real focusRequestSerial: coordinator.focusRequestSerial
+    property var surfaceState: ({
+                                    "focusRequestSerial": 0,
+                                    "focusTarget": coordinator.focusNone,
+                                    "ownerEpoch": 0,
+                                    "ownerKind": coordinator.ownerNone,
+                                    "ownerName": "none",
+                                    "ownerSourceGeneration": 0,
+                                    "ownerSourceRevision": 0,
+                                    "ownerSourceToken": null,
+                                    "presentationVisible": false,
+                                    "revision": 0
+                                })
+
+    function refreshSurfaceState() {
+        surfaceState = coordinator.surfaceSnapshot(hostSurfaceToken);
+    }
+    readonly property int ownerKind: surfaceState.ownerKind
+    readonly property real ownerEpoch: surfaceState.ownerEpoch
+    readonly property real ownerRevision: surfaceState.revision
+    readonly property int focusTarget: surfaceState.focusTarget
+    readonly property real focusRequestSerial: surfaceState.focusRequestSerial
     readonly property bool expanded: ownerKind === coordinator.ownerExpanded
     readonly property bool launcher: ownerKind === coordinator.ownerLauncher
     readonly property bool session: ownerKind === coordinator.ownerSession
@@ -292,9 +310,9 @@ PanelWindow {
                 !== "function") {
             return null;
         }
-        const resolved = source.resolveTransient(coordinator.ownerSourceToken,
-                                                 coordinator.ownerSourceGeneration,
-                                                 coordinator.ownerSourceRevision);
+        const resolved = source.resolveTransient(surfaceState.ownerSourceToken,
+                                                 surfaceState.ownerSourceGeneration,
+                                                 surfaceState.ownerSourceRevision);
         return resolved !== null && typeof resolved === "object" && !Array.isArray(resolved)
                 ? resolved : null;
     }
@@ -328,7 +346,7 @@ PanelWindow {
             return;
         }
 
-        coordinator.acknowledgeVisible(generation, epoch, contentRevision);
+        coordinator.acknowledgeVisible(hostSurfaceToken, generation, epoch, contentRevision);
     }
 
     function cancelDashboard() {
@@ -339,8 +357,10 @@ PanelWindow {
         // Explicit close/cancel also suppresses the current hover sample. The
         // HoverHandler will report true again only after a real pointer exit
         // and re-entry, so Close is never an inert control.
-        const explicitAccepted = coordinator.setExplicitExpanded(hostSurfaceGeneration, false);
-        const hoverAccepted = coordinator.setHover(hostSurfaceGeneration, false);
+        const explicitAccepted = coordinator.setExplicitExpanded(hostSurfaceToken,
+                                                                 hostSurfaceGeneration, false);
+        const hoverAccepted = coordinator.setHover(hostSurfaceToken, hostSurfaceGeneration, false);
+        refreshSurfaceState();
         return explicitAccepted && hoverAccepted;
     }
 
@@ -369,6 +389,9 @@ PanelWindow {
         const epoch = ownerEpoch;
         const serial = focusRequestSerial;
         Qt.callLater(function () {
+            if (surface === null) {
+                return;
+            }
             if (generation !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch
                     || serial !== surface.focusRequestSerial) {
                 return;
@@ -415,7 +438,9 @@ PanelWindow {
         const epoch = ownerEpoch;
         const contentRevision = ownerRevision;
         Qt.callLater(function () {
-            surface.acknowledgePresentation(generation, epoch, contentRevision);
+            if (surface !== null) {
+                surface.acknowledgePresentation(generation, epoch, contentRevision);
+            }
         });
     }
 
@@ -423,11 +448,16 @@ PanelWindow {
         if (shellMenuOpen && !hovered) {
             return true;
         }
-        return coordinator.setHover(hostSurfaceGeneration, hovered);
+        const accepted = coordinator.setHover(hostSurfaceToken, hostSurfaceGeneration, hovered);
+        refreshSurfaceState();
+        return accepted;
     }
 
     function requestDeliberateExpansion() {
-        return coordinator.setExplicitExpanded(hostSurfaceGeneration, true);
+        const accepted = coordinator.setExplicitExpanded(hostSurfaceToken, hostSurfaceGeneration,
+                                                         true);
+        refreshSurfaceState();
+        return accepted;
     }
 
     function beginShellMenu() {
@@ -452,7 +482,7 @@ PanelWindow {
 
     function completeShellMenuAction() {
         cancelShellMenu();
-        return coordinator.resetToIdle(coordinator.surfaceToken);
+        return coordinator.resetToIdle(hostSurfaceToken);
     }
 
     function handleWindowActivation(active) {
@@ -471,7 +501,7 @@ PanelWindow {
             return false;
         }
         shellWindowWasActive = false;
-        return coordinator.resetToIdle(coordinator.surfaceToken);
+        return coordinator.resetToIdle(hostSurfaceToken);
     }
 
     function safeLogicalSize(preferredSize, screenSize) {
@@ -514,6 +544,7 @@ PanelWindow {
     }
 
     Component.onCompleted: {
+        refreshSurfaceState();
         previousOwnerKind = ownerKind;
         syncDashboardReveal();
         queuePresentationAcknowledgement();
@@ -534,6 +565,7 @@ PanelWindow {
             reportHover(true);
         }
     }
+    onHostSurfaceTokenChanged: refreshSurfaceState()
 
     Connections {
         target: surface.backingWindow
@@ -547,25 +579,17 @@ PanelWindow {
     Connections {
         target: surface.coordinator
 
-        function onFocusRequestSerialChanged() {
-            surface.queueOwnerFocus();
-        }
-
-        function onPresentationVisibleChanged() {
-            if (surface.coordinator.presentationVisible) {
-                Qt.callLater(surface.queueOwnerFocus);
-            }
-        }
-
-        function onOwnerEpochChanged() {
-            surface.focusedOwnerEpoch = 0;
-            surface.queuePresentationAcknowledgement();
-        }
-
-        function onRevisionChanged() {
-            surface.queuePresentationAcknowledgement();
+        function onStateSerialChanged() {
+            Qt.callLater(surface.refreshSurfaceState);
         }
     }
+
+    onFocusRequestSerialChanged: queueOwnerFocus()
+    onOwnerEpochChanged: {
+        focusedOwnerEpoch = 0;
+        queuePresentationAcknowledgement();
+    }
+    onOwnerRevisionChanged: queuePresentationAcknowledgement()
 
     Connections {
         target: surface.applicationModel
@@ -577,7 +601,7 @@ PanelWindow {
             }
             surface.launcherRequestId = 0;
             surface.launcherRequestOwnerEpoch = 0;
-            surface.coordinator.resetToIdle(surface.coordinator.surfaceToken);
+            surface.coordinator.resetToIdle(surface.hostSurfaceToken);
         }
 
         function onLaunchRejected(requestId, category) {
@@ -702,7 +726,7 @@ PanelWindow {
         sourceComponent: Component {
             TransientView {
                 active: transientLoader.visible
-                kind: surface.coordinator.ownerName
+                kind: surface.surfaceState.ownerName
                 ownerEpoch: surface.ownerEpoch
                 ownerRevision: surface.ownerRevision
                 presentation: surface.transientPresentation

@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import Nagi.Platform 1.0
 import Quickshell
 import QtQuick
 
@@ -8,7 +9,6 @@ Scope {
 
     required property var coordinator
 
-    // Normalized idle data sources relayed to the island surface.
     property var virtualDesktops: null
     property var clock: null
     property var weather: null
@@ -16,6 +16,7 @@ Scope {
     property var sessionService: null
     property var polkitController: null
     property var notificationService: null
+    property var connectivityAdapter: null
     property var applicationModel: null
     property var trayAdapter: null
     property var audioAdapter: null
@@ -23,289 +24,473 @@ Scope {
     property var brightnessTransientSource: null
     property var volumeTransientSource: null
     property var notificationTransientSource: null
-    property bool reducedMotion: false
     property Component dashboardMediaContent: null
     property Component dashboardClockContent: null
     property Component dashboardQuickControlsContent: null
     property Component dashboardAudioContent: null
     property Component dashboardNotificationsContent: null
     property Component dashboardNavigationContent: null
+    property string settingsFailure: ""
 
-    readonly property int surfaceGeneration: ownership.surfaceGeneration
-    readonly property var surfaceToken: ownership.surfaceToken
-    readonly property var menuParentWindow: ownership.liveSurface
-    readonly property int surfaceWidth: ownership.liveSurface === null ? 0 :
-                                                                         ownership.liveSurface.width
+    signal systemSettingsRequested(var initiatingSurfaceToken)
+    property bool reducedMotion: false
 
-    readonly property int surfaceHeight: ownership.liveSurface === null ? 0 :
-                                                                          ownership.liveSurface.height
+    readonly property int revision: displays.revision + registryRevision
+    readonly property int liveSurfaceCount: registry.length
+    readonly property int enabledDisplayCount: displays.enabledDisplayCount
+    readonly property var rememberedDisplays: displays.rememberedDisplays
+    readonly property var surfaceToken: routeFallbackToken(null)
+    readonly property int surfaceGeneration: generationForToken(surfaceToken)
+    readonly property var menuParentWindow: fallbackSurface
+    readonly property var fallbackSurface: surfaceForToken(surfaceToken)
+    readonly property int surfaceWidth: fallbackSurface === null ? 0 : fallbackSurface.width
+    readonly property int surfaceHeight: fallbackSurface === null ? 0 : fallbackSurface.height
+    readonly property int surfaceScreenWidth: fallbackSurface === null || fallbackSurface.screen
+                                              === null ? 0 : fallbackSurface.screen.width
+    readonly property int surfaceLeftMargin: fallbackSurface === null ? 0 :
+                                                                        fallbackSurface.margins.left
+    readonly property int surfaceTopMargin: fallbackSurface === null ? 0 :
+                                                                       fallbackSurface.margins.top
+    readonly property int surfacePreferredWidth: fallbackSurface === null ? 0 :
+                                                                            fallbackSurface.preferredWidth
+    readonly property int surfacePreferredHeight: fallbackSurface === null ? 0 :
+                                                                             fallbackSurface.preferredHeight
+    readonly property bool backgroundCoversSurface: fallbackSurface !== null
+                                                    && fallbackSurface.backgroundCoversSurface
+    readonly property real backgroundRadius: fallbackSurface === null ? 0 :
+                                                                        fallbackSurface.backgroundRadius
+    readonly property bool surfaceFocusable: fallbackSurface !== null && fallbackSurface.focusable
+    readonly property bool dashboardFocused: fallbackSurface !== null
+                                             && fallbackSurface.dashboardFocused
+    readonly property int loadedDashboardRegionCount: fallbackSurface === null ? 0 :
+                                                                                 fallbackSurface.loadedDashboardRegionCount
+    readonly property bool interactiveExitRunning: fallbackSurface !== null
+                                                   && fallbackSurface.interactiveExitRunning
+    readonly property int interactiveExitDuration: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.interactiveExitDuration
+    readonly property real interactiveExitOffset: fallbackSurface === null ? 0 :
+                                                                             fallbackSurface.interactiveExitOffset
+    readonly property real interactiveExitLoaderX: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.interactiveExitLoaderX
+    readonly property real interactiveExitMappedX: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.interactiveExitMappedX
+    readonly property bool interactiveExitLoaderEnabled: fallbackSurface !== null
+                                                         && fallbackSurface.interactiveExitLoaderEnabled
+    readonly property var interactiveExitItem: fallbackSurface === null ? null :
+                                                                          fallbackSurface.interactiveExitItem
+    readonly property bool launcherLoaded: fallbackSurface !== null
+                                           && fallbackSurface.launcherLoaded
+    readonly property bool launcherFocused: fallbackSurface !== null
+                                            && fallbackSurface.launcherFocused
+    readonly property int launcherResultCount: fallbackSurface === null ? 0 :
+                                                                          fallbackSurface.launcherResultCount
+    readonly property bool launcherResultScrollVisible: fallbackSurface !== null
+                                                        && fallbackSurface.launcherResultScrollVisible
+    readonly property string launcherSelectedId: fallbackSurface === null ? "" :
+                                                                            fallbackSurface.launcherSelectedId
+    readonly property bool sessionLoaded: fallbackSurface !== null && fallbackSurface.sessionLoaded
+    readonly property bool sessionFocused: fallbackSurface !== null
+                                           && fallbackSurface.sessionFocused
+    readonly property bool trayLoaded: fallbackSurface !== null && fallbackSurface.trayLoaded
+    readonly property bool trayFocused: fallbackSurface !== null && fallbackSurface.trayFocused
+    readonly property bool audioLoaded: fallbackSurface !== null && fallbackSurface.audioLoaded
+    readonly property bool audioFocused: fallbackSurface !== null && fallbackSurface.audioFocused
+    readonly property bool polkitLoaded: fallbackSurface !== null && fallbackSurface.polkitLoaded
+    readonly property bool polkitFocused: fallbackSurface !== null && fallbackSurface.polkitFocused
+    readonly property bool polkitResponseFocused: fallbackSurface !== null
+                                                  && fallbackSurface.polkitResponseFocused
+    readonly property int polkitIdentityCount: fallbackSurface === null ? 0 :
+                                                                          fallbackSurface.polkitIdentityCount
+    readonly property bool polkitResponseFieldVisible: fallbackSurface !== null
+                                                       && fallbackSurface.polkitResponseFieldVisible
+    readonly property bool historyLoaded: fallbackSurface !== null && fallbackSurface.historyLoaded
+    readonly property bool historyFocused: fallbackSurface !== null
+                                           && fallbackSurface.historyFocused
+    readonly property int historyRowCount: fallbackSurface === null ? 0 :
+                                                                      fallbackSurface.historyRowCount
+    readonly property bool historyEmptyStateVisible: fallbackSurface !== null
+                                                     && fallbackSurface.historyEmptyStateVisible
+    readonly property int geometryAnimationDuration: fallbackSurface === null ? 0 :
+                                                                                fallbackSurface.geometryAnimationDuration
+    readonly property bool geometryAnimationRunning: fallbackSurface !== null
+                                                     && fallbackSurface.geometryAnimationRunning
+    readonly property bool transientCommitted: fallbackSurface !== null
+                                               && fallbackSurface.transientCommitted
+    readonly property bool transientEntryAnimationRunning: fallbackSurface !== null
+                                                           && fallbackSurface.transientEntryAnimationRunning
+    readonly property string transientPrimaryText: fallbackSurface === null ? "" :
+                                                                              fallbackSurface.transientPrimaryText
+    readonly property string transientDetailText: fallbackSurface === null ? "" :
+                                                                             fallbackSurface.transientDetailText
+    readonly property string lastFailure: failureText
 
-    // Requested layer-shell geometry is observable on Wayland even though the
-    // compositor does not publish a trustworthy global QWindow position.
-    readonly property int surfaceScreenWidth: ownership.liveSurface === null
-                                              || ownership.liveSurface.screen === null ? 0 :
-                                                                                         ownership.liveSurface.screen.width
-    readonly property int surfaceLeftMargin: ownership.liveSurface === null ? 0 :
-                                                                              ownership.liveSurface.margins.left
-    readonly property int surfaceTopMargin: ownership.liveSurface === null ? 0 :
-                                                                             ownership.liveSurface.margins.top
+    property var registry: []
+    property var entries: []
+    property int registryRevision: 0
+    property int nextSurfaceGeneration: 0
+    property string failureText: ""
 
-    readonly property int surfacePreferredWidth: ownership.liveSurface === null ? 0 :
-                                                                                  ownership.liveSurface.preferredWidth
-    readonly property int surfacePreferredHeight: ownership.liveSurface === null ? 0 :
-                                                                                   ownership.liveSurface.preferredHeight
-    readonly property bool backgroundCoversSurface: ownership.liveSurface !== null
-                                                    && ownership.liveSurface.backgroundCoversSurface
-    readonly property real backgroundRadius: ownership.liveSurface === null ? 0 :
-                                                                              ownership.liveSurface.backgroundRadius
+    function activeDisplays() {
+        const ignored = revision;
+        return displays.activeDisplays();
+    }
 
-    readonly property bool surfaceFocusable: ownership.liveSurface !== null
-                                             && ownership.liveSurface.focusable
-    readonly property bool dashboardFocused: ownership.liveSurface !== null
-                                             && ownership.liveSurface.dashboardFocused
-    readonly property int loadedDashboardRegionCount: ownership.liveSurface === null ? 0 :
-                                                                                       ownership.liveSurface.loadedDashboardRegionCount
-    readonly property bool interactiveExitRunning: ownership.liveSurface !== null
-                                                   && ownership.liveSurface.interactiveExitRunning
-    readonly property int interactiveExitDuration: ownership.liveSurface === null ? 0 :
-                                                                                    ownership.liveSurface.interactiveExitDuration
-    readonly property real interactiveExitOffset: ownership.liveSurface === null ? 0 :
-                                                                                   ownership.liveSurface.interactiveExitOffset
-    readonly property real interactiveExitLoaderX: ownership.liveSurface === null ? 0 :
-                                                                                    ownership.liveSurface.interactiveExitLoaderX
-    readonly property real interactiveExitMappedX: ownership.liveSurface === null ? 0 :
-                                                                                    ownership.liveSurface.interactiveExitMappedX
-    readonly property bool interactiveExitLoaderEnabled: ownership.liveSurface !== null
-                                                         && ownership.liveSurface.interactiveExitLoaderEnabled
-    readonly property var interactiveExitItem: ownership.liveSurface === null ? null :
-                                                                                ownership.liveSurface.interactiveExitItem
-    readonly property bool launcherLoaded: ownership.liveSurface !== null
-                                           && ownership.liveSurface.launcherLoaded
-    readonly property bool launcherFocused: ownership.liveSurface !== null
-                                            && ownership.liveSurface.launcherFocused
-    readonly property int launcherResultCount: ownership.liveSurface === null ? 0 :
-                                                                                ownership.liveSurface.launcherResultCount
-    readonly property bool launcherResultScrollVisible: ownership.liveSurface !== null
-                                                        && ownership.liveSurface.launcherResultScrollVisible
-    readonly property string launcherSelectedId: ownership.liveSurface === null ? "" :
-                                                                                  ownership.liveSurface.launcherSelectedId
-    readonly property bool sessionLoaded: ownership.liveSurface !== null
-                                          && ownership.liveSurface.sessionLoaded
-    readonly property bool sessionFocused: ownership.liveSurface !== null
-                                           && ownership.liveSurface.sessionFocused
-    readonly property bool trayLoaded: ownership.liveSurface !== null
-                                       && ownership.liveSurface.trayLoaded
-    readonly property bool trayFocused: ownership.liveSurface !== null
-                                        && ownership.liveSurface.trayFocused
-    readonly property bool audioLoaded: ownership.liveSurface !== null
-                                        && ownership.liveSurface.audioLoaded
-    readonly property bool audioFocused: ownership.liveSurface !== null
-                                         && ownership.liveSurface.audioFocused
-    readonly property bool polkitLoaded: ownership.liveSurface !== null
-                                         && ownership.liveSurface.polkitLoaded
-    readonly property bool polkitFocused: ownership.liveSurface !== null
-                                          && ownership.liveSurface.polkitFocused
-    readonly property bool polkitResponseFocused: ownership.liveSurface !== null
-                                                  && ownership.liveSurface.polkitResponseFocused
-    readonly property int polkitIdentityCount: ownership.liveSurface === null ? 0 :
-                                                                                ownership.liveSurface.polkitIdentityCount
-    readonly property bool polkitResponseFieldVisible: ownership.liveSurface !== null
-                                                       && ownership.liveSurface.polkitResponseFieldVisible
-    readonly property bool historyLoaded: ownership.liveSurface !== null
-                                          && ownership.liveSurface.historyLoaded
-    readonly property bool historyFocused: ownership.liveSurface !== null
-                                           && ownership.liveSurface.historyFocused
-    readonly property int historyRowCount: ownership.liveSurface === null ? 0 :
-                                                                            ownership.liveSurface.historyRowCount
-    readonly property bool historyEmptyStateVisible: ownership.liveSurface !== null
-                                                     && ownership.liveSurface.historyEmptyStateVisible
-    readonly property int geometryAnimationDuration: ownership.liveSurface === null ? 0 :
-                                                                                      ownership.liveSurface.geometryAnimationDuration
-    readonly property bool geometryAnimationRunning: ownership.liveSurface !== null
-                                                     && ownership.liveSurface.geometryAnimationRunning
-    readonly property bool transientCommitted: ownership.liveSurface !== null
-                                               && ownership.liveSurface.transientCommitted
-    readonly property bool transientEntryAnimationRunning: ownership.liveSurface !== null
-                                                           && ownership.liveSurface.transientEntryAnimationRunning
-    readonly property string transientPrimaryText: ownership.liveSurface === null ? "" :
-                                                                                    ownership.liveSurface.transientPrimaryText
-    readonly property string transientDetailText: ownership.liveSurface === null ? "" :
-                                                                                   ownership.liveSurface.transientDetailText
+    function beginShellMenu(token) {
+        const surface = surfaceForToken(token);
+        return surface !== null && surface.beginShellMenu();
+    }
 
     function cancelDashboard() {
-        return ownership.liveSurface !== null && ownership.liveSurface.cancelDashboard();
+        return fallbackSurface !== null && fallbackSurface.cancelDashboard();
     }
 
     function requestDeliberateExpansion() {
-        return ownership.liveSurface !== null && ownership.liveSurface.requestDeliberateExpansion();
+        return fallbackSurface !== null && fallbackSurface.requestDeliberateExpansion();
+    }
+    function completeShellMenuAction(token) {
+        const surface = surfaceForToken(token);
+        return surface !== null && surface.completeShellMenuAction();
     }
 
-    function beginShellMenu() {
-        return ownership.liveSurface !== null && ownership.liveSurface.beginShellMenu();
+    function confirmForget(identity) {
+        failureText
+                = "Disconnected displays cannot be remembered without a stable platform identity.";
+        return false;
     }
 
-    function finishShellMenuOpen(result) {
-        return ownership.liveSurface !== null && ownership.liveSurface.finishShellMenuOpen(result);
-    }
-
-    function completeShellMenuAction() {
-        return ownership.liveSurface !== null && ownership.liveSurface.completeShellMenuAction();
-    }
-
-    QtObject {
-        id: ownership
-
-        // QsWindow can report provisional screens while the layer-shell surface settles.
-        readonly property int surfaceSettleDelay: 50
-        property var liveSurface: null
-        property var ownerScreen: null
-        property var pendingSurface: null
-        property bool replacementPending: false
-        property var replacementScreen: null
-        property int surfaceGeneration: 0
-        property var surfaceToken: null
-
-        function completeSurfaceReplacement() {
-            surfaceLoader.active = true;
+    function entryForScreen(screen) {
+        for (let index = 0; index < entries.length; index += 1) {
+            if (entries[index].targetScreen === screen) {
+                return entries[index];
+            }
         }
+        return null;
+    }
 
-        function isConnected(screen) {
-            for (let index = 0; index < Quickshell.screens.length; index += 1) {
-                if (Quickshell.screens[index] === screen) {
-                    return true;
+    function finishShellMenuOpen(token, result) {
+        const surface = surfaceForToken(token);
+        return surface !== null && surface.finishShellMenuOpen(result);
+    }
+
+    function generationForToken(token) {
+        const record = registryRecordForToken(token);
+        return record === null ? 0 : record.generation;
+    }
+
+    function isConnected(screen) {
+        for (let index = 0; index < Quickshell.screens.length; index += 1) {
+            if (Quickshell.screens[index] === screen) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function reconcileScreens() {
+        displays.syncScreens();
+        const kept = [];
+        for (let index = 0; index < entries.length; index += 1) {
+            const entry = entries[index];
+            if (isConnected(entry.targetScreen)) {
+                kept.push(entry);
+            } else {
+                entry.destroy();
+            }
+        }
+        entries = kept;
+
+        for (let index = 0; index < Quickshell.screens.length; index += 1) {
+            const screen = Quickshell.screens[index];
+            if (entryForScreen(screen) === null) {
+                const entry = surfaceEntryComponent.createObject(host, {
+                                                                     "targetScreen": screen
+                                                                 });
+                if (entry !== null) {
+                    const next = entries.slice();
+                    next.push(entry);
+                    entries = next;
+                }
+            }
+        }
+        registryRevision += 1;
+    }
+
+    function registerSurface(entry, surface) {
+        nextSurfaceGeneration += 1;
+        entry.surfaceGeneration = nextSurfaceGeneration;
+        entry.surfaceToken = {};
+        entry.liveSurface = surface;
+        const next = registry.slice();
+        next.push({
+                      "entry": entry,
+                      "generation": entry.surfaceGeneration,
+                      "screen": entry.targetScreen,
+                      "surface": surface,
+                      "token": entry.surfaceToken
+                  });
+        registry = next;
+        registryRevision += 1;
+        coordinator.attachSurface(entry.surfaceToken, entry.surfaceGeneration);
+    }
+
+    function registryRecordForToken(token) {
+        if (token === null || token === undefined) {
+            return null;
+        }
+        for (let index = 0; index < registry.length; index += 1) {
+            if (registry[index].token === token) {
+                return registry[index];
+            }
+        }
+        return null;
+    }
+
+    function routeFallbackToken(excludedToken) {
+        const fallback = displays.fallbackScreen;
+        for (let index = 0; index < registry.length; index += 1) {
+            if (registry[index].token !== excludedToken && registry[index].screen === fallback) {
+                return registry[index].token;
+            }
+        }
+        for (let index = 0; index < registry.length; index += 1) {
+            if (registry[index].token !== excludedToken) {
+                return registry[index].token;
+            }
+        }
+        return null;
+    }
+
+    function routeSurfaceToken(excludedToken) {
+        for (let index = 0; index < registry.length; index += 1) {
+            const record = registry[index];
+            if (record.token !== excludedToken && PointerRouter.isPointerOnWindowScreen(
+                        record.surface.backingWindow)) {
+                return record.token;
+            }
+        }
+        return routeFallbackToken(excludedToken);
+    }
+
+    function setEnabled(screen, enabled) {
+        failureText = "";
+        const entry = entryForScreen(screen);
+        if (entry === null) {
+            failureText = "The display is no longer connected.";
+            return false;
+        }
+        if (!enabled && entry.surfaceToken !== null && !coordinator.prepareSurfaceDisable(
+                    entry.surfaceToken)) {
+            failureText = coordinator.modalHostToken === entry.surfaceToken
+                    ? "Authentication must finish before this island can be disabled." :
+                      "The active task could not be transferred safely.";
+            return false;
+        }
+        if (!displays.requestEnabled(screen, enabled)) {
+            failureText = "At least one island must remain enabled.";
+            return false;
+        }
+        registryRevision += 1;
+        return true;
+    }
+
+    function setFallback(screen) {
+        failureText = "";
+        if (!displays.requestFallback(screen)) {
+            failureText = "The fallback must be an active enabled display.";
+            return false;
+        }
+        registryRevision += 1;
+        return true;
+    }
+
+    function surfaceForToken(token) {
+        const record = registryRecordForToken(token);
+        return record === null ? null : record.surface;
+    }
+
+    function unregisterSurface(entry, surface) {
+        const next = [];
+        let removed = null;
+        for (let index = 0; index < registry.length; index += 1) {
+            if (registry[index].entry === entry && registry[index].surface === surface) {
+                removed = registry[index];
+            } else {
+                next.push(registry[index]);
+            }
+        }
+        registry = next;
+        registryRevision += 1;
+        if (removed !== null) {
+            coordinator.detachSurface(removed.token, removed.generation);
+        }
+        if (entry.liveSurface === surface) {
+            entry.liveSurface = null;
+            entry.surfaceToken = null;
+            entry.surfaceGeneration = 0;
+        }
+    }
+
+    function windowForToken(token) {
+        const record = registryRecordForToken(token);
+        return record === null || record.surface === null ? null : record.surface.backingWindow;
+    }
+
+    DisplayManager {
+        id: displays
+
+        onChangeRejected: reason => host.failureText = reason
+    }
+
+    Component {
+        id: surfaceEntryComponent
+
+        Scope {
+            id: entry
+
+            required property var targetScreen
+            property var liveSurface: null
+            property var surfaceToken: null
+            property int surfaceGeneration: 0
+            readonly property bool enabled: displays.isEnabled(targetScreen)
+
+            Component {
+                id: dashboardMedia
+
+                DashboardMedia {
+                    media: host.media
                 }
             }
 
-            return false;
+            Component {
+                id: dashboardClock
+
+                DashboardClock {
+                    clock: host.clock
+                }
+            }
+
+            Component {
+                id: dashboardQuickControls
+
+                DashboardQuickControls {
+                    centerStatusInMainLane: host.media === null || !host.media.available
+                    connectivity: host.connectivityAdapter
+                    applicationModel: host.applicationModel
+                    tray: host.trayAdapter
+                    menuParentWindow: entry.liveSurface
+                    onExternalActionDispatched: host.completeShellMenuAction(entry.surfaceToken)
+                    onShellMenuOpening: host.beginShellMenu(entry.surfaceToken)
+                    onShellMenuOpenResult: result => host.finishShellMenuOpen(entry.surfaceToken,
+                                                                              result)
+                }
+            }
+
+            Component {
+                id: dashboardAudio
+
+                DashboardAudio {
+                    audio: host.audioAdapter
+                    onDeviceSelectionRequested: host.coordinator.openAudio(entry.surfaceToken)
+                }
+            }
+
+            Component {
+                id: dashboardNotifications
+
+                DashboardNotifications {
+                    service: host.notificationService
+                }
+            }
+
+            Component {
+                id: dashboardNavigation
+
+                DashboardNavigation {
+                    coordinator: host.coordinator
+                    surfaceToken: entry.surfaceToken
+                    settingsFailure: host.settingsFailure
+                    onSystemSettingsRequested: host.systemSettingsRequested(entry.surfaceToken)
+                }
+            }
+
+            LazyLoader {
+                id: surfaceLoader
+
+                active: entry.enabled
+
+                IslandSurface {
+                    id: island
+
+                    screen: entry.targetScreen
+                    coordinator: host.coordinator
+                    hostSurfaceToken: entry.surfaceToken
+                    hostSurfaceGeneration: entry.surfaceGeneration
+                    surfaceHost: host
+                    virtualDesktops: host.virtualDesktops
+                    clock: host.clock
+                    weather: host.weather
+                    media: host.media
+                    sessionService: host.sessionService
+                    polkitController: host.polkitController
+                    notificationService: host.notificationService
+                    applicationModel: host.applicationModel
+                    trayAdapter: host.trayAdapter
+                    audioAdapter: host.audioAdapter
+                    workspaceTransientSource: host.workspaceTransientSource
+                    brightnessTransientSource: host.brightnessTransientSource
+                    volumeTransientSource: host.volumeTransientSource
+                    notificationTransientSource: host.notificationTransientSource
+                    reducedMotion: host.reducedMotion
+                    dashboardMediaContent: host.dashboardMediaContent !== null
+                                           ? host.dashboardMediaContent : host.media !== null
+                                             && host.media.available ? dashboardMedia : null
+                    dashboardClockContent: host.dashboardClockContent !== null
+                                           ? host.dashboardClockContent : dashboardClock
+                    dashboardQuickControlsContent: host.dashboardQuickControlsContent !== null
+                                                   ? host.dashboardQuickControlsContent :
+                                                     dashboardQuickControls
+                    dashboardAudioContent: host.dashboardAudioContent !== null
+                                           ? host.dashboardAudioContent : dashboardAudio
+                    dashboardNotificationsContent: host.dashboardNotificationsContent !== null
+                                                   ? host.dashboardNotificationsContent :
+                                                     dashboardNotifications
+                    dashboardNavigationContent: host.dashboardNavigationContent !== null
+                                                ? host.dashboardNavigationContent :
+                                                  dashboardNavigation
+
+                    Component.onCompleted: host.registerSurface(entry, island)
+                    Component.onDestruction: host.unregisterSurface(entry, island)
+                    onScreenChanged: {
+                        if (screen !== entry.targetScreen && !host.isConnected(
+                                entry.targetScreen)) {
+                            surfaceLoader.active = false;
+                        }
+                    }
+                }
+            }
         }
-
-        function queueSurfaceRegistration(surface) {
-            const targetScreen = replacementScreen;
-            replacementScreen = null;
-
-            if (targetScreen !== null && isConnected(targetScreen)) {
-                surface.screen = targetScreen;
-            }
-
-            liveSurface = surface;
-            pendingSurface = surface;
-            surfaceSettleTimer.restart();
-        }
-
-        function reconcileOwner() {
-            if (ownerScreen === null || isConnected(ownerScreen)) {
-                return;
-            }
-
-            const rehomedScreen = liveSurface === null ? null : liveSurface.screen;
-            if (rehomedScreen !== null && isConnected(rehomedScreen)) {
-                replacementScreen = rehomedScreen;
-                replaceSurface();
-            }
-        }
-
-        function replaceSurface() {
-            if (replacementPending) {
-                return;
-            }
-
-            replacementPending = true;
-            if (surfaceToken !== null) {
-                host.coordinator.detachSurface(surfaceToken, surfaceGeneration);
-            }
-            surfaceToken = null;
-            surfaceLoader.active = false;
-            Qt.callLater(completeSurfaceReplacement);
-        }
-
-        function settleSurfaceRegistration() {
-            if (pendingSurface === null) {
-                return;
-            }
-
-            ownerScreen = pendingSurface.screen;
-            pendingSurface = null;
-            surfaceGeneration += 1;
-            surfaceToken = {};
-            replacementPending = false;
-            host.coordinator.attachSurface(surfaceToken, surfaceGeneration);
-        }
-
-        function unregisterSurface(surface) {
-            if (liveSurface !== surface) {
-                return;
-            }
-
-            if (pendingSurface === surface) {
-                pendingSurface = null;
-                surfaceSettleTimer.stop();
-            }
-
-            liveSurface = null;
-            if (surfaceToken !== null) {
-                host.coordinator.detachSurface(surfaceToken, surfaceGeneration);
-            }
-            surfaceToken = null;
-            ownerScreen = null;
-        }
-    }
-
-    Timer {
-        id: surfaceSettleTimer
-
-        interval: ownership.surfaceSettleDelay
-        onTriggered: ownership.settleSurfaceRegistration()
     }
 
     Connections {
         target: Quickshell
 
         function onScreensChanged() {
-            ownership.reconcileOwner();
+            host.reconcileScreens();
         }
     }
 
-    LazyLoader {
-        id: surfaceLoader
-
-        active: true
-
-        IslandSurface {
-            id: island
-
-            coordinator: host.coordinator
-            hostSurfaceGeneration: host.surfaceGeneration
-            virtualDesktops: host.virtualDesktops
-            clock: host.clock
-            weather: host.weather
-            media: host.media
-            sessionService: host.sessionService
-            polkitController: host.polkitController
-            notificationService: host.notificationService
-            applicationModel: host.applicationModel
-            trayAdapter: host.trayAdapter
-            audioAdapter: host.audioAdapter
-            workspaceTransientSource: host.workspaceTransientSource
-            brightnessTransientSource: host.brightnessTransientSource
-            volumeTransientSource: host.volumeTransientSource
-            notificationTransientSource: host.notificationTransientSource
-            reducedMotion: host.reducedMotion
-            dashboardMediaContent: host.dashboardMediaContent
-            dashboardClockContent: host.dashboardClockContent
-            dashboardQuickControlsContent: host.dashboardQuickControlsContent
-            dashboardAudioContent: host.dashboardAudioContent
-            dashboardNotificationsContent: host.dashboardNotificationsContent
-            dashboardNavigationContent: host.dashboardNavigationContent
-
-            Component.onCompleted: ownership.queueSurfaceRegistration(island)
-            Component.onDestruction: ownership.unregisterSurface(island)
-            onScreenChanged: {
-                if (ownership.pendingSurface === island) {
-                    surfaceSettleTimer.restart();
-                } else {
-                    ownership.reconcileOwner();
-                }
-            }
+    Component.onCompleted: {
+        coordinator.surfaceRouter = host;
+        reconcileScreens();
+    }
+    Component.onDestruction: {
+        if (coordinator.surfaceRouter === host) {
+            coordinator.surfaceRouter = null;
+        }
+        const doomed = entries.slice();
+        entries = [];
+        for (let index = 0; index < doomed.length; index += 1) {
+            doomed[index].destroy();
         }
     }
 }
