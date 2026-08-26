@@ -2,30 +2,17 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "qml"
 
 ShellRoot {
-    property int systemSettingsRequestId: 0
-    property string systemSettingsFailure: ""
-    readonly property string visibleSettingsFailure: systemSettingsFailure !== ""
-                                                     ? systemSettingsFailure :
-                                                       UserConfig.errorMessage
 
-    function launchSystemSettings(initiatingSurfaceToken) {
-        systemSettingsFailure = "";
-        const requestId = applicationModel.dispatchLaunch("systemsettings.desktop");
-        if (requestId === 0) {
-            systemSettingsFailure
-                    = "System Settings is unavailable. Open it from the application launcher.";
-            settingsFailureTimer.restart();
-            return false;
-        }
-        systemSettingsRequestId = requestId;
+    function openControlCenter(routeId, initiatingSurfaceToken) {
         if (initiatingSurfaceToken !== null && initiatingSurfaceToken !== undefined) {
             islandState.resetToIdle(initiatingSurfaceToken);
         }
-        return true;
+        return controlCenter.open(routeId, initiatingSurfaceToken);
     }
 
     KWinVirtualDesktopAdapter {
@@ -54,9 +41,9 @@ ShellRoot {
 
         coordinator: islandState
         helperPath: Quickshell.shellPath("build/global-shortcut/nagi-global-shortcut")
-        onSystemSettingsRequested: {
+        onControlCenterRequested: {
             if (!islandState.modalPresent) {
-                launchSystemSettings(islandHost.routeSurfaceToken(null));
+                openControlCenter("control-center", islandHost.routeSurfaceToken(null));
             }
         }
     }
@@ -100,8 +87,8 @@ ShellRoot {
     }
 
     OnboardingWindow {
-        settingsFailure: visibleSettingsFailure
-        onSystemSettingsRequested: launchSystemSettings(islandHost.routeSurfaceToken(null))
+        onControlCenterRequested: openControlCenter("control-center", islandHost.routeSurfaceToken(
+                                                        null))
     }
 
     NotificationService {
@@ -110,34 +97,6 @@ ShellRoot {
 
     TrayAdapter {
         id: trayAdapter
-    }
-
-    Connections {
-        target: applicationModel
-
-        function onLaunchAccepted(requestId, desktopFileId) {
-            if (requestId === systemSettingsRequestId) {
-                systemSettingsRequestId = 0;
-                systemSettingsFailure = "";
-                settingsFailureTimer.stop();
-            }
-        }
-
-        function onLaunchRejected(requestId, category) {
-            if (requestId === systemSettingsRequestId) {
-                systemSettingsRequestId = 0;
-                systemSettingsFailure
-                        = "System Settings could not be opened. Open it from the application launcher.";
-                settingsFailureTimer.restart();
-            }
-        }
-    }
-
-    Timer {
-        id: settingsFailureTimer
-
-        interval: 5000
-        onTriggered: systemSettingsFailure = ""
     }
 
     ReducedMotion {
@@ -162,8 +121,35 @@ ShellRoot {
         volumeTransientSource: audioAdapter
         notificationTransientSource: notificationService
         reducedMotion: motion.active
-        settingsFailure: visibleSettingsFailure
-        onSystemSettingsRequested: token => launchSystemSettings(token)
+        onControlCenterRequested: token => openControlCenter("control-center", token)
+    }
+
+    ControlCenterWindow {
+        id: controlCenter
+
+        surfaceHost: islandHost
+        settingsModel: UserConfig
+        reducedMotion: motion.active
+        capabilities: ({
+                           "displayRouting": islandHost.liveSurfaceCount > 0,
+                           "audio": audioAdapter.available,
+                           "media": mediaAdapter.available,
+                           "wifi": connectivityAdapter.wifiAvailable,
+                           "bluetooth": connectivityAdapter.bluetoothAvailable,
+                           "notifications": notificationService.serverOwned,
+                           "weather": weather.available
+                       })
+    }
+
+    IpcHandler {
+        target: "nagi"
+
+        function activate(reason: string): bool {
+            if (reason !== "control-center" && reason !== "displays" && reason !== "about") {
+                return false;
+            }
+            return openControlCenter(reason, null);
+        }
     }
 
     TransientCoordinatorBridge {

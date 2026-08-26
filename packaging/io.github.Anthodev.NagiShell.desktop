@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Nagi Shell
-Comment=Open the Nagi Shell desktop island
-Exec=qs -p /usr/share/nagi-shell --no-duplicate
+Name=Nagi Control Center
+Comment=Open the Nagi Shell Control Center
+Exec=nagi-shell --control-center
 Icon=system-run
 Terminal=false
 Categories=Utility;System;

@@ -89,7 +89,7 @@ ShellRoot {
 
         coordinator: coordinator
         helperPath: ""
-        onSystemSettingsRequested: test.settingsOpenCalls += 1
+        onControlCenterRequested: test.settingsOpenCalls += 1
     }
 
     QtObject {

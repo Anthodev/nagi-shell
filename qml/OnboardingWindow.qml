@@ -9,8 +9,7 @@ import QtQuick.Layouts
 Scope {
     id: root
 
-    property string settingsFailure: ""
-    signal systemSettingsRequested
+    signal controlCenterRequested
 
     readonly property string stateHome: {
         const xdgHome = Quickshell.env("XDG_STATE_HOME") ?? "";
@@ -162,25 +161,23 @@ Scope {
 
             IslandText {
                 Layout.fillWidth: true
-                text: "Nagi stores appearance, media, weather, and clock preferences in a private versioned settings.conf and migrates an older theme.conf automatically."
+                text: "Nagi stores preferences in a private versioned settings.conf. Use the Control Center to manage every completed Nagi settings page."
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }
 
             IslandText {
                 Layout.fillWidth: true
-                text: "Use the System Settings action in the dashboard rail to manage Nagi Shell shortcuts. Open Launcher prefers Meta+Space, but Nagi never replaces KRunner's shortcut when it conflicts."
+                text: "KDE System Settings remains the place for Nagi Shell shortcuts. Open Launcher prefers Meta+Space, but Nagi never replaces KRunner's shortcut when it conflicts."
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }
 
             IslandText {
                 Layout.fillWidth: true
-                visible: root.settingsFailure !== ""
-                text: root.settingsFailure
-                tone: "danger"
+                text: "The Control Center opens in this Nagi process and shares the same settings and services as every island."
+                tone: "secondary"
                 wrapMode: Text.Wrap
-                Accessible.role: Accessible.AlertMessage
             }
 
             RowLayout {
@@ -191,11 +188,11 @@ Scope {
                     id: settingsButton
 
                     objectName: "onboardingSettings"
-                    label: "System Settings"
+                    label: "Open Control Center"
                     implicitHeight: Theme.size.controlHeightLg
                     leftPadding: Theme.spacing.lg
                     rightPadding: Theme.spacing.lg
-                    onClicked: root.systemSettingsRequested()
+                    onClicked: root.controlCenterRequested()
                 }
 
                 IslandButton {

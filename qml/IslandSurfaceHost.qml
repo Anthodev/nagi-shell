@@ -30,9 +30,8 @@ Scope {
     property Component dashboardAudioContent: null
     property Component dashboardNotificationsContent: null
     property Component dashboardNavigationContent: null
-    property string settingsFailure: ""
 
-    signal systemSettingsRequested(var initiatingSurfaceToken)
+    signal controlCenterRequested(var initiatingSurfaceToken)
     property bool reducedMotion: false
 
     readonly property int revision: displays.revision + registryRevision
@@ -307,6 +306,10 @@ Scope {
         const record = registryRecordForToken(token);
         return record === null ? null : record.surface;
     }
+    function screenForToken(token) {
+        const record = registryRecordForToken(token);
+        return record === null ? null : record.screen;
+    }
 
     function unregisterSurface(entry, surface) {
         const next = [];
@@ -408,8 +411,7 @@ Scope {
                 DashboardNavigation {
                     coordinator: host.coordinator
                     surfaceToken: entry.surfaceToken
-                    settingsFailure: host.settingsFailure
-                    onSystemSettingsRequested: host.systemSettingsRequested(entry.surfaceToken)
+                    onControlCenterRequested: host.controlCenterRequested(entry.surfaceToken)
                 }
             }
 

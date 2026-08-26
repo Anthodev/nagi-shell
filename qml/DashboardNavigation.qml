@@ -10,8 +10,7 @@ Item {
 
     required property var coordinator
     property var surfaceToken: null
-    property string settingsFailure: ""
-    signal systemSettingsRequested
+    signal controlCenterRequested
 
     readonly property alias topCluster: navigationTopCluster
     readonly property alias bottomCluster: navigationBottomCluster
@@ -66,9 +65,8 @@ Item {
 
             objectName: "dashboardSettings"
             meaning: "settings"
-            accessibleName: "System Settings"
-            failureText: root.settingsFailure
-            onOpenRequested: root.systemSettingsRequested()
+            accessibleName: "Nagi Control Center"
+            onOpenRequested: root.controlCenterRequested()
         }
 
         RailButton {

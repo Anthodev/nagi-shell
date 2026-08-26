@@ -23,7 +23,7 @@ Scope {
         "openAudio", "openSession", "openSystemSettings"]
 
     signal activationReceived(string action)
-    signal systemSettingsRequested
+    signal controlCenterRequested
 
     function exactKeys(message, expected) {
         const keys = Object.keys(message).sort();
@@ -67,7 +67,7 @@ Scope {
         case "openSession":
             return root.coordinator.openSession(null);
         case "openSystemSettings":
-            root.systemSettingsRequested();
+            root.controlCenterRequested();
             return true;
         default:
             return false;

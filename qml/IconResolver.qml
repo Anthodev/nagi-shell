@@ -51,7 +51,7 @@ Singleton {
                                                      "history": "Notification history",
                                                      "tray": "System tray",
                                                      "session": "Session",
-                                                     "settings": "System Settings",
+                                                     "settings": "Nagi Control Center",
                                                      "restartShell": "Restart shell",
                                                      "wifi": "Wi-Fi",
                                                      "bluetooth": "Bluetooth",

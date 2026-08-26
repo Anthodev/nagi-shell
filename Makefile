@@ -71,6 +71,7 @@ ONBOARDING_TEST_DIR := $(BUILD_DIR)/onboarding-test
 ICON_TEST_DIR := $(BUILD_DIR)/icon-test
 SUBVIEW_FRAME_TEST_DIR := $(BUILD_DIR)/subview-frame-test
 TYPOGRAPHY_TEST_DIR := $(BUILD_DIR)/typography-test
+CONTROL_CENTER_TEST_DIR := $(BUILD_DIR)/control-center-test
 TYPOGRAPHY_INTER_FONT ?= $(HOME)/.local/share/fonts/nagi-typography/Inter-Regular.ttf
 TYPOGRAPHY_NOTO_SANS_FONT ?= $(shell fc-match -f '%{file}' ':family=Noto Sans:style=Regular')
 TYPOGRAPHY_SOURCE_SANS_FONT ?= $(HOME)/.local/share/fonts/nagi-typography/SourceSans3-Regular.ttf
@@ -138,6 +139,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-onboarding
 .PHONY: test-icons
 .PHONY: test-subview-frame
+.PHONY: test-control-center
 .PHONY: check-wallpaper-toolchain wallpaper-helper test-wallpaper test-wallpaper-dbus test-wallpaper-live
 .PHONY: test-typography
 .PHONY: test-global-shortcut-live
@@ -199,6 +201,7 @@ help:
 		'make test-tray-live  Exercise a controlled real tray item on KDE' \
 		'make test-ui-primitives  Render theme tokens and primitives in isolated virtual KWin' \
 		'make test-theme-config  Test versioned settings, migration, recovery, and rollback' \
+		'make test-control-center  Test lazy Control Center lifecycle and accessibility' \
 		'make test-settings-helper  Test settings path safety, migration, and recovery' \
 		'make test-icons       Test semantic icon resolution, rendering, and fallback' \
 		'make test-subview-frame  Test shared subview structure, focus, bounds, and motion' \
@@ -721,6 +724,14 @@ test-typography: check-quickshell | $(BUILD_DIR)
 	cp '$(TYPOGRAPHY_SOURCE_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/SourceSans3-Regular.ttf
 	NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
 
+test-control-center: check-quickshell | $(BUILD_DIR)
+	rm -rf $(CONTROL_CENTER_TEST_DIR)
+	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
+	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
+	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
+
 # Issue #70 gate: one PanelWindow per connected screen, independent
 # assignment, destruction/recreation, and scale behavior in virtual KWin.
 test-multi-surface: check-quickshell
@@ -823,7 +834,7 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state test-ui-primitives test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
+check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
 
 check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
