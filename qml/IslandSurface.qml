@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Window
@@ -171,6 +172,7 @@ PanelWindow {
                                                     && backgroundMappedBottomRight.y
                                                     === surface.height
     readonly property real backgroundRadius: surfaceBackground.radius
+    readonly property bool blurRequested: Theme.snapshot.blurEnabled
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
     readonly property bool launcherLoaded: launcherLoader.item !== null
@@ -504,12 +506,13 @@ PanelWindow {
         return coordinator.resetToIdle(hostSurfaceToken);
     }
 
-    function safeLogicalSize(preferredSize, screenSize) {
+    function safeLogicalSize(preferredSize, screenSize, maximumFraction) {
         if (screenSize <= 0) {
             return preferredSize;
         }
-
-        return Math.min(preferredSize, Math.max(1, screenSize - edgeInset * 2));
+        const fraction = maximumFraction ?? 1;
+        const available = Math.max(1, screenSize * fraction - edgeInset * 2);
+        return Math.min(preferredSize, available);
     }
     function syncDashboardReveal() {
         dashboardReveal.stop();
@@ -636,6 +639,7 @@ PanelWindow {
     anchors.left: true
     color: "transparent"
     exclusiveZone: 0
+    BackgroundEffect.blurRegion: Theme.snapshot.blurEnabled ? backgroundBlurRegion : null
     focusable: !interactiveExitRunning && focusedOwnerEpoch === ownerEpoch
                && appliedFocusRequestSerial === focusRequestSerial && ((expanded && focusTarget
                                                                         === coordinator.focusExpandedDashboard)
@@ -651,8 +655,11 @@ PanelWindow {
                                                                            === coordinator.focusSessionActions)
                                                                        || (polkit && focusTarget
                                                                            === coordinator.focusPolkitModal))
-    implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height)
-    implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width)
+    implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height,
+                                    largeContent ? UserConfig.snapshot.island.expandedHeightPercent :
+                                                   1)
+    implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width, largeContent
+                                   ? UserConfig.snapshot.island.expandedWidthPercent : 1)
 
     Behavior on implicitHeight {
         enabled: !surface.reducedMotion
@@ -706,6 +713,12 @@ PanelWindow {
         }
     }
 
+    Region {
+        id: backgroundBlurRegion
+
+        item: surfaceBackground
+    }
+
     IslandPanel {
         id: surfaceBackground
 
@@ -714,6 +727,9 @@ PanelWindow {
         radius: Theme.radius.outer
         color: Theme.color.surfaceOpaque
         opacity: Theme.opacity.surface
+        border.color: Qt.rgba(Theme.color.surfaceBorder.r, Theme.color.surfaceBorder.g,
+                              Theme.color.surfaceBorder.b, Theme.opacity.border)
+        border.width: Theme.opacity.border > 0 ? Theme.size.hairlineWidth : 0
     }
 
     Loader {
@@ -750,6 +766,9 @@ PanelWindow {
         weather: surface.weather
         media: surface.media
         reducedMotion: surface.reducedMotion
+        showWorkspace: UserConfig.snapshot.island.showWorkspace
+        showWeather: UserConfig.snapshot.island.showWeather
+        showMedia: UserConfig.snapshot.island.showMedia
     }
 
     ExpandedDashboard {

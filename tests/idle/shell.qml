@@ -68,14 +68,16 @@ ShellRoot {
                                                                              islandFull.metricsContentHeight
                                                                              + islandFull.verticalPadding
                                                                              * 2)), "idle height follows the documented metric and semantic-padding formula");
-        require(islandFull.contentPadding === Theme.spacing.xl && islandFull.contentGap
-                === Theme.spacing.xl && islandFull.boundaryWidth === 48 + Theme.size.hairlineWidth
-                && islandFull.boundaryWidth === islandFull.contentGap * 2
-                + Theme.size.hairlineWidth && islandFull.boundaryHeight
-                === Theme.size.islandSeparatorHeight && islandFull.workspaceIndicatorWidth
-                === Theme.size.islandWorkspaceIndicatorWidth && islandFull.workspaceIndicatorHeight
-                === Theme.size.islandWorkspaceIndicatorHeight && islandFull.weatherGap
-                === Theme.spacing.sm && islandFull.weatherLabelGap === Theme.spacing.xs,
+        require(islandFull.contentPadding === Theme.size.islandCompactPadding
+                && islandFull.contentGap === Theme.size.islandCompactPadding
+                && islandFull.boundaryWidth === Theme.size.islandCompactPadding * 2
+                + Theme.size.hairlineWidth && islandFull.boundaryWidth
+                === islandFull.contentGap * 2 + Theme.size.hairlineWidth
+                && islandFull.boundaryHeight === Theme.size.islandSeparatorHeight
+                && islandFull.workspaceIndicatorWidth === Theme.size.islandWorkspaceIndicatorWidth
+                && islandFull.workspaceIndicatorHeight === Theme.size.islandWorkspaceIndicatorHeight
+                && islandFull.weatherGap === Theme.spacing.sm
+                && islandFull.weatherLabelGap === Theme.spacing.xs,
                 "Idle groups use shared workspace and separator geometry tokens");
         require(islandFull.workspaceLabelItem.font.pixelSize === Theme.type.body
                 && islandFull.workspaceLabelItem.font.weight === Theme.type.weightMedium
@@ -190,6 +192,13 @@ ShellRoot {
                 "required groups preserve order without optional-content residue");
         requireEdgeSymmetry(islandNoWeatherNoMedia, islandNoWeatherNoMedia.workspaceBoundary,
                             islandNoWeatherNoMedia.clockGroupBlock, "required-only Idle");
+        require(!islandHiddenOptional.workspaceBlock.visible
+                && !islandHiddenOptional.weatherBlock.visible
+                && !islandHiddenOptional.mediaBlock.visible
+                && islandHiddenOptional.clockBlock.visible
+                && islandHiddenOptional.implicitWidth === islandHiddenOptional.contentPadding * 2
+                + islandHiddenOptional.clockGroupBlock.width,
+                "visibility settings collapse optional groups while Clock remains mandatory");
         require(islandFull.implicitHeight === islandNoWeather.implicitHeight
                 && islandFull.implicitHeight === islandNoMedia.implicitHeight
                 && islandFull.implicitHeight === islandNoWeatherNoMedia.implicitHeight,
@@ -269,7 +278,7 @@ ShellRoot {
     }
 
     function motionReducedStage() {
-        require(motion.active, "zero animation factor enables reduced motion");
+        require(motion.minimalMotion, "zero animation factor enables minimal motion");
         require(islandWatched.reducedMotion, "the watched preference reaches the island");
         require(islandWatched.mediaBlock.labelItem.elide === Text.ElideRight
                 && islandWatched.mediaBlock.labelItem.x === 0,
@@ -280,7 +289,7 @@ ShellRoot {
     }
 
     function motionRestoredStage() {
-        require(!motion.active, "normal animation factor re-enables motion");
+        require(!motion.minimalMotion, "normal animation factor re-enables motion");
         require(islandWatched.mediaBlock.labelItem.elide === Text.ElideRight
                 && islandWatched.mediaBlock.labelItem.x === 0,
                 "normal motion settings do not create an Idle animation loop");
@@ -331,7 +340,7 @@ ShellRoot {
     Timer {
         id: motionTimer
 
-        interval: 50
+        interval: 140
         repeat: false
         onTriggered: test.pendingMotionStage === "reduced" ? test.motionReducedStage() :
                                                              test.motionRestoredStage()
@@ -363,7 +372,7 @@ ShellRoot {
         property string title: "Track"
     }
 
-    ReducedMotion {
+    KdeAppearanceAdapter {
         id: motion
 
         configPath: Quickshell.cacheDir + "/idle-motion-kdeglobals"
@@ -445,6 +454,18 @@ ShellRoot {
             available: false
         }
     }
+
+    IdleIsland {
+        id: islandHiddenOptional
+
+        virtualDesktops: fullDesktops
+        clock: FakeClock {}
+        weather: FakeWeather {}
+        media: FakeMedia {}
+        showWorkspace: false
+        showWeather: false
+        showMedia: false
+    }
     IdleIsland {
         id: islandWithDate
 
@@ -502,6 +523,6 @@ ShellRoot {
         clock: FakeClock {}
         weather: FakeWeather {}
         media: overflowMedia
-        reducedMotion: motion.active
+        reducedMotion: motion.minimalMotion
     }
 }

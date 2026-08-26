@@ -774,7 +774,87 @@ ShellRoot {
                             "accepted application launch did not settle at Idle")) {
                 return;
             }
-            console.warn("actual island launcher, transient, dashboard, history, session, Polkit UI, tray-menu selection, external action, and focus-reset tests passed");
+            const surfaceGeneration = host.surfaceGeneration;
+            const schemes = ["nagi-dark", "nagi-oled", "nagi-light", "system", "custom"];
+            for (let index = 0; index < schemes.length; index += 1) {
+                const candidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+                candidate.appearance.scheme = schemes[index];
+                candidate.appearance.accentMode = "nagi";
+                candidate.appearance.customSurface = "#101010";
+                candidate.appearance.customText = "#F0F0F0";
+                candidate.appearance.customAccent = "#8090FF";
+                const normalized = UserConfig.validateCandidate(candidate);
+                require(normalized !== null, "surface scheme candidate is valid");
+                UserConfig.publish(normalized);
+                require(Theme.snapshot.scheme === schemes[index],
+                        "scheme " + schemes[index] + " reaches the live surface Theme");
+            }
+            Theme.wallpaperPalette = Object.freeze({
+                                                       "accent": "#D06BFF"
+                                                   });
+            const accentModes = ["nagi", "system", "wallpaper", "custom"];
+            for (let index = 0; index < accentModes.length; index += 1) {
+                const candidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+                candidate.appearance.accentMode = accentModes[index];
+                candidate.appearance.customAccent = "#8090FF";
+                const normalized = UserConfig.validateCandidate(candidate);
+                require(normalized !== null, "surface accent candidate is valid");
+                UserConfig.publish(normalized);
+                require(Theme.snapshot.mode === accentModes[index],
+                        "accent mode " + accentModes[index] + " reaches the live Theme");
+            }
+            const extreme = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            extreme.appearance.scheme = "custom";
+            extreme.appearance.accentMode = "custom";
+            extreme.appearance.customSurface = "#F4F6F8";
+            extreme.appearance.customText = "#151A21";
+            extreme.appearance.customAccent = "#003B82";
+            extreme.appearance.surfaceOpacity = 0.85;
+            extreme.appearance.borderIntensity = 1;
+            extreme.appearance.blurEnabled = true;
+            extreme.appearance.motion = "minimal";
+            extreme.appearance.outerRadius = 32;
+            extreme.island.compactHeight = 48;
+            extreme.island.compactPadding = 32;
+            extreme.island.expandedWidthPercent = 0.6;
+            extreme.island.expandedHeightPercent = 0.6;
+            extreme.island.showWorkspace = false;
+            extreme.island.showWeather = false;
+            extreme.island.showMedia = false;
+            const normalizedExtreme = UserConfig.validateCandidate(extreme);
+            require(normalizedExtreme !== null, "combined live appearance extreme is valid");
+            UserConfig.publish(normalizedExtreme);
+            require(host.surfaceGeneration === surfaceGeneration && host.backgroundRadius === 32
+                    && host.blurRequested && Theme.snapshot.contrast.textOnSurface >= 4.5
+                    && Theme.snapshot.contrast.textSecondaryOnSurface >= 4.5
+                    && Theme.snapshot.contrast.textMutedOnSurface >= 4.5
+                    && Theme.snapshot.contrast.statusOnSurface >= 4.5
+                    && Theme.snapshot.contrast.dangerOnFills >= 4.5,
+                    "live customization updates one surface with complete readable roles and no service recreation");
+            require(host.requestDeliberateExpansion(),
+                    "custom geometry expands through the existing coordinator path");
+        } else if (step === 34) {
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible && host.dashboardFocused,
+                            "custom geometry dashboard did not settle")) {
+                return;
+            }
+            require(host.surfaceWidth <= host.surfaceScreenWidth * 0.6
+                    && host.surfaceHeight <= host.surfaceScreenHeight * 0.6
+                    && host.geometryAnimationDuration === 0 && host.backgroundCoversSurface,
+                    "custom expanded bounds remain screen-safe and Minimal motion settles");
+            require(host.cancelDashboard(), "customized dashboard remains cancellable");
+            Theme.wallpaperPalette = null;
+            UserConfig.publish(UserConfig.defaultSnapshot(0));
+        } else if (step === 35) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
+                            "reset customization did not restore Idle")) {
+                return;
+            }
+            require(host.surfaceGeneration === initialSurfaceGeneration
+                    && host.backgroundRadius === Theme.radius.outer && !host.blurRequested,
+                    "reset restores versioned appearance without recreating the live surface");
+            console.warn("actual island appearance, geometry, interaction, transient, and Modal matrix passed");
             Qt.exit(0);
             return;
         }

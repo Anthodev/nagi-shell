@@ -163,6 +163,45 @@ ShellRoot {
         require(snapshot(secondToken).ownerName === "idle"
                 && snapshot(thirdToken).ownerName === "idle",
                 "global hold expires atomically");
+        coordinator.feedbackDuration = "short";
+        require(coordinator.requestVolume("short-timed", 3, 1, null),
+                "short feedback preset admits a fresh event");
+        const shortFirst = snapshot(firstToken);
+        const shortSecond = snapshot(secondToken);
+        const shortThird = snapshot(thirdToken);
+        require(coordinator.acknowledgeVisible(firstToken, shortFirst.generation,
+                                               shortFirst.ownerEpoch, shortFirst.revision)
+                && coordinator.acknowledgeVisible(secondToken, shortSecond.generation,
+                                                  shortSecond.ownerEpoch, shortSecond.revision)
+                && coordinator.acknowledgeVisible(thirdToken, shortThird.generation,
+                                                  shortThird.ownerEpoch, shortThird.revision),
+                "short feedback starts only after every projection is visible");
+        nowMs += 1169;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(secondToken).ownerName === "volume",
+                "short feedback remains before its scaled hold boundary");
+        nowMs += 1;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(secondToken).ownerName === "idle",
+                "short feedback expires at its scaled hold boundary");
+
+        coordinator.feedbackDuration = "long";
+        require(coordinator.requestWorkspace("long-timed", 3, 1, secondToken),
+                "long feedback preset admits a fresh workspace event");
+        const longWorkspace = snapshot(secondToken);
+        require(coordinator.acknowledgeVisible(secondToken, longWorkspace.generation,
+                                               longWorkspace.ownerEpoch, longWorkspace.revision),
+                "long workspace feedback begins after visible acknowledgement");
+        nowMs += 1799;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(secondToken).ownerName === "workspace",
+                "long workspace feedback remains below its fixed freshness threshold");
+        nowMs += 1;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(secondToken).ownerName === "idle",
+                "long workspace hold stays strictly below freshness and expires normally");
+        coordinator.feedbackDuration = "normal";
+
 
         for (let index = 0; index < 8; index += 1) {
             require(coordinator.requestWorkspace("bounded-" + index, 1, 1, secondToken),

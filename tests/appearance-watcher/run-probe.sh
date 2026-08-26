@@ -7,12 +7,15 @@ set -uo pipefail
 root="$(mktemp -d "${TMPDIR:-/tmp}/nagi-appearance.XXXXXX")"
 config="$root/config"
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project="$root/project"
 log="$(mktemp "${TMPDIR:-/tmp}/nagi-appearance-log.XXXXXX")"
 deadline=$((SECONDS + 60))
 status=0
 pid=""
 
-mkdir -p "$config"
+mkdir -p "$config" "$project/qml"
+cp "$dir/shell.qml" "$project/shell.qml"
+cp "$dir/../../qml/KdeAppearanceAdapter.qml" "$project/qml/"
 cat >"$config/kdeglobals" <<'EOF'
 [General]
 ColorScheme=BreezeLight
@@ -31,10 +34,10 @@ fail() {
     status=1
 }
 
-await_line() {
-    local needle=$1
+await_pattern() {
+    local pattern=$1
     while ((SECONDS < deadline)); do
-        if grep -qF "$needle" "$log" 2>/dev/null; then
+        if grep -qE "$pattern" "$log" 2>/dev/null; then
             return 0
         fi
         if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
@@ -43,18 +46,17 @@ await_line() {
         sleep 0.1
     done
     grep 'APPEARANCE ' "$log" >&2 || true
-    fail "timed out waiting for: $needle"
+    fail "timed out waiting for pattern: $pattern"
     return 1
 }
 
 QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME="$config" HOME="$root/home" \
     mkdir -p "$root/home"
 QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME="$config" HOME="$root/home" \
-    qs -p "$dir" >"$log" 2>&1 &
+    qs -p "$project" >"$log" 2>&1 &
 pid=$!
 
-await_line 'APPEARANCE scheme=BreezeLight accent=#3DAEE9 motion=1' \
-    || true
+await_pattern 'APPEARANCE scheme=BreezeLight accent=#3DAEE9 motion=1$' || true
 
 if ((status == 0)); then
     write_variant '[General]
@@ -62,7 +64,7 @@ ColorScheme=BreezeDark
 [KDE]
 AnimationDurationFactor=0
 '
-    await_line 'APPEARANCE scheme=BreezeDark accent=null motion=0'
+    await_pattern 'APPEARANCE scheme=BreezeDark accent=#[0-9A-F]{6} motion=0$'
 fi
 
 if ((status == 0)); then
@@ -72,17 +74,27 @@ AccentColor=not-a-color
 [KDE]
 AnimationDurationFactor=0.5
 '
-    await_line 'APPEARANCE scheme=BreezeDark accent=invalid motion=0.5'
+    await_pattern 'APPEARANCE scheme=BreezeDark accent=#[0-9A-F]{6} motion=0\.5$'
+fi
+
+if ((status == 0)); then
+    write_variant '[General]
+ColorScheme=BreezeDark
+AccentColor=61,174,233,128
+[KDE]
+AnimationDurationFactor=0.75
+'
+    await_pattern 'APPEARANCE scheme=BreezeDark accent=#803DAEE9 motion=0\.75$'
 fi
 
 if ((status == 0)); then
     rm -f "$config/kdeglobals"
-    await_line 'APPEARANCE scheme=null accent=null motion=null'
+    await_pattern 'APPEARANCE scheme= accent=#[0-9A-F]{6} motion=1$'
 fi
 
 events=$(grep -c 'APPEARANCE ' "$log" || true)
-if ((status == 0)) && ((events < 4)); then
-    fail "expected at least 4 observed transitions, saw ${events}"
+if ((status == 0)) && ((events < 5)); then
+    fail "expected at least 5 observed transitions, saw ${events}"
 fi
 
 if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then

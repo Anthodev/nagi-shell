@@ -173,6 +173,56 @@ Singleton {
         const pattern = allowAlpha ? /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/ : /^#[0-9a-fA-F]{6}$/;
         return typeof value === "string" && pattern.test(value) ? value.toUpperCase() : null;
     }
+    function colorChannels(value, background) {
+        const canonical = canonicalHex(value, true);
+        if (canonical === null) {
+            return null;
+        }
+        const hasAlpha = canonical.length === 9;
+        const offset = hasAlpha ? 3 : 1;
+        const foreground = {
+            "r": parseInt(canonical.slice(offset, offset + 2), 16),
+            "g": parseInt(canonical.slice(offset + 2, offset + 4), 16),
+            "b": parseInt(canonical.slice(offset + 4, offset + 6), 16)
+        };
+        if (!hasAlpha) {
+            return foreground;
+        }
+        const base = colorChannels(background, "#080D16");
+        const alpha = parseInt(canonical.slice(1, 3), 16) / 255;
+        return {
+            "r": foreground.r * alpha + base.r * (1 - alpha),
+            "g": foreground.g * alpha + base.g * (1 - alpha),
+            "b": foreground.b * alpha + base.b * (1 - alpha)
+        };
+    }
+
+    function colorLuminance(value, background) {
+        function linear(channel) {
+            const normalized = channel / 255;
+            return normalized <= 0.04045 ? normalized / 12.92 : Math.pow((normalized + 0.055)
+                                                                         / 1.055, 2.4);
+        }
+        const color = colorChannels(value, background);
+        return color === null ? Number.NaN : 0.2126 * linear(color.r) + 0.7152 * linear(color.g)
+                                + 0.0722 * linear(color.b);
+    }
+
+    function colorContrast(first, second) {
+        const firstLuminance = colorLuminance(first, second);
+        const secondLuminance = colorLuminance(second, first);
+        return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance,
+                                                                              secondLuminance)
+                                                                     + 0.05);
+    }
+
+    function appearanceValidationError(appearance) {
+        if (appearance.scheme === "custom" && colorContrast(appearance.customText,
+                                                            appearance.customSurface) < 4.5) {
+            return "Primary text must keep at least 4.5:1 contrast with the custom surface.";
+        }
+        return "";
+    }
 
     function strictNumber(value) {
         if (typeof value !== "string" || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) {
@@ -221,6 +271,9 @@ Singleton {
         appearance.customSurface = customSurface;
         appearance.customText = customText;
         appearance.customAccent = customAccent;
+        if (appearanceValidationError(appearance) !== "") {
+            return null;
+        }
         if (!oneOf(appearance.scheme, ["nagi-dark", "nagi-oled", "nagi-light", "system", "custom"])
                 || !oneOf(appearance.accentMode, ["nagi", "system", "wallpaper", "custom"])
                 || typeof appearance.surfaceOpacity !== "number" || !Number.isFinite(

@@ -17,6 +17,9 @@ ShellRoot {
     property int resetAllRequests: 0
     property var controls: []
     readonly property string capturePath: Quickshell.env("NAGI_CONTROL_CENTER_CAPTURE") ?? ""
+    readonly property string appearanceCapturePath: Quickshell.env(
+                                                        "NAGI_APPEARANCE_CAPTURE") ?? ""
+    readonly property string islandCapturePath: Quickshell.env("NAGI_ISLAND_CAPTURE") ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
@@ -105,8 +108,9 @@ ShellRoot {
                 "toggle row dispatches one bounded setting request");
         require(slider.requestAt(0.5, true) && sliderRequests === 1,
                 "slider row clamps and marks continuous requests");
-        require(choice.request("two") && !choice.request("missing") && choiceRequests === 1,
-                "choice row accepts only registered bounded values");
+        require(choice.request("two") && !choice.request("one") && !choice.request("missing")
+                && choiceRequests === 1,
+                "choice row ignores the current value and accepts only another registered value");
         require(!color.submit("/home/private") && color.submit("#aabbcc") && colorRequests === 1,
                 "color row validates before dispatch");
         require(action.requestAction() && actionRequests === 1,
@@ -130,28 +134,50 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 2
-                && controlCenter.availableRoutes[0].id === "displays"
-                && controlCenter.availableRoutes[1].id === "about",
-                "final route names are fixed while only complete pages are exposed");
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 4
+                && controlCenter.availableRoutes[0].id === "island"
+                && controlCenter.availableRoutes[1].id === "appearance"
+                && controlCenter.availableRoutes[2].id === "displays"
+                && controlCenter.availableRoutes[3].id === "about",
+                "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
-        require(controlCenter.open("about", tokenA), "initiating island opens Control Center");
+        require(controlCenter.open("appearance", tokenA), "initiating island opens Appearance");
         stage = "opened-a";
         settle.restart();
     }
 
     function openedAStage() {
-        require(controlCenter.visible && controlCenter.currentPageId === "about"
-                && controlCenter.loadedPageCount === 1 && controlCenter.screen === Quickshell.screens[0],
-                "fresh open places one loaded page on the initiating screen");
-        const originalScreen = controlCenter.screen;
-        require(controlCenter.open("displays", tokenB) && controlCenter.screen === originalScreen
-                && controlCenter.currentPageId === "displays",
-                "repeated activation raises and deep-links without moving the open singleton");
-        controlCenter.closeWindow();
-        stage = "closed";
-        settle.restart();
+        require(controlCenter.visible && controlCenter.currentPageId === "appearance"
+                && controlCenter.loadedPageCount === 1 && controlCenter.loadedPageItem !== null
+                && controlCenter.screen === Quickshell.screens[0],
+                "fresh deep link places the complete Appearance page on the initiating screen");
+        controlCenter.contentItem.children[0].grabToImage(function (result) {
+            require(test.appearanceCapturePath !== ""
+                    && result.saveToFile(test.appearanceCapturePath),
+                    "real Control Center Appearance capture is saved");
+            const originalScreen = controlCenter.screen;
+            require(controlCenter.open("island", tokenB) && controlCenter.screen === originalScreen
+                    && controlCenter.currentPageId === "island",
+                    "repeated activation deep-links to Island without moving the open singleton");
+            test.stage = "island";
+            settle.restart();
+        });
+    }
+
+    function islandStage() {
+        require(controlCenter.currentPageId === "island" && controlCenter.loadedPageItem !== null,
+                "complete Island page loads in the shared page viewport");
+        controlCenter.contentItem.children[0].grabToImage(function (result) {
+            require(test.islandCapturePath !== "" && result.saveToFile(test.islandCapturePath),
+                    "real Control Center Island capture is saved");
+            require(controlCenter.open("displays", tokenB)
+                    && controlCenter.currentPageId === "displays",
+                    "all complete pages share the same singleton");
+            controlCenter.closeWindow();
+            test.stage = "closed";
+            settle.restart();
+        });
     }
 
     function closedStage() {
@@ -246,6 +272,9 @@ ShellRoot {
         case "opened-a":
             openedAStage();
             break;
+        case "island":
+            islandStage();
+            break;
         case "closed":
             closedStage();
             break;
@@ -269,12 +298,7 @@ ShellRoot {
         }
     }
 
-    QtObject {
-        id: fakeSettings
 
-        readonly property int schemaVersion: 2
-        property string status: "ready"
-    }
 
     QtObject {
         id: fakeHost
@@ -339,7 +363,7 @@ ShellRoot {
         id: controlCenter
 
         surfaceHost: fakeHost
-        settingsModel: fakeSettings
+        settingsModel: UserConfig
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,

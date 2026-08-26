@@ -44,6 +44,7 @@ Scope {
     // live surface tokens, QWindow->QScreen equality, and configured fallback.
     property var surfaceRouter: null
     property var monotonicNow: null
+    property string feedbackDuration: "normal"
 
     function acknowledgeVisible(token, generation, epoch, contentRevision) {
         return state.acknowledgeVisible(token, generation, epoch, contentRevision);
@@ -401,13 +402,17 @@ Scope {
         }
 
         function holdFor(kind) {
+            let baseline = 0;
             if (kind === root.ownerNotification) {
-                return 3000;
+                baseline = 3000;
+            } else if (kind === root.ownerVolume || kind === root.ownerBrightness) {
+                baseline = 1800;
+            } else if (kind === root.ownerWorkspace) {
+                baseline = 1200;
             }
-            if (kind === root.ownerVolume || kind === root.ownerBrightness) {
-                return 1800;
-            }
-            return kind === root.ownerWorkspace ? 1200 : 0;
+            const factor = root.feedbackDuration === "short" ? 0.65 : root.feedbackDuration
+                                                               === "long" ? 1.5 : 1;
+            return Math.min(Math.round(baseline * factor), Math.max(0, freshnessFor(kind) - 1));
         }
 
         function interactiveHostToken() {
@@ -723,6 +728,7 @@ Scope {
                 }
                 event.sourceRevision = sourceRevision;
                 event.freshUntil = now + freshnessFor(kind);
+                event.holdDuration = holdFor(kind);
                 event.holdUntil = -1;
                 event.visibleTokens = [];
                 for (let index = 0; index < surfaces.length; index += 1) {

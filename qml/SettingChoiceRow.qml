@@ -13,7 +13,7 @@ ControlCenterSettingRow {
 
     signal valueRequested(string value)
     function request(candidate) {
-        if (!writable) {
+        if (!writable || candidate === value) {
             return false;
         }
         for (let index = 0; index < choices.length; index += 1) {
@@ -45,7 +45,7 @@ ControlCenterSettingRow {
                 reducedMotion: root.reducedMotion
                 label: choiceLabel
                 variant: root.value === choiceValue ? "accent" : "standard"
-                enabled: root.writable && root.value !== choiceValue
+                enabled: root.writable
                 Accessible.role: Accessible.RadioButton
                 Accessible.checked: root.value === choiceValue
                 Accessible.description: root.description
