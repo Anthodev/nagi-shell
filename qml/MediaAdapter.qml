@@ -21,6 +21,10 @@ Scope {
     // Disabling the integration disconnects every player watcher and avoids
     // touching the process-wide MPRIS model.
     property bool enabled: true
+    // Presentation policy remains normalized here so every region consumes
+    // the same selected player.
+    property string playerPolicy: "automatic"
+    property string preferredApplication: ""
 
     // Set by presentation while the expanded media view is visible. Artwork
     // decoding and the shared 1 Hz position refresh run only while true;
@@ -76,6 +80,7 @@ Scope {
     readonly property string artworkRequest: artworkLoader.source.toString()
     readonly property bool positionTimerRunning: positionTimer.running
     readonly property int trackedPlayerCount: engine.records.length
+    readonly property var availableApplications: engine.availableApplications
     // "none" while idle, otherwise the action awaiting confirmation.
     readonly property string pendingAction: engine.pendingAction
     // Bounded failure kinds: "none", "unavailable", "stale", "unsupported".
@@ -120,6 +125,8 @@ Scope {
     Component.onCompleted: engine.rebuild()
     onPlayersModelChanged: engine.scheduleRebuild()
     onEnabledChanged: engine.scheduleRebuild()
+    onPlayerPolicyChanged: engine.selectAndPublish()
+    onPreferredApplicationChanged: engine.selectAndPublish()
 
     Timer {
         id: dispatchTimer
@@ -267,6 +274,7 @@ Scope {
         // generation with cleared recency.
         property var records: []
         property var selectedRecord: null
+        property var availableApplications: []
         property string pendingAction: "none"
         property string failure: "none"
         property int logicalClock: 0
@@ -487,6 +495,7 @@ Scope {
 
             records = [];
             selectedRecord = null;
+            availableApplications = [];
             clearTransient();
             state = emptySnapshot();
         }
@@ -536,6 +545,7 @@ Scope {
                 }
             }
             records = next;
+            publishApplications();
 
             // Transitions observed in one pass share one recency stamp so
             // simultaneous startup ties resolve lexically by dbusName.
@@ -560,48 +570,103 @@ Scope {
             selectAndPublish();
         }
 
-        // Selection order: the newest Playing entry wins (ties lexical by
-        // dbusName); otherwise retain the selected meaningful paused player;
-        // otherwise the most recently active meaningful paused player.
-        function selectAndPublish() {
+        function eligible(record) {
+            return isPlaying(record) || (isPaused(record) && hasMeaningfulMetadata(record));
+        }
+
+        function preferred(record) {
+            return eligible(record) && normalizeText(safeRead(record.player, "desktopEntry", ""),
+                                                     root.maximumIdentityCharacters)
+                    === root.preferredApplication;
+        }
+
+        function newestPlaying(predicate) {
             let chosen = null;
-            for (let i = 0; i < records.length; ++i) {
-                const record = records[i];
-                if (isPlaying(record) && (chosen === null || record.playingStamp
-                                          > chosen.playingStamp || (record.playingStamp
-                                                                    === chosen.playingStamp
-                                                                    && record.dbusName
-                                                                    < chosen.dbusName))) {
+            for (let index = 0; index < records.length; ++index) {
+                const record = records[index];
+                if (predicate(record) && isPlaying(record) && (chosen === null
+                                                               || record.playingStamp
+                                                               > chosen.playingStamp || (
+                                                                   record.playingStamp
+                                                                   === chosen.playingStamp
+                                                                   && record.dbusName
+                                                                   < chosen.dbusName))) {
                     chosen = record;
                 }
             }
+            return chosen;
+        }
 
+        function newestPaused(predicate) {
+            let chosen = null;
+            for (let index = 0; index < records.length; ++index) {
+                const record = records[index];
+                if (predicate(record) && isPaused(record) && hasMeaningfulMetadata(record) && (
+                            chosen === null || record.activeStamp > chosen.activeStamp || (
+                                record.activeStamp === chosen.activeStamp && record.dbusName
+                                < chosen.dbusName))) {
+                    chosen = record;
+                }
+            }
+            return chosen;
+        }
+
+        function automaticSelection() {
+            let chosen = newestPlaying(record => true);
             if (chosen === null && selectedRecord !== null && findRecord(selectedRecord.player)
                     !== null && isPaused(selectedRecord) && hasMeaningfulMetadata(selectedRecord)) {
                 chosen = selectedRecord;
             }
+            return chosen === null ? newestPaused(record => true) : chosen;
+        }
 
-            if (chosen === null) {
-                for (let j = 0; j < records.length; ++j) {
-                    const paused = records[j];
-                    if (isPaused(paused) && hasMeaningfulMetadata(paused) && (chosen === null
-                                                                              || paused.activeStamp
-                                                                              > chosen.activeStamp
-                                                                              || (paused.activeStamp
-                                                                                  === chosen.activeStamp
-                                                                                  && paused.dbusName
-                                                                                  < chosen.dbusName))) {
-                        chosen = paused;
-                    }
+        // A relevant preferred application wins. When it is absent, stopped,
+        // or metadata-empty while paused, the established automatic policy
+        // remains the immediate fallback.
+        function selectAndPublish() {
+            let chosen = null;
+            if (root.playerPolicy === "preferred" && root.preferredApplication !== "") {
+                chosen = newestPlaying(preferred);
+                if (chosen === null && selectedRecord !== null && preferred(selectedRecord) && isPaused(
+                            selectedRecord)) {
+                    chosen = selectedRecord;
+                }
+                if (chosen === null) {
+                    chosen = newestPaused(preferred);
                 }
             }
-
+            if (chosen === null) {
+                chosen = automaticSelection();
+            }
             if (selectedRecord !== chosen) {
                 selectedRecord = chosen;
                 clearTransient();
             }
-
             publish();
+        }
+
+        function publishApplications() {
+            const byKey = {};
+            for (let index = 0; index < records.length; ++index) {
+                const player = records[index].player;
+                const key = normalizeText(safeRead(player, "desktopEntry", ""),
+                                          root.maximumIdentityCharacters);
+                if (key === "" || byKey[key] !== undefined) {
+                    continue;
+                }
+                const identity = normalizeText(safeRead(player, "identity", ""),
+                                               root.maximumIdentityCharacters);
+                byKey[key] = {
+                    "label": identity !== "" ? identity : key,
+                    "value": key
+                };
+            }
+            const values = Object.keys(byKey).map(key => byKey[key]);
+            values.sort((left, right) => left.label === right.label ? left.value.localeCompare(
+                                                                          right.value) :
+                                                                      left.label.localeCompare(
+                                                                          right.label));
+            availableApplications = Object.freeze(values.slice(0, 16));
         }
 
         // One atomic state replacement per publish, always derived from the

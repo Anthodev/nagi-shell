@@ -194,6 +194,32 @@ void testNormalization()
             "path-like icon name was retained");
 }
 
+void testClearHistory()
+{
+    qint64 now = 0;
+    NotificationRuntime runtime([&now] { return now; }, false);
+    startGeneration(runtime);
+
+    FakeNotification first(30);
+    FakeNotification second(31);
+    attach(runtime, first);
+    attach(runtime, second);
+    require(runtime.liveCount() == 2 && runtime.historyCount() == 2,
+            "clear-history fixture was not admitted");
+
+    runtime.clearHistory();
+    require(runtime.liveCount() == 2 && runtime.historyCount() == 0
+                && first.dismissCalls == 0 && first.expireCalls == 0
+                && second.dismissCalls == 0 && second.expireCalls == 0,
+            "clear history closed protocol notifications or retained snapshots");
+
+    first.summary = QStringLiteral("Still live");
+    runtime.updateNotification(&first);
+    drainEvents();
+    require(runtime.historyCount() == 0,
+            "ordinary live replacement recreated explicitly cleared history");
+}
+
 void testLifecycleAndExpiry()
 {
     qint64 now = 100;
@@ -322,6 +348,7 @@ void testTransientPresentationContract()
     QVector<QString> requestedTokens;
     QVector<int> requestedGenerations;
     QVector<int> requestedRevisions;
+    QVector<QString> requestedUrgencies;
     QVector<QString> invalidatedTokens;
     QObject::connect(
         &runtime, &NotificationRuntime::transientRequested, &runtime,
@@ -329,6 +356,7 @@ void testTransientPresentationContract()
             requestedTokens.append(sourceToken);
             requestedGenerations.append(sourceGeneration);
             requestedRevisions.append(revision);
+            requestedUrgencies.append(runtime.currentTransientUrgency());
         });
     QObject::connect(
         &runtime, &NotificationRuntime::transientInvalidated, &runtime,
@@ -342,11 +370,12 @@ void testTransientPresentationContract()
     notification.summary = QStringLiteral("Review requested");
     notification.body = QString(8192, QLatin1Char('b'));
     notification.appIcon = QString(1024, QLatin1Char('i'));
+    notification.urgency = 2;
     attach(runtime, notification);
-
     require(requestedTokens.size() == 1 && requestedGenerations.constFirst() == 1
-                && requestedRevisions.constFirst() == 1,
-            "fresh notification did not emit one bounded transient identity");
+                && requestedRevisions.constFirst() == 1
+                && requestedUrgencies.constFirst() == QStringLiteral("critical"),
+            "fresh notification did not emit one bounded identity with normalized urgency");
     const QString sourceToken = requestedTokens.constFirst();
     const QString recordKey =
         runtime.historySnapshot(0).value("firstAdmissionSequence").toString();
@@ -577,6 +606,7 @@ int main(int argc, char **argv)
     testNormalization();
     testLifecycleAndExpiry();
     testReplacementAndCloseReasons();
+    testClearHistory();
     testTransientPresentationContract();
     testUrgencyAndAgePrecedence();
     testCapacityAndBounds();

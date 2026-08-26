@@ -820,7 +820,7 @@ ShellRoot {
             extreme.island.expandedHeightPercent = 0.6;
             extreme.island.showWorkspace = false;
             extreme.island.showWeather = false;
-            extreme.island.showMedia = false;
+            extreme.media.compactVisible = false;
             const normalizedExtreme = UserConfig.validateCandidate(extreme);
             require(normalizedExtreme !== null, "combined live appearance extreme is valid");
             UserConfig.publish(normalizedExtreme);

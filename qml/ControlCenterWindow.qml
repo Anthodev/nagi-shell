@@ -9,6 +9,9 @@ FloatingWindow {
 
     required property var surfaceHost
     required property var settingsModel
+    required property var clock
+    required property var media
+    required property var notificationService
     required property var capabilities
     property bool reducedMotion: false
     property string version: "0.1.0"
@@ -25,6 +28,18 @@ FloatingWindow {
                                                              {
                                                                  "id": "appearance",
                                                                  "name": "Appearance"
+                                                             },
+                                                             {
+                                                                 "id": "clock-date",
+                                                                 "name": "Clock & Date"
+                                                             },
+                                                             {
+                                                                 "id": "media",
+                                                                 "name": "Media"
+                                                             },
+                                                             {
+                                                                 "id": "notifications",
+                                                                 "name": "Notifications"
                                                              },
                                                              {
                                                                  "id": "displays",
@@ -58,8 +73,9 @@ FloatingWindow {
                                                                screen.height - Theme.spacing.xxl))
 
     function routeAvailable(routeId) {
-        return routeId === "island" || routeId === "appearance" || routeId === "displays" || routeId
-                === "about";
+        return routeId === "island" || routeId === "appearance" || routeId === "clock-date"
+                || routeId === "media" || routeId === "notifications" || routeId === "displays"
+                || routeId === "about";
     }
 
     function routeName(routeId) {
@@ -403,9 +419,18 @@ FloatingWindow {
                                                                            === "appearance"
                                                                            ? appearancePageComponent :
                                                                              root.currentPageId
-                                                                             === "displays"
-                                                                             ? displaysPageComponent :
-                                                                               aboutPageComponent
+                                                                             === "clock-date"
+                                                                             ? clockDatePageComponent :
+                                                                               root.currentPageId
+                                                                               === "media"
+                                                                               ? mediaPageComponent :
+                                                                                 root.currentPageId
+                                                                                 === "notifications"
+                                                                                 ? notificationsPageComponent :
+                                                                                   root.currentPageId
+                                                                                   === "displays"
+                                                                                   ? displaysPageComponent :
+                                                                                     aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
@@ -427,6 +452,35 @@ FloatingWindow {
 
         AppearancePage {
             settingsModel: root.settingsModel
+            reducedMotion: root.reducedMotion
+        }
+    }
+    Component {
+        id: clockDatePageComponent
+
+        ClockDatePage {
+            settingsModel: root.settingsModel
+            clock: root.clock
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: mediaPageComponent
+
+        MediaPage {
+            settingsModel: root.settingsModel
+            media: root.media
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: notificationsPageComponent
+
+        NotificationsPage {
+            settingsModel: root.settingsModel
+            notificationService: root.notificationService
             reducedMotion: root.reducedMotion
         }
     }

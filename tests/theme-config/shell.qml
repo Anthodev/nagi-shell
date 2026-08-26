@@ -117,6 +117,10 @@ ShellRoot {
         require(parsed !== null && parsed.futureVersion === undefined
                 && UserConfig.snapshotKey(parsed) === UserConfig.snapshotKey(normalized),
                 "every schema field round-trips canonically");
+        const invalidDate = UserConfig.mutableSnapshot(normalized);
+        invalidDate.clock.dateFormat = "yyyy qqq unsafe";
+        require(UserConfig.validateCandidate(invalidDate) === null,
+                "unregistered date patterns are rejected at the settings boundary");
         const continuousPartitions = [{
                                           "page": "appearance",
                                           "key": "surfaceOpacity",

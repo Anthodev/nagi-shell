@@ -9,6 +9,11 @@ import QtQuick
 // consumers receive only native-runtime models and normalized presentation events.
 Scope {
     id: root
+    property bool popupsEnabled: true
+    property bool doNotDisturb: false
+    property string criticalMode: "bypass"
+    property bool dashboardVisible: true
+    property bool historyVisible: true
 
     readonly property var historyModel: NotificationRuntime.historyModel
     readonly property var dashboardModel: NotificationRuntime.dashboardModel
@@ -21,6 +26,7 @@ Scope {
 
     property var generation: NotificationRuntime.beginGeneration()
     property var watchers: ({})
+    property var admittedPopups: ({})
 
     signal transientRequested(string sourceToken, int sourceGeneration, int revision)
     signal transientInvalidated(string sourceToken, int sourceGeneration)
@@ -28,6 +34,50 @@ Scope {
     function dismiss(recordKey) {
         return NotificationRuntime.dismiss(recordKey);
     }
+    function clearHistory() {
+        NotificationRuntime.clearHistory();
+    }
+
+    function popupAllowed(urgency) {
+        return popupsEnabled && (!doNotDisturb || (urgency === "critical" && criticalMode
+                                                   === "bypass"));
+    }
+
+    function reevaluatePopups() {
+        const current = admittedPopups;
+        const retained = {};
+        for (const key of Object.keys(current)) {
+            const identity = current[key];
+            if (popupAllowed(identity.urgency)) {
+                retained[key] = identity;
+            } else {
+                transientInvalidated(identity.sourceToken, identity.sourceGeneration);
+            }
+        }
+        admittedPopups = retained;
+    }
+
+    function admitPopup(sourceToken, sourceGeneration, revision, urgency) {
+        const key = sourceToken + ":" + sourceGeneration;
+        if (popupAllowed(urgency)) {
+            admittedPopups[key] = {
+                "sourceToken": sourceToken,
+                "sourceGeneration": sourceGeneration,
+                "revision": revision,
+                "urgency": urgency
+            };
+            admittedPopups = Object.assign({}, admittedPopups);
+            transientRequested(sourceToken, sourceGeneration, revision);
+        } else if (admittedPopups[key] !== undefined) {
+            delete admittedPopups[key];
+            admittedPopups = Object.assign({}, admittedPopups);
+            transientInvalidated(sourceToken, sourceGeneration);
+        }
+    }
+
+    onPopupsEnabledChanged: reevaluatePopups()
+    onDoNotDisturbChanged: reevaluatePopups()
+    onCriticalModeChanged: reevaluatePopups()
 
     function historyIndex(recordKey) {
         return NotificationRuntime.historyIndex(recordKey);
@@ -93,6 +143,7 @@ Scope {
     function clearWatchers() {
         const current = watchers;
         watchers = {};
+        admittedPopups = {};
         for (const key of Object.keys(current)) {
             current[key].destroy();
         }
@@ -123,10 +174,14 @@ Scope {
         target: NotificationRuntime
 
         function onTransientRequested(sourceToken, sourceGeneration, revision) {
-            root.transientRequested(sourceToken, sourceGeneration, revision);
+            root.admitPopup(sourceToken, sourceGeneration, revision,
+                            NotificationRuntime.currentTransientUrgency);
         }
 
         function onTransientInvalidated(sourceToken, sourceGeneration) {
+            const key = sourceToken + ":" + sourceGeneration;
+            delete root.admittedPopups[key];
+            root.admittedPopups = Object.assign({}, root.admittedPopups);
             root.transientInvalidated(sourceToken, sourceGeneration);
         }
 

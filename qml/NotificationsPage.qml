@@ -1,0 +1,205 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+Flickable {
+    id: root
+
+    required property var settingsModel
+    required property var notificationService
+    property bool reducedMotion: false
+    property string failureText: ""
+
+    clip: true
+    contentWidth: width
+    contentHeight: content.implicitHeight
+    boundsBehavior: Flickable.StopAtBounds
+    ScrollBar.vertical: ScrollBar {
+        policy: root.contentHeight > root.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+    }
+
+    function request(page, changes) {
+        if (settingsModel.updatePage(page, changes, false)) {
+            failureText = "";
+            return true;
+        }
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
+                                                          "The notification change could not be applied.";
+        return false;
+    }
+    function resetPageSettings() {
+        const defaults = settingsModel.defaultSnapshot(0);
+        if (!settingsModel.updatePage("notifications", Object.assign({}, defaults.notifications),
+                                      false) || !settingsModel.updatePage("island", {
+                                                                              "feedbackDuration":
+                                                                              defaults.island.feedbackDuration
+                                                                          }, false)) {
+            failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
+                                                              "The notification defaults could not be restored.";
+            return false;
+        }
+        failureText = "";
+        return true;
+    }
+
+    ColumnLayout {
+        id: content
+
+        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        spacing: Theme.spacing.md
+
+        IslandText {
+            text: "Notifications"
+            size: "title"
+            Accessible.role: Accessible.Heading
+            Accessible.name: text
+        }
+
+        IslandText {
+            Layout.fillWidth: true
+            text: "Popup policy is separate from the bounded, memory-only history. Do Not Disturb never suppresses volume, brightness, workspace, or other system feedback."
+            size: "body"
+            color: Theme.color.textSecondary
+            wrapMode: Text.Wrap
+        }
+
+        SettingToggleRow {
+            Layout.fillWidth: true
+            label: "Notification popups"
+            description: "Allow notification transients on every eligible island."
+            value: root.settingsModel.snapshot.notifications.popupsEnabled
+            writable: root.settingsModel.writable
+            onValueRequested: value => root.request("notifications", {
+                                                        "popupsEnabled": value
+                                                    })
+        }
+
+        SettingToggleRow {
+            Layout.fillWidth: true
+            label: "Do Not Disturb"
+            description:
+            "Suppress normal and low-urgency notification popups while retaining eligible history."
+            value: root.settingsModel.snapshot.notifications.doNotDisturb
+            writable: root.settingsModel.writable
+            onValueRequested: value => root.request("notifications", {
+                                                        "doNotDisturb": value
+                                                    })
+        }
+
+        SettingChoiceRow {
+            Layout.fillWidth: true
+            label: "Critical notifications"
+            description:
+            "Let critical notifications bypass Do Not Disturb, or request total notification silence."
+            value: root.settingsModel.snapshot.notifications.criticalMode
+            choices: [
+                {
+                    "label": "Bypass DND",
+                    "value": "bypass"
+                },
+                {
+                    "label": "Total silence",
+                    "value": "silence"
+                }
+            ]
+            writable: root.settingsModel.writable
+            reducedMotion: root.reducedMotion
+            onValueRequested: value => root.request("notifications", {
+                                                        "criticalMode": value
+                                                    })
+        }
+
+        SettingChoiceRow {
+            Layout.fillWidth: true
+            label: "Feedback duration"
+            description:
+            "Scale visible feedback holds without changing freshness, queue, or retention limits."
+            value: root.settingsModel.snapshot.island.feedbackDuration
+            choices: [
+                {
+                    "label": "Short",
+                    "value": "short"
+                },
+                {
+                    "label": "Normal",
+                    "value": "normal"
+                },
+                {
+                    "label": "Long",
+                    "value": "long"
+                }
+            ]
+            writable: root.settingsModel.writable
+            reducedMotion: root.reducedMotion
+            onValueRequested: value => root.request("island", {
+                                                        "feedbackDuration": value
+                                                    })
+        }
+
+        SettingToggleRow {
+            Layout.fillWidth: true
+            label: "Dashboard recents"
+            description: "Show the fixed bounded recent subset in Expanded."
+            value: root.settingsModel.snapshot.notifications.dashboardVisible
+            writable: root.settingsModel.writable
+            onValueRequested: value => root.request("notifications", {
+                                                        "dashboardVisible": value
+                                                    })
+        }
+
+        SettingToggleRow {
+            Layout.fillWidth: true
+            label: "History"
+            description: "Show the session-only notification history route in the island."
+            value: root.settingsModel.snapshot.notifications.historyVisible
+            writable: root.settingsModel.writable
+            onValueRequested: value => root.request("notifications", {
+                                                        "historyVisible": value
+                                                    })
+        }
+
+        SettingActionRow {
+            Layout.fillWidth: true
+            label: "Clear history"
+            description:
+            "Forget every retained snapshot without closing live protocol notifications or writing to disk."
+            actionLabel: root.notificationService.historyCount === 0 ? "History empty" : "Clear"
+            actionVariant: "danger"
+            writable: root.notificationService.historyCount > 0
+            reducedMotion: root.reducedMotion
+            onActionRequested: root.notificationService.clearHistory()
+        }
+
+        IslandText {
+            Layout.fillWidth: true
+            text: "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime."
+            size: "caption"
+            color: Theme.color.textMuted
+            wrapMode: Text.Wrap
+        }
+
+        IslandText {
+            Layout.fillWidth: true
+            visible: root.failureText !== ""
+            text: root.failureText
+            size: "caption"
+            color: Theme.color.danger
+            wrapMode: Text.Wrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
+        }
+
+        SettingsResetActions {
+            Layout.fillWidth: true
+            pageId: "notifications"
+            writable: root.settingsModel.writable
+            errorText: root.settingsModel.status === "write-failed"
+                       ? root.settingsModel.errorMessage : ""
+            reducedMotion: root.reducedMotion
+            onResetPageRequested: pageId => root.resetPageSettings()
+            onResetAllRequested: root.settingsModel.resetAll()
+        }
+    }
+}

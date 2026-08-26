@@ -536,17 +536,29 @@ ShellRoot {
         // The clock stays independent of every weather failure above.
         require(/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clock.text),
                 "the compact clock renders 24-hour minute text");
-        require(clock.precision === SystemClock.Minutes && !isNaN(clock.date.getTime()),
-                "the compact clock updates only at minute precision");
-        require(clock.dateText.length > 0 && /^Week [1-9][0-9]?$/.test(clock.weekText),
-                "expanded clock derives date and ISO week from the same minute source");
+        require(clock.precision === SystemClock.Minutes && clock.enabled
+                && !isNaN(clock.date.getTime()),
+                "the shared clock defaults to an active minute-only schedule");
+        require(clock.dateText.length > 0,
+                "expanded clock derives its date from the shared minute source");
+        clock.showSeconds = true;
+        require(clock.precision === SystemClock.Seconds
+                && /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(clock.text),
+                "seconds enable exactly the shared second-level clock schedule");
+        clock.scheduleActive = false;
+        require(!clock.enabled && clock.precision === SystemClock.Minutes,
+                "a hidden clock pauses updates and does not retain second precision");
+        clock.scheduleActive = true;
+        clock.showSeconds = false;
         clock.dateFormat = "yyyy-MM-dd";
         require(/^\d{4}-\d{2}-\d{2}$/.test(clock.dateText),
-                "the compact clock applies a custom bounded Qt date pattern");
+                "the compact clock applies a validated date pattern");
         clock.dateFormat = "dddd, d MMMM";
         clock.format = "12h";
         require(/^(?:1[0-2]|[1-9]):[0-5]\d\s.+$/.test(clock.text),
                 "the compact clock renders localized 12-hour text with an AM/PM indicator");
+        clock.format = "auto";
+        require(clock.text.length > 0, "automatic format follows the active locale");
         clock.format = "24h";
 
         // Cache lifecycle across instances: adoption without requests, keyed
