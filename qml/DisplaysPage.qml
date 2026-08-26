@@ -8,6 +8,7 @@ ColumnLayout {
 
     required property var displayController
     property string failureText: ""
+    property bool reducedMotion: false
 
     spacing: Theme.spacing.md
 
@@ -87,6 +88,7 @@ ColumnLayout {
 
                 IslandButton {
                     label: activeRow.modelData.enabled ? "Disable island" : "Enable island"
+                    reducedMotion: root.reducedMotion
                     enabled: !activeRow.modelData.enabled
                              || root.displayController.enabledDisplayCount > 1
                     onClicked: root.requestEnabled(activeRow.modelData.screen,
@@ -95,6 +97,7 @@ ColumnLayout {
 
                 IslandButton {
                     label: activeRow.modelData.fallback ? "Fallback" : "Make fallback"
+                    reducedMotion: root.reducedMotion
                     variant: activeRow.modelData.fallback ? "accent" : "standard"
                     enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
                     onClicked: root.requestFallback(activeRow.modelData.screen)
@@ -155,6 +158,7 @@ ColumnLayout {
 
                 IslandButton {
                     label: "Forget"
+                    reducedMotion: root.reducedMotion
                     variant: "danger"
                     Accessible.description: "Forget this disconnected display after confirmation"
                     onClicked: root.displayController.confirmForget(

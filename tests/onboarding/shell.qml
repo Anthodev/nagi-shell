@@ -57,7 +57,7 @@ ShellRoot {
                 && onboarding.onboardingWindow.implicitWidth === Theme.size.onboardingWidth
                 && onboarding.backgroundItem.radius === Theme.radius.xl,
                 "onboarding uses its semantic window geometry tokens");
-        require(onboarding.settingsAction.Accessible.name === "System Settings"
+        require(onboarding.settingsAction.Accessible.name === "Open Control Center"
                 && onboarding.closeAction.Accessible.name === "Close onboarding",
                 "onboarding actions expose keyboard-accessible names");
         require(findObject(onboarding.settingsAction, "islandFocusRing") !== null
@@ -162,7 +162,7 @@ ShellRoot {
     Connections {
         target: onboarding
         ignoreUnknownSignals: true
-        function onSystemSettingsRequested() {
+        function onControlCenterRequested() {
             test.settingsRequests += 1;
         }
 

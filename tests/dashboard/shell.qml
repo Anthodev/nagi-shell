@@ -144,7 +144,7 @@ ShellRoot {
                     },
                     {
                         "control": findObject(dashboard, "dashboardSettings"),
-                        "text": "System Settings"
+                        "text": "Nagi Control Center"
                     },
                     {
                         "control": findObject(dashboard, "dashboardSession"),
@@ -622,7 +622,7 @@ ShellRoot {
                 "rail keeps its top cluster together and Settings immediately above final Session");
         require(trayButton.Accessible.name === "System tray" && launcherButton.Accessible.name
                 === "Launcher" && historyButton.Accessible.name === "Notification history"
-                && settingsButton.Accessible.name === "System Settings"
+                && settingsButton.Accessible.name === "Nagi Control Center"
                 && settingsButton.Accessible.description === ""
                 && sessionButton.Accessible.name === "Session" && trayButton.implicitHeight
                 >= Theme.size.controlHeightMd,
@@ -630,11 +630,6 @@ ShellRoot {
         require(IconResolver.resolve("settings", "normal", "", "").source.indexOf(
                     "preferences-system") !== -1,
                 "Settings uses the active KDE preferences-system semantic icon");
-        const navigationRoot = test.findObject(dashboard, "dashboardNavigation");
-        navigationRoot.settingsFailure = "System Settings could not be opened. Open it from the application launcher.";
-        require(settingsButton.Accessible.description === navigationRoot.settingsFailure,
-                "Settings launch rejection exposes one bounded actionable failure");
-        navigationRoot.settingsFailure = "";
         trayButton.clicked();
         launcherButton.clicked();
         historyButton.clicked();
@@ -1106,7 +1101,7 @@ ShellRoot {
 
         DashboardNavigation {
             coordinator: navigationCoordinator
-            onSystemSettingsRequested: test.navigationActions.push("settings")
+            onControlCenterRequested: test.navigationActions.push("settings")
         }
     }
 

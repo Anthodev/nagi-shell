@@ -137,7 +137,7 @@ ShellRoot {
                                                                                  "system-lock-screen")),
                 "normalized operating-system meaning resolves through the current icon theme");
         const settings = IconResolver.resolve("settings", "normal", "", "");
-        require(settings.kind === "system" && settings.accessibleName === "System Settings"
+        require(settings.kind === "system" && settings.accessibleName === "Nagi Control Center"
                 && String(settings.source) === String(Quickshell.iconPath("preferences-system"))
                 && !settings.tintable,
                 "Settings preserves the current KDE theme icon without destructive colorization");

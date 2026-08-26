@@ -10,6 +10,7 @@ AbstractButton {
 
     property string variant: "standard"
     property string label: ""
+    property bool reducedMotion: false
 
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
@@ -24,6 +25,7 @@ AbstractButton {
     scale: pressed ? 0.97 : 1
 
     Behavior on scale {
+        enabled: !control.reducedMotion
         NumberAnimation {
             duration: Theme.motion.durationFast
             easing.type: Theme.motion.easingStandard

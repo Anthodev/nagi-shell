@@ -370,6 +370,12 @@ Singleton {
         readonly property int onboardingWidth: 520
         readonly property int onboardingMinimumWidth: 420
         readonly property int onboardingMaximumWidth: 640
+        readonly property int controlCenterMinimumWidth: 640
+        readonly property int controlCenterMinimumHeight: 480
+        readonly property int controlCenterPreferredWidth: 920
+        readonly property int controlCenterPreferredHeight: 660
+        readonly property int controlCenterResponsiveBreakpoint: 760
+        readonly property int controlCenterSidebarWidth: 220
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38

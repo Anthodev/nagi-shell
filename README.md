@@ -95,7 +95,7 @@ make requirements
 
 ### Scripted setup
 
-From a cloned checkout, `sudo ./install.sh` performs the full setup on any distribution running KDE Plasma Wayland: it verifies prerequisites and offers the missing ones through the detected package manager, builds the native helpers, installs the tree under `/usr/share/nagi-shell` (`--dest` overrides this), registers the **Nagi Shell** section in KDE keyboard settings immediately, creates a private default `settings.conf` only when neither V2 settings nor a legacy `theme.conf` exists, enables session autostart, and installs a `nagi-shell` launcher wrapper that hands `org.freedesktop.Notifications` from plasmashell to Nagi for each session. It asks for confirmation before acting; see `./install.sh --help`.
+From a cloned checkout, `sudo ./install.sh` performs the full setup on any distribution running KDE Plasma Wayland: it verifies prerequisites and offers the missing ones through the detected package manager, builds the native helpers, installs the tree under `/usr/share/nagi-shell` (`--dest` overrides this), registers the **Nagi Shell** section in KDE keyboard settings immediately, creates a private default `settings.conf` only when neither V2 settings nor a legacy `theme.conf` exists, enables session autostart, and installs a `nagi-shell` launcher wrapper plus **Nagi Control Center** desktop entry. The entry raises the existing same-process window or starts Nagi and then activates it. The wrapper also hands `org.freedesktop.Notifications` from plasmashell to Nagi for each session. It asks for confirmation before acting; see `./install.sh --help`.
 
 `./uninstall.sh --dest /usr/share/nagi-shell` reverses everything: it stops the instance, removes the **Nagi Shell** shortcut category through the KGlobalAccel D-Bus API (never by editing raw config files), deletes the installation, launcher, desktop and autostart entries plus `~/.config/nagi-shell` and `~/.local/state/nagi-shell`, and offers a plasmashell restart so Plasma reclaims notification delivery.
 
@@ -107,7 +107,7 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. While it runs, Nagi acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. It currently lists only complete Displays and About pages and unloads page content while closed. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
@@ -217,7 +217,7 @@ Everything below stays on this machine; Nagi has no telemetry or sync.
 |---|---|
 | Hover the Idle island | Open the Expanded dashboard |
 | Dashboard device name | Open output/input device selection |
-| Dashboard Tray, Launcher, History, Audio, Settings, or Session action | Open the corresponding view or KDE System Settings |
+| Dashboard Tray, Launcher, History, Audio, Settings, or Session action | Open the corresponding focused view or Nagi Control Center |
 | Expanded or Tray application icon, primary/middle click | Dispatch the tray action and return the non-modal island to Idle |
 | Expanded or Tray application icon, right click | Keep the island open while showing the native context menu; selecting an entry returns Idle, while dismissal preserves the current state |
 | Accepted application launch or reliable external focus loss | Clear non-modal state and return directly to Idle |
@@ -233,9 +233,9 @@ KDE lists these actions under **Nagi Shell**:
 | Open Notification History | Unbound |
 | Open Audio Controls | Unbound |
 | Open Session Controls | Unbound |
-| Open System Settings | Unbound |
+| Open Control Center | Unbound |
 
-Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's right rail keeps the launcher reachable when no global shortcut is active, and the Settings action remains available even when every binding is unbound.
+Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's right rail keeps the launcher reachable when no global shortcut is active, and its Settings action opens the same-process Control Center even when every binding is unbound.
 
 Backend-confirmed state is authoritative for audio, connectivity, brightness, and session operations. Pending and failure states do not report success.
 
@@ -287,6 +287,9 @@ shell.qml
    ├── normalized QML adapters
    │      └── media · audio · connectivity · apps · tray · notifications
    │
+   ├── one lazy Control Center
+   │      └── fixed complete routes · shared services/settings · safe diagnostics
+   │
    └── native helpers and runtime plugins
           └── pointer routing · KWin · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
 ```
@@ -303,7 +306,7 @@ make format-check
 make check
 ```
 
-`make check` runs native, adapter, coordinator, and deterministic service tests, then exercises the real `PanelWindow` scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
+`make check` runs native, adapter, coordinator, deterministic service, Control Center activation, and QML tests, then exercises the real `PanelWindow` and normal-window scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
 
 `qmllint-qt6` remains advisory because it cannot resolve the valid Quickshell `PanelWindow`. Runtime diagnostics and the focused checks are authoritative.
 

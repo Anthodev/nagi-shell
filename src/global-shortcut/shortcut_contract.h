@@ -19,7 +19,7 @@ inline constexpr std::array<ShortcutActionSpec, 7> kShortcutActionSpecs {{
     {"open-notification-history", "Open Notification History", "openHistory", false},
     {"open-audio-controls", "Open Audio Controls", "openAudio", false},
     {"open-session-controls", "Open Session Controls", "openSession", false},
-    {"open-system-settings", "Open System Settings", "openSystemSettings", false},
+    {"open-system-settings", "Open Control Center", "openSystemSettings", false},
 }};
 
 using ShortcutValues = std::array<QJsonValue, kShortcutActionSpecs.size()>;
