@@ -14,6 +14,9 @@ Singleton {
     readonly property int maximumFontFamilyBytes: 128
     readonly property int maximumDateFormatBytes: 64
     readonly property int maximumPreferredApplicationBytes: 256
+    readonly property var allowedDateFormats: Object.freeze(["dddd, d MMMM", "ddd, d MMM",
+                                                             "yyyy-MM-dd", "MM/dd/yyyy",
+                                                             "dd/MM/yyyy"])
     readonly property int maximumLocationLabelBytes: 128
     readonly property int maximumWallpaperRoots: 8
     readonly property int maximumWallpaperRootBytes: 1024
@@ -305,8 +308,9 @@ Singleton {
         }
 
         if (!oneOf(clock.format, ["auto", "12h", "24h"]) || typeof clock.showSeconds !== "boolean"
-                || !boundedString(clock.dateFormat, maximumDateFormatBytes, false)
-                || typeof clock.showIdleDate !== "boolean") {
+                || !boundedString(clock.dateFormat, maximumDateFormatBytes, false) || !oneOf(
+                    clock.dateFormat, allowedDateFormats) || typeof clock.showIdleDate
+                !== "boolean") {
             return null;
         }
         if (typeof media.enabled !== "boolean" || typeof media.compactVisible !== "boolean"

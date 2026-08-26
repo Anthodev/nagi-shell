@@ -294,6 +294,7 @@ ShellRoot {
         const beta = makePlayer({
                                     "dbusName": "org.mpris.beta",
                                     "identity": "Beta",
+                                    "desktopEntry": "beta",
                                     "uniqueId": 22,
                                     "trackTitle": "Second",
                                     "playbackState": MprisPlaybackState.Paused
@@ -308,6 +309,31 @@ ShellRoot {
         require(bundle.adapter.selectedGeneration === 2 && bundle.adapter.playerName === "Beta"
                 && bundle.adapter.playbackState === "playing",
                 "the most recent Playing transition wins");
+        require(bundle.adapter.availableApplications.length === 2
+                && bundle.adapter.availableApplications[0].value === "alpha"
+                && bundle.adapter.availableApplications[1].value === "beta",
+                "connected applications are normalized, unique, and deterministic");
+
+        bundle.adapter.preferredApplication = "alpha";
+        bundle.adapter.playerPolicy = "preferred";
+        require(bundle.adapter.playerName === "Alpha",
+                "a relevant preferred paused application wins over automatic playing selection");
+
+        apply(bundle, () => {
+                  alpha.playbackState = MprisPlaybackState.Stopped;
+              });
+        require(bundle.adapter.playerName === "Beta",
+                "an inactive preferred application falls back to automatic selection");
+
+        apply(bundle, () => {
+                  alpha.playbackState = MprisPlaybackState.Paused;
+              });
+        require(bundle.adapter.playerName === "Alpha",
+                "a preferred application resumes selection when it becomes relevant");
+
+        bundle.adapter.playerPolicy = "automatic";
+        require(bundle.adapter.playerName === "Beta",
+                "returning to Automatic restores newest-playing selection");
 
         apply(bundle, () => {
                   beta.playbackState = MprisPlaybackState.Paused;

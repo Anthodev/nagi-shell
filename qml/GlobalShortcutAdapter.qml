@@ -9,6 +9,7 @@ Scope {
 
     required property var coordinator
     required property string helperPath
+    property bool historyEnabled: true
 
     readonly property bool available: state.available
     readonly property var actions: state.actions
@@ -61,7 +62,7 @@ Scope {
         case "openTray":
             return root.coordinator.openTray(null);
         case "openHistory":
-            return root.coordinator.openHistory(null);
+            return root.historyEnabled && root.coordinator.openHistory(null);
         case "openAudio":
             return root.coordinator.openAudio(null);
         case "openSession":

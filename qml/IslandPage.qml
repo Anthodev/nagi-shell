@@ -112,33 +112,6 @@ Flickable {
                                                                   }, continuous)
         }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: "Feedback duration"
-            description:
-            "Scales visible transient holds without changing freshness or anti-replay limits."
-            value: root.settingsModel.snapshot.island.feedbackDuration
-            choices: [
-                {
-                    "label": "Short",
-                    "value": "short"
-                },
-                {
-                    "label": "Normal",
-                    "value": "normal"
-                },
-                {
-                    "label": "Long",
-                    "value": "long"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "feedbackDuration": value
-                                                    }, false)
-        }
-
         IslandText {
             text: "Compact content"
             size: "title"
@@ -174,17 +147,6 @@ Flickable {
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
                                                         "showWeather": value
-                                                    }, false)
-        }
-
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: "Media"
-            description: "Show the active media summary after Weather when available."
-            value: root.settingsModel.snapshot.island.showMedia
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "showMedia": value
                                                     }, false)
         }
 

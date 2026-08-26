@@ -28,8 +28,10 @@ ShellRoot {
     CompactClock {
         id: clockState
         format: UserConfig.snapshot.clock.format
+        showSeconds: UserConfig.snapshot.clock.showSeconds
         dateFormat: UserConfig.snapshot.clock.dateFormat
         showIdleDate: UserConfig.snapshot.clock.showIdleDate
+        scheduleActive: islandHost.liveSurfaceCount > 0 || controlCenter.visible
     }
 
     IslandStateCoordinator {
@@ -39,6 +41,7 @@ ShellRoot {
 
     GlobalShortcutAdapter {
         id: globalShortcut
+        historyEnabled: UserConfig.snapshot.notifications.historyVisible
 
         coordinator: islandState
         helperPath: Quickshell.shellPath("build/global-shortcut/nagi-global-shortcut")
@@ -59,7 +62,9 @@ ShellRoot {
     MediaAdapter {
         id: mediaAdapter
         enabled: UserConfig.snapshot.media.enabled
-        detailsVisible: islandState.anyExpanded
+        detailsVisible: islandState.anyExpanded && UserConfig.snapshot.media.dashboardVisible
+        playerPolicy: UserConfig.snapshot.media.playerPolicy
+        preferredApplication: UserConfig.snapshot.media.preferredApplication
     }
 
     AudioAdapter {
@@ -94,6 +99,11 @@ ShellRoot {
 
     NotificationService {
         id: notificationService
+        popupsEnabled: UserConfig.snapshot.notifications.popupsEnabled
+        doNotDisturb: UserConfig.snapshot.notifications.doNotDisturb
+        criticalMode: UserConfig.snapshot.notifications.criticalMode
+        dashboardVisible: UserConfig.snapshot.notifications.dashboardVisible
+        historyVisible: UserConfig.snapshot.notifications.historyVisible
     }
 
     TrayAdapter {
@@ -136,6 +146,9 @@ ShellRoot {
 
         surfaceHost: islandHost
         settingsModel: UserConfig
+        clock: clockState
+        media: mediaAdapter
+        notificationService: notificationService
         reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": islandHost.liveSurfaceCount > 0,
@@ -153,6 +166,7 @@ ShellRoot {
 
         function activate(reason: string): bool {
             if (reason !== "control-center" && reason !== "island" && reason !== "appearance" && reason
+                    !== "clock-date" && reason !== "media" && reason !== "notifications" && reason
                     !== "displays" && reason !== "about") {
                 return false;
             }

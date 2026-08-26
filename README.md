@@ -108,7 +108,7 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. Its complete Island, Appearance, Displays, and About pages unload while closed; Island and Appearance changes publish immediately through the shared settings snapshot. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop the checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. Its complete Island, Appearance, Clock & Date, Media, Notifications, Displays, and About pages unload while closed; setting changes publish immediately through the shared settings snapshot. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop the checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
@@ -186,7 +186,7 @@ roots=[]
 | `settings` | Exact integer `schema_version=2`; newer versions enter read-only compatibility mode |
 | `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full`, `reduced`, or `minimal`; family: 1–128 UTF-8 bytes; radius: `8–32` |
 | `island` | Compact height `44–48`, padding `16–32`, expanded width/height fractions `0.6–1`; fixed booleans for compact content and Gaming feedback; duration `short`, `normal`, or `long` |
-| `clock` | Format `auto`, `12h`, or `24h`; seconds and Idle date booleans; non-empty Qt date pattern up to 64 UTF-8 bytes |
+| `clock` | Format `auto`, `12h`, or `24h`; seconds and Idle date booleans; date pattern `dddd, d MMMM`, `ddd, d MMM`, `yyyy-MM-dd`, `MM/dd/yyyy`, or `dd/MM/yyyy` |
 | `media` | Integration, compact, and dashboard booleans; `automatic` or `preferred` player policy; preferred desktop-file ID up to 256 UTF-8 bytes |
 | `notifications` | Popup, DND, dashboard, and history booleans; critical policy `bypass` or `silence` |
 | `weather` | Enabled and consent booleans; label up to 128 UTF-8 bytes; latitude `-90–90`; longitude `-180–180`; temperature `auto`/`celsius`/`fahrenheit`; wind `auto`/`kmh`/`mph`/`ms`; refresh `15m`/`30m`/`1h`/`3h` |
@@ -198,7 +198,7 @@ Valid UI changes publish one immutable generation immediately. Continuous contro
 
 All settings files and backups use mode `0600` inside a mode-`0700` directory. A native writer rejects symlinks, directories, devices, FIFOs, foreign ownership, and unsafe replacements before performing private atomic writes. Wi-Fi passwords, Bluetooth codes, Polkit secrets, notification content, wallpaper thumbnails, provider responses, hardware IDs, and backend paths never enter settings, backups, diagnostics, or logs. Reset all affects settings only; it does not clear histories, caches, credentials, paired devices, saved networks, or user files.
 
-`clock.date_format` follows [Qt's date format syntax](https://doc.qt.io/qt-6/qdate.html#toString-1). Common fields are `d`/`dd`, `ddd`/`dddd`, `M`/`MM`, `MMM`/`MMMM`, and `yy`/`yyyy`; literal text uses single quotes.
+`clock.date_format` accepts only the five validated patterns listed above. The Control Center presents them as bounded choices rather than accepting arbitrary Qt format strings.
 
 ## Data storage
 

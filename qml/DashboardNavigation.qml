@@ -10,6 +10,7 @@ Item {
 
     required property var coordinator
     property var surfaceToken: null
+    property bool showHistory: true
     signal controlCenterRequested
 
     readonly property alias topCluster: navigationTopCluster
@@ -45,6 +46,7 @@ Item {
         }
 
         RailButton {
+            visible: root.showHistory
             objectName: "dashboardHistory"
             meaning: "history"
             accessibleName: "Notification history"

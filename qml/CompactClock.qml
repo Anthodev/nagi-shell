@@ -1,25 +1,28 @@
 import Quickshell
 import QtQuick
 
-// Minute precision is the visible granularity of both clock formats, so this
-// clock updates only when the minute changes.
+// One process-wide clock owns every visible projection. Minute precision remains
+// the default; second precision is enabled only while a surface needs it.
 SystemClock {
     id: clock
     property string format: "24h"
+    property bool showSeconds: false
     property string dateFormat: "dddd, d MMMM"
     property bool showIdleDate: false
+    property bool scheduleActive: true
 
-    precision: SystemClock.Minutes
-    function isoWeek(date) {
-        const thursday = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-        const day = thursday.getUTCDay() || 7;
-        thursday.setUTCDate(thursday.getUTCDate() + 4 - day);
-        const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-        return Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
-    }
+    enabled: scheduleActive
+    precision: showSeconds && scheduleActive ? SystemClock.Seconds : SystemClock.Minutes
 
-    readonly property string text: format === "12h" ? Qt.formatDateTime(clock.date, "h:mm AP") :
-                                                      Qt.formatDateTime(clock.date, "HH:mm")
+    readonly property bool usesTwelveHours: format === "12h" || (format === "auto" && Qt.locale(
+                                                                     ).timeFormat(
+                                                                     Locale.ShortFormat).toUpperCase(
+                                                                     ).indexOf("AP") !== -1)
+    readonly property string text: Qt.formatDateTime(clock.date, usesTwelveHours ? showSeconds
+                                                                                   ? "h:mm:ss AP" :
+                                                                                     "h:mm AP" :
+                                                                                     showSeconds
+                                                                                     ? "HH:mm:ss" :
+                                                                                       "HH:mm")
     readonly property string dateText: Qt.formatDateTime(clock.date, dateFormat)
-    readonly property string weekText: "Week " + isoWeek(clock.date)
 }

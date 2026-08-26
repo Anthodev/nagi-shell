@@ -379,8 +379,8 @@ Scope {
                 id: dashboardQuickControls
 
                 DashboardQuickControls {
-                    centerStatusInMainLane: host.media === null || !host.media.available
-                    connectivity: host.connectivityAdapter
+                    centerStatusInMainLane: host.media === null || !host.media.available ||
+                                            !UserConfig.snapshot.media.dashboardVisible
                     applicationModel: host.applicationModel
                     tray: host.trayAdapter
                     menuParentWindow: entry.liveSurface
@@ -414,6 +414,8 @@ Scope {
                 DashboardNavigation {
                     coordinator: host.coordinator
                     surfaceToken: entry.surfaceToken
+                    showHistory: host.notificationService === null
+                                 || host.notificationService.historyVisible !== false
                     onControlCenterRequested: host.controlCenterRequested(entry.surfaceToken)
                 }
             }
@@ -448,7 +450,9 @@ Scope {
                     reducedMotion: host.reducedMotion
                     dashboardMediaContent: host.dashboardMediaContent !== null
                                            ? host.dashboardMediaContent : host.media !== null
-                                             && host.media.available ? dashboardMedia : null
+                                             && host.media.available
+                                             && UserConfig.snapshot.media.dashboardVisible
+                                             ? dashboardMedia : null
                     dashboardClockContent: host.dashboardClockContent !== null
                                            ? host.dashboardClockContent : dashboardClock
                     dashboardQuickControlsContent: host.dashboardQuickControlsContent !== null
@@ -458,7 +462,9 @@ Scope {
                                            ? host.dashboardAudioContent : dashboardAudio
                     dashboardNotificationsContent: host.dashboardNotificationsContent !== null
                                                    ? host.dashboardNotificationsContent :
-                                                     dashboardNotifications
+                                                     host.notificationService === null
+                                                     || host.notificationService.dashboardVisible
+                                                     !== false ? dashboardNotifications : null
                     dashboardNavigationContent: host.dashboardNavigationContent !== null
                                                 ? host.dashboardNavigationContent :
                                                   dashboardNavigation

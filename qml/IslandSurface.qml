@@ -768,7 +768,7 @@ PanelWindow {
         reducedMotion: surface.reducedMotion
         showWorkspace: UserConfig.snapshot.island.showWorkspace
         showWeather: UserConfig.snapshot.island.showWeather
-        showMedia: UserConfig.snapshot.island.showMedia
+        showMedia: UserConfig.snapshot.media.compactVisible
     }
 
     ExpandedDashboard {

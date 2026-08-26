@@ -87,6 +87,11 @@ QHash<int, QByteArray> NotificationHistoryModel::roleNames() const
         {ResidentRole, "resident"},
     };
 }
+QString NotificationRuntime::currentTransientUrgency() const
+{
+    return latestTransientUrgency;
+}
+
 
 void NotificationHistoryModel::reset()
 {
@@ -336,6 +341,21 @@ bool NotificationRuntime::dismiss(const QVariant &recordKeyValue)
     armScheduler();
     return true;
 }
+void NotificationRuntime::clearHistory()
+{
+    if (historySnapshots.isEmpty()) {
+        return;
+    }
+    for (auto association = liveAssociations.begin(); association != liveAssociations.end();
+         ++association) {
+        association->recordKey.reset();
+    }
+    historySnapshots.clear();
+    notifyHistoryReset();
+    armScheduler();
+}
+
+
 
 int NotificationRuntime::historyIndex(const QVariant &recordKeyValue) const
 {
@@ -406,6 +426,7 @@ QVariantMap NotificationRuntime::resolveTransient(const QString &sourceToken, in
     }
     return {};
 }
+
 
 const QVector<NotificationSnapshot> &NotificationRuntime::history() const
 {
@@ -737,9 +758,11 @@ void NotificationRuntime::dispatchPresentation(
     association.transientAppIconName = notification.appIconName;
     ++association.transientRevision;
     association.transientPresentationValid = true;
+    latestTransientUrgency = association.urgency;
     emit transientRequested(association.transientSourceToken,
                             association.transientSourceGeneration,
                             association.transientRevision);
+    latestTransientUrgency.clear();
 }
 
 void NotificationRuntime::invalidatePresentation(LiveAssociation &association)

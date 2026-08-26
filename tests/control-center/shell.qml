@@ -134,11 +134,14 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 4
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 7
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
-                && controlCenter.availableRoutes[2].id === "displays"
-                && controlCenter.availableRoutes[3].id === "about",
+                && controlCenter.availableRoutes[2].id === "clock-date"
+                && controlCenter.availableRoutes[3].id === "media"
+                && controlCenter.availableRoutes[4].id === "notifications"
+                && controlCenter.availableRoutes[5].id === "displays"
+                && controlCenter.availableRoutes[6].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
@@ -171,14 +174,47 @@ ShellRoot {
         controlCenter.contentItem.children[0].grabToImage(function (result) {
             require(test.islandCapturePath !== "" && result.saveToFile(test.islandCapturePath),
                     "real Control Center Island capture is saved");
-            require(controlCenter.open("displays", tokenB)
-                    && controlCenter.currentPageId === "displays",
-                    "all complete pages share the same singleton");
-            controlCenter.closeWindow();
-            test.stage = "closed";
+            require(controlCenter.open("clock-date", tokenB)
+                    && controlCenter.currentPageId === "clock-date",
+                    "Clock & Date joins the shared responsive page viewport");
+            test.stage = "clock";
             settle.restart();
         });
     }
+    function clockStage() {
+        require(controlCenter.loadedPageItem !== null && fakeClock.text !== ""
+                && fakeClock.dateText !== "",
+                "Clock & Date uses the shared clock preview");
+        require(controlCenter.open("media", tokenB) && controlCenter.currentPageId === "media",
+                "Media joins the shared responsive page viewport");
+        stage = "media";
+        settle.restart();
+    }
+
+    function mediaStage() {
+        require(controlCenter.loadedPageItem !== null && fakeMedia.availableApplications.length === 1,
+                "Media receives the normalized shared application policy source");
+        require(controlCenter.open("notifications", tokenB)
+                && controlCenter.currentPageId === "notifications",
+                "Notifications joins the shared responsive page viewport");
+        stage = "notifications";
+        settle.restart();
+    }
+
+    function notificationsStage() {
+        require(controlCenter.loadedPageItem !== null && fakeNotifications.historyCount === 1,
+                "Notifications receives the shared memory-history service");
+        fakeNotifications.clearHistory();
+        require(fakeNotifications.historyCount === 0,
+                "Clear history stays inside the existing service boundary");
+        require(controlCenter.open("displays", tokenB)
+                && controlCenter.currentPageId === "displays",
+                "all complete pages share the same singleton");
+        controlCenter.closeWindow();
+        stage = "closed";
+        settle.restart();
+    }
+
 
     function closedStage() {
         require(!controlCenter.visible && controlCenter.loadedPageCount === 0
@@ -275,6 +311,15 @@ ShellRoot {
         case "island":
             islandStage();
             break;
+        case "clock":
+            clockStage();
+            break;
+        case "media":
+            mediaStage();
+            break;
+        case "notifications":
+            notificationsStage();
+            break;
         case "closed":
             closedStage();
             break;
@@ -359,11 +404,33 @@ ShellRoot {
         }
     }
 
+    QtObject {
+        id: fakeClock
+        property string text: "12:34"
+        property string dateText: "Wednesday, 26 August"
+    }
+
+    QtObject {
+        id: fakeMedia
+        property var availableApplications: [{"label": "Fixture Player", "value": "fixture"}]
+    }
+
+    QtObject {
+        id: fakeNotifications
+        property int historyCount: 1
+        function clearHistory() {
+            historyCount = 0;
+        }
+    }
+
     ControlCenterWindow {
         id: controlCenter
 
         surfaceHost: fakeHost
         settingsModel: UserConfig
+        clock: fakeClock
+        media: fakeMedia
+        notificationService: fakeNotifications
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,

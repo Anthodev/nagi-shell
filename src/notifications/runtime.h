@@ -71,6 +71,7 @@ class NotificationRuntime final : public QObject {
     Q_PROPERTY(QString failureCategory READ failureCategory NOTIFY serverOwnershipChanged)
     Q_PROPERTY(bool actionsSupported READ actionsSupported CONSTANT)
     Q_PROPERTY(int activeTimerCount READ activeTimerCount NOTIFY activeTimerCountChanged)
+    Q_PROPERTY(QString currentTransientUrgency READ currentTransientUrgency)
 
 public:
     explicit NotificationRuntime(QObject *parent = nullptr);
@@ -86,6 +87,7 @@ public:
     QString failureCategory() const;
     bool actionsSupported() const;
     int activeTimerCount() const;
+    QString currentTransientUrgency() const;
 
     Q_INVOKABLE quint64 beginGeneration();
     Q_INVOKABLE void attachNotification(QObject *notification, quint64 generation);
@@ -93,6 +95,7 @@ public:
     Q_INVOKABLE void closeNotification(QObject *notification, int reason);
     Q_INVOKABLE void finishGeneration(quint64 generation);
     Q_INVOKABLE bool dismiss(const QVariant &recordKey);
+    Q_INVOKABLE void clearHistory();
     Q_INVOKABLE int historyIndex(const QVariant &recordKey) const;
     Q_INVOKABLE bool canAct(const QVariant &recordKey) const;
     Q_INVOKABLE QVariantList actionsFor(const QVariant &recordKey) const;
@@ -211,6 +214,7 @@ private:
     bool historyExhaustionReported = false;
     bool liveExhaustionReported = false;
     bool reconcilingGeneration = false;
+    QString latestTransientUrgency;
     bool ownsNotificationServer = false;
     bool ownershipMonitoringEnabled = false;
     QDBusServiceWatcher serviceWatcher;
