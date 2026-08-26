@@ -30,9 +30,12 @@ Item {
     property var weather: null
     property var media: null
     property bool reducedMotion: false
+    property bool showWorkspace: true
+    property bool showWeather: true
+    property bool showMedia: true
 
-    readonly property int contentPadding: Theme.spacing.xl
-    readonly property int contentGap: Theme.spacing.xl
+    readonly property int contentPadding: Theme.size.islandCompactPadding
+    readonly property int contentGap: Theme.size.islandCompactPadding
     readonly property int boundaryWidth: contentGap * 2 + Theme.size.hairlineWidth
     readonly property int boundaryHeight: Theme.size.islandSeparatorHeight
     readonly property int workspaceIndicatorWidth: Theme.size.islandWorkspaceIndicatorWidth
@@ -54,7 +57,7 @@ Item {
     readonly property int resolvedHeight: Math.max(44, Math.min(48, Math.max(Theme.size.islandIdleHeight,
                                                                              derivedContentHeight)))
 
-    readonly property bool workspaceAvailable: virtualDesktops !== null
+    readonly property bool workspaceAvailable: showWorkspace && virtualDesktops !== null
                                                && virtualDesktops.available === true
     readonly property string workspaceText: {
         if (!workspaceAvailable) {
@@ -75,12 +78,13 @@ Item {
     readonly property bool idleDateVisible: clockVisible && clock.showIdleDate === true
                                             && typeof clock.dateText === "string" && clock.dateText
                                             !== ""
-    readonly property bool weatherAvailable: weather !== null && weather.available === true
+    readonly property bool weatherAvailable: showWeather && weather !== null && weather.available
+                                             === true
     readonly property string temperatureText: weatherAvailable ? Math.round(weather.temperatureC)
                                                                  + "°" : ""
     readonly property string weatherCaptionText: composeWeatherCaption()
 
-    readonly property bool mediaAvailable: media !== null && media.available === true
+    readonly property bool mediaAvailable: showMedia && media !== null && media.available === true
     readonly property string mediaSummary: composeMediaSummary()
 
     implicitWidth: contentPadding * 2 + contentRow.implicitWidth

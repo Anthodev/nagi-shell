@@ -46,6 +46,8 @@ Scope {
     readonly property int surfaceHeight: fallbackSurface === null ? 0 : fallbackSurface.height
     readonly property int surfaceScreenWidth: fallbackSurface === null || fallbackSurface.screen
                                               === null ? 0 : fallbackSurface.screen.width
+    readonly property int surfaceScreenHeight: fallbackSurface === null || fallbackSurface.screen
+                                               === null ? 0 : fallbackSurface.screen.height
     readonly property int surfaceLeftMargin: fallbackSurface === null ? 0 :
                                                                         fallbackSurface.margins.left
     readonly property int surfaceTopMargin: fallbackSurface === null ? 0 :
@@ -58,6 +60,7 @@ Scope {
                                                     && fallbackSurface.backgroundCoversSurface
     readonly property real backgroundRadius: fallbackSurface === null ? 0 :
                                                                         fallbackSurface.backgroundRadius
+    readonly property bool blurRequested: fallbackSurface !== null && fallbackSurface.blurRequested
     readonly property bool surfaceFocusable: fallbackSurface !== null && fallbackSurface.focusable
     readonly property bool dashboardFocused: fallbackSurface !== null
                                              && fallbackSurface.dashboardFocused

@@ -34,6 +34,7 @@ ShellRoot {
 
     IslandStateCoordinator {
         id: islandState
+        feedbackDuration: UserConfig.snapshot.island.feedbackDuration
     }
 
     GlobalShortcutAdapter {
@@ -50,7 +51,7 @@ ShellRoot {
 
     WeatherAdapter {
         id: weather
-        enabled: UserConfig.snapshot.weather.enabled
+        enabled: UserConfig.snapshot.weather.enabled && UserConfig.snapshot.island.showWeather
         latitude: UserConfig.snapshot.weather.latitude ?? Number.NaN
         longitude: UserConfig.snapshot.weather.longitude ?? Number.NaN
     }
@@ -99,8 +100,14 @@ ShellRoot {
         id: trayAdapter
     }
 
-    ReducedMotion {
-        id: motion
+    KdeAppearanceAdapter {
+        id: appearance
+    }
+
+    Binding {
+        target: Theme
+        property: "systemAppearance"
+        value: appearance.snapshot
     }
 
     IslandSurfaceHost {
@@ -120,7 +127,7 @@ ShellRoot {
         brightnessTransientSource: brightness
         volumeTransientSource: audioAdapter
         notificationTransientSource: notificationService
-        reducedMotion: motion.active
+        reducedMotion: Theme.motion.effectiveMode === "minimal"
         onControlCenterRequested: token => openControlCenter("control-center", token)
     }
 
@@ -129,7 +136,7 @@ ShellRoot {
 
         surfaceHost: islandHost
         settingsModel: UserConfig
-        reducedMotion: motion.active
+        reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": islandHost.liveSurfaceCount > 0,
                            "audio": audioAdapter.available,
@@ -145,7 +152,8 @@ ShellRoot {
         target: "nagi"
 
         function activate(reason: string): bool {
-            if (reason !== "control-center" && reason !== "displays" && reason !== "about") {
+            if (reason !== "control-center" && reason !== "island" && reason !== "appearance" && reason
+                    !== "displays" && reason !== "about") {
                 return false;
             }
             return openControlCenter(reason, null);

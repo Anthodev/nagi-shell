@@ -15,6 +15,16 @@ Singleton {
     // The injected wallpaper adapter publishes { accent: "#RRGGBB" } here only
     // for a validated Ready snapshot and clears the seam on every failure state.
     property var wallpaperPalette: null
+    // Normalized by KdeAppearanceAdapter. Tests may inject an immutable snapshot.
+    property var systemAppearance: Object.freeze({
+                                                     "accent": "#3DAEE9",
+                                                     "animationFactor": 1,
+                                                     "colorScheme": "light",
+                                                     "generation": 0,
+                                                     "schemeName": "BreezeLight",
+                                                     "surface": "#EFF0F1",
+                                                     "text": "#232629"
+                                                 })
     readonly property var snapshot: root._snapshot
 
     readonly property string officialAccent: "#5B6FF5"
@@ -27,12 +37,17 @@ Singleton {
 
     function visualConfiguration(appearance) {
         return Object.freeze({
-                                 "mode": appearance.accentMode === "wallpaper" ? "wallpaper" :
-                                                                                 "accent",
-                                 "configuredAccent": appearance.customAccent,
-                                 "surfaceOpacity": appearance.surfaceOpacity,
+                                 "accentMode": appearance.accentMode,
+                                 "borderIntensity": appearance.borderIntensity,
+                                 "blurEnabled": appearance.blurEnabled,
+                                 "customAccent": appearance.customAccent,
+                                 "customSurface": appearance.customSurface,
+                                 "customText": appearance.customText,
                                  "fontFamily": appearance.fontFamily,
-                                 "outerRadius": appearance.outerRadius
+                                 "motion": appearance.motion,
+                                 "outerRadius": appearance.outerRadius,
+                                 "scheme": appearance.scheme,
+                                 "surfaceOpacity": appearance.surfaceOpacity
                              });
     }
 
@@ -43,8 +58,8 @@ Singleton {
         return value.toUpperCase();
     }
 
-    function rgb(hex) {
-        const canonical = canonicalHex(hex);
+    function rgb(value, background) {
+        const canonical = canonicalHex(value);
         if (canonical === null) {
             return null;
         }
@@ -59,15 +74,11 @@ Singleton {
         if (alpha === 1) {
             return foreground;
         }
-        const background = {
-            "r": 8,
-            "g": 13,
-            "b": 22
-        };
+        const base = rgb(background ?? "#080D16");
         return {
-            "r": Math.round(foreground.r * alpha + background.r * (1 - alpha)),
-            "g": Math.round(foreground.g * alpha + background.g * (1 - alpha)),
-            "b": Math.round(foreground.b * alpha + background.b * (1 - alpha))
+            "r": Math.round(foreground.r * alpha + base.r * (1 - alpha)),
+            "g": Math.round(foreground.g * alpha + base.g * (1 - alpha)),
+            "b": Math.round(foreground.b * alpha + base.b * (1 - alpha))
         };
     }
 
@@ -124,17 +135,23 @@ Singleton {
         }
         return target;
     }
-
-    function chooseForeground(backgrounds) {
-        const dark = "#080D16";
-        const light = "#F1F5FA";
-        let darkFloor = Number.POSITIVE_INFINITY;
-        let lightFloor = Number.POSITIVE_INFINITY;
-        for (let index = 0; index < backgrounds.length; index += 1) {
-            darkFloor = Math.min(darkFloor, contrast(dark, backgrounds[index]));
-            lightFloor = Math.min(lightFloor, contrast(light, backgrounds[index]));
+    function ensureContrastAgainst(candidate, backgrounds, floor, toward) {
+        const original = typeof candidate === "string" ? rgb(candidate) : candidate;
+        const target = typeof toward === "string" ? rgb(toward) : toward;
+        for (let step = 0; step <= 32; step += 1) {
+            const adjusted = step === 0 ? original : mix(original, target, step / 32);
+            let valid = true;
+            for (let index = 0; index < backgrounds.length; index += 1) {
+                if (contrast(adjusted, backgrounds[index]) < floor) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                return adjusted;
+            }
         }
-        return darkFloor >= lightFloor ? dark : light;
+        return target;
     }
 
     function validWallpaperAccent() {
@@ -144,18 +161,87 @@ Singleton {
         return canonicalHex(root.wallpaperPalette.accent);
     }
 
+    function maintainedPalette(scheme, configuration) {
+        const dark = {
+            "danger": "#F26D7E",
+            "progressTrack": "#1C2836",
+            "success": "#7BD88F",
+            "surface": "#080D16",
+            "surfaceBorder": "#263448",
+            "text": "#EFF3F8",
+            "warning": "#E8C268"
+        };
+        const oled = Object.assign({}, dark, {
+                                       "progressTrack": "#1A1D24",
+                                       "surface": "#000000",
+                                       "surfaceBorder": "#303641",
+                                       "text": "#F5F7FA"
+                                   });
+        const light = {
+            "danger": "#A12B3D",
+            "progressTrack": "#D5DBE2",
+            "success": "#19723A",
+            "surface": "#F4F6F8",
+            "surfaceBorder": "#AAB4C0",
+            "text": "#151A21",
+            "warning": "#805E00"
+        };
+        if (scheme === "nagi-oled") {
+            return oled;
+        }
+        if (scheme === "nagi-light") {
+            return light;
+        }
+        if (scheme === "system") {
+            const base = systemAppearance.colorScheme === "dark" ? dark : light;
+            return Object.assign({}, base, {
+                                     "surface": canonicalHex(systemAppearance.surface)
+                                                ?? base.surface,
+                                     "text": canonicalHex(systemAppearance.text) ?? base.text
+                                 });
+        }
+        if (scheme === "custom") {
+            const surface = configuration.customSurface;
+            const text = configuration.customText;
+            const base = luminance(surface) > 0.45 ? light : dark;
+            return Object.assign({}, base, {
+                                     "surface": surface,
+                                     "surfaceBorder": hex(mix(surface, text, 0.24)),
+                                     "text": text
+                                 });
+        }
+        return dark;
+    }
+
     function buildSnapshot(configuration) {
-        const wallpaperAccent = configuration.mode === "wallpaper" ? validWallpaperAccent() : null;
+        const palette = maintainedPalette(configuration.scheme, configuration);
+        const wallpaperAccent = configuration.accentMode === "wallpaper" ? validWallpaperAccent() :
+                                                                           null;
         const candidates = [];
-        if (wallpaperAccent !== null) {
+        if (configuration.accentMode === "wallpaper" && wallpaperAccent !== null) {
             candidates.push({
                                 "accent": wallpaperAccent,
                                 "source": "wallpaper"
                             });
-        }
-        if (configuration.configuredAccent !== null) {
+        } else if (configuration.accentMode === "system") {
             candidates.push({
-                                "accent": configuration.configuredAccent,
+                                "accent": systemAppearance.accent,
+                                "source": "system"
+                            });
+        } else if (configuration.accentMode === "custom") {
+            candidates.push({
+                                "accent": configuration.customAccent,
+                                "source": "custom"
+                            });
+        } else if (configuration.accentMode === "nagi") {
+            candidates.push({
+                                "accent": root.officialAccent,
+                                "source": "nagi"
+                            });
+        }
+        if (configuration.accentMode === "wallpaper") {
+            candidates.push({
+                                "accent": configuration.customAccent,
                                 "source": "configured"
                             });
         }
@@ -165,7 +251,7 @@ Singleton {
                         });
 
         for (let index = 0; index < candidates.length; index += 1) {
-            const snapshot = deriveSnapshot(configuration, candidates[index].accent,
+            const snapshot = deriveSnapshot(configuration, palette, candidates[index].accent,
                                             candidates[index].source, wallpaperAccent);
             if (snapshot !== null) {
                 return snapshot;
@@ -174,66 +260,122 @@ Singleton {
         return null;
     }
 
-    function deriveSnapshot(configuration, selected, source, wallpaperAccent) {
-        const surfaceBase = "#080D16";
-        const progressTrack = "#1C2836";
-        const primaryRgb = ensureContrast(rgb(selected), surfaceBase, 4.5, "#FFFFFF");
+    function deriveSnapshot(configuration, palette, selected, source, wallpaperAccent) {
+        const surfaceBase = palette.surface;
+        const textPrimary = palette.text;
+        if (contrast(textPrimary, surfaceBase) < 4.5) {
+            return null;
+        }
+        const selectedRgb = rgb(selected, surfaceBase);
+        if (selectedRgb === null) {
+            return null;
+        }
+        const toward = luminance(surfaceBase) > 0.45 ? "#000000" : "#FFFFFF";
+        const foreground = luminance(surfaceBase) > 0.45 ? "#F1F5FA" : "#080D16";
+        const primaryRgb = ensureContrastAgainst(selectedRgb, [surfaceBase, foreground], 4.5,
+                                                 toward);
         const primary = hex(primaryRgb);
-        const hover = hex(ensureContrast(mix(primaryRgb, "#FFFFFF", 0.18), surfaceBase, 4.5,
-                                         "#FFFFFF"));
-
-        const pressed = hex(ensureContrast(mix(primaryRgb, surfaceBase, 0.10), surfaceBase, 4.5,
-                                           "#FFFFFF"));
-        const focusRing = hex(ensureContrast(mix(primaryRgb, "#FFFFFF", 0.24), surfaceBase, 3,
-                                             "#FFFFFF"));
-        const progressFill = hex(ensureContrast(primaryRgb, progressTrack, 3, "#FFFFFF"));
-        const foreground = chooseForeground([primary, hover, pressed]);
+        const hover = hex(ensureContrastAgainst(mix(primaryRgb, toward, 0.18), [surfaceBase,
+                                                                                foreground], 4.5,
+                                                toward));
+        const pressed = hex(ensureContrastAgainst(mix(primaryRgb, toward, 0.08), [surfaceBase,
+                                                                                  foreground], 4.5,
+                                                  toward));
+        const focusRing = hex(ensureContrast(mix(primaryRgb, toward, 0.24), surfaceBase, 3,
+                                             toward));
+        const progressFill = hex(ensureContrast(primaryRgb, palette.progressTrack, 3, toward));
         const surfaceHover = hex(ensureContrast(mix(surfaceBase, primaryRgb, 0.10), surfaceBase,
                                                 1.08, primaryRgb));
         const surfaceActive = hex(ensureContrast(mix(surfaceBase, primaryRgb, 0.18), surfaceBase,
                                                  1.16, primaryRgb));
-        const controlFill = "#16222F";
+        const controlFill = hex(mix(surfaceBase, textPrimary, 0.08));
         const controlFillHover = hex(mix(controlFill, primaryRgb, 0.12));
         const controlFillPressed = hex(mix(controlFill, primaryRgb, 0.20));
-        const border = "#263448";
-        const borderHover = hex(ensureContrast(mix(border, primaryRgb, 0.28), surfaceBase, 3,
-                                               "#FFFFFF"));
-        const borderPressed = hex(ensureContrast(mix(border, primaryRgb, 0.42), surfaceBase, 3,
-                                                 "#FFFFFF"));
+        const borderHover = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.28),
+                                               surfaceBase, 3, toward));
+        const borderPressed = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.42),
+                                                 surfaceBase, 3, toward));
+        const textSecondary = hex(ensureContrast(mix(textPrimary, surfaceBase, 0.24), surfaceBase,
+                                                 4.5, textPrimary));
+        const textMuted = hex(ensureContrast(mix(textPrimary, surfaceBase, 0.43), surfaceBase, 4.5,
+                                             textPrimary));
+        let dangerRgb = ensureContrast(palette.danger, surfaceBase, 4.5, toward);
+        let dangerFill = hex(mix(surfaceBase, dangerRgb, 0.06));
+        let dangerFillHover = hex(mix(surfaceBase, dangerRgb, 0.10));
+        let dangerFillPressed = hex(mix(surfaceBase, dangerRgb, 0.14));
+        dangerRgb = ensureContrastAgainst(dangerRgb, [surfaceBase, dangerFill, dangerFillHover,
+                                                      dangerFillPressed], 4.5, toward);
+        const danger = hex(dangerRgb);
+        dangerFill = hex(mix(surfaceBase, dangerRgb, 0.06));
+        dangerFillHover = hex(mix(surfaceBase, dangerRgb, 0.10));
+        dangerFillPressed = hex(mix(surfaceBase, dangerRgb, 0.14));
+        const warning = hex(ensureContrast(palette.warning, surfaceBase, 4.5, toward));
+        const success = hex(ensureContrast(palette.success, surfaceBase, 4.5, toward));
         const ratios = Object.freeze({
                                          "accentOnSurface": contrast(primary, surfaceBase),
                                          "accentForeground": Math.min(contrast(foreground, primary),
                                                                       contrast(foreground, hover),
                                                                       contrast(foreground, pressed)),
                                          "focusRingOnSurface": contrast(focusRing, surfaceBase),
-                                         "progressOnTrack": contrast(progressFill, progressTrack),
+                                         "progressOnTrack": contrast(progressFill,
+                                                                     palette.progressTrack),
                                          "surfaceHoverOnBase": contrast(surfaceHover, surfaceBase),
-                                         "surfaceActiveOnBase": contrast(surfaceActive, surfaceBase)
+                                         "surfaceActiveOnBase": contrast(surfaceActive, surfaceBase),
+                                         "statusOnSurface": Math.min(contrast(danger, surfaceBase),
+                                                                     contrast(warning, surfaceBase),
+                                                                     contrast(success, surfaceBase)),
+                                         "dangerOnFills": Math.min(contrast(danger, dangerFill),
+                                                                   contrast(danger, dangerFillHover),
+                                                                   contrast(danger,
+                                                                            dangerFillPressed)),
+                                         "textOnSurface": contrast(textPrimary, surfaceBase),
+                                         "textSecondaryOnSurface": contrast(textSecondary,
+                                                                            surfaceBase),
+                                         "textMutedOnSurface": contrast(textMuted, surfaceBase)
                                      });
         if (ratios.accentOnSurface < 3 || ratios.accentForeground < 4.5
                 || ratios.focusRingOnSurface < 3 || ratios.progressOnTrack < 3
-                || ratios.surfaceHoverOnBase < 1.08 || ratios.surfaceActiveOnBase < 1.16) {
+                || ratios.surfaceHoverOnBase < 1.08 || ratios.surfaceActiveOnBase < 1.16
+                || ratios.statusOnSurface < 4.5 || ratios.dangerOnFills < 4.5
+                || ratios.textOnSurface < 4.5 || ratios.textSecondaryOnSurface < 4.5
+                || ratios.textMutedOnSurface < 4.5) {
             return null;
         }
         return Object.freeze({
-                                 "generation": root._generation,
-                                 "mode": configuration.mode,
-                                 "source": source,
-                                 "configuredAccent": configuration.configuredAccent,
-                                 "wallpaperAccent": wallpaperAccent,
                                  "accent": primary,
+                                 "accentForeground": foreground,
                                  "accentHover": hover,
                                  "accentPressed": pressed,
-                                 "accentForeground": foreground,
-                                 "focusRing": focusRing,
-                                 "progressFill": progressFill,
-                                 "surfaceHover": surfaceHover,
-                                 "surfaceActive": surfaceActive,
+                                 "borderIntensity": configuration.borderIntensity,
+                                 "blurEnabled": configuration.blurEnabled,
+                                 "configuredAccent": configuration.customAccent,
+                                 "contrast": ratios,
+                                 "controlFill": controlFill,
                                  "controlFillHover": controlFillHover,
                                  "controlFillPressed": controlFillPressed,
+                                 "danger": danger,
+                                 "dangerFill": dangerFill,
+                                 "dangerFillHover": dangerFillHover,
+                                 "dangerFillPressed": dangerFillPressed,
+                                 "focusRing": focusRing,
+                                 "generation": root._generation,
+                                 "mode": configuration.accentMode,
+                                 "progressFill": progressFill,
+                                 "progressTrack": palette.progressTrack,
+                                 "scheme": configuration.scheme,
+                                 "source": source,
+                                 "success": success,
+                                 "surface": surfaceBase,
+                                 "surfaceActive": surfaceActive,
+                                 "surfaceBorder": palette.surfaceBorder,
                                  "surfaceBorderHover": borderHover,
                                  "surfaceBorderPressed": borderPressed,
-                                 "contrast": ratios
+                                 "surfaceHover": surfaceHover,
+                                 "textMuted": textMuted,
+                                 "textPrimary": textPrimary,
+                                 "textSecondary": textSecondary,
+                                 "wallpaperAccent": wallpaperAccent,
+                                 "warning": warning
                              });
     }
 
@@ -289,6 +431,11 @@ Singleton {
             publish(root._configuration);
         }
     }
+    onSystemAppearanceChanged: {
+        if (root._initialized) {
+            publish(root._configuration);
+        }
+    }
 
     Connections {
         target: UserConfig
@@ -297,22 +444,31 @@ Singleton {
             root.syncUserConfiguration();
         }
     }
+    function effectiveMotionScale(userMode, animationFactor) {
+        const userScale = userMode === "minimal" ? 0 : userMode === "reduced" ? 0.5 : 1;
+        const kdeScale = animationFactor <= 0 ? 0 : Math.min(1, animationFactor);
+        return Math.min(userScale, kdeScale);
+    }
+
+    function motionMode(scale) {
+        return scale <= 0 ? "minimal" : scale < 1 ? "reduced" : "full";
+    }
 
     readonly property QtObject color: QtObject {
-        readonly property color surface: "#F5080D16"
-        readonly property color surfaceOpaque: "#080D16"
-        readonly property color surfaceBorder: "#263448"
-        readonly property color controlFill: "#16222F"
-        readonly property color textPrimary: "#EFF3F8"
-        readonly property color textSecondary: "#B9C4D2"
-        readonly property color textMuted: "#8494A6"
-        readonly property color danger: "#F26D7E"
-        readonly property color dangerFill: "#21171B"
-        readonly property color dangerFillHover: "#321B22"
-        readonly property color dangerFillPressed: "#43202A"
-        readonly property color success: "#7BD88F"
-        readonly property color warning: "#E8C268"
-        readonly property color progressTrack: "#1C2836"
+        readonly property color surface: root.snapshot.surface
+        readonly property color surfaceOpaque: root.snapshot.surface
+        readonly property color surfaceBorder: root.snapshot.surfaceBorder
+        readonly property color controlFill: root.snapshot.controlFill
+        readonly property color textPrimary: root.snapshot.textPrimary
+        readonly property color textSecondary: root.snapshot.textSecondary
+        readonly property color textMuted: root.snapshot.textMuted
+        readonly property color danger: root.snapshot.danger
+        readonly property color dangerFill: root.snapshot.dangerFill
+        readonly property color dangerFillHover: root.snapshot.dangerFillHover
+        readonly property color dangerFillPressed: root.snapshot.dangerFillPressed
+        readonly property color success: root.snapshot.success
+        readonly property color warning: root.snapshot.warning
+        readonly property color progressTrack: root.snapshot.progressTrack
         readonly property color surfaceHover: root.snapshot.surfaceHover
         readonly property color surfaceActive: root.snapshot.surfaceActive
         readonly property color progressFill: root.snapshot.progressFill
@@ -353,7 +509,8 @@ Singleton {
 
     readonly property QtObject size: QtObject {
         readonly property int islandIdleWidth: 120
-        readonly property int islandIdleHeight: 46
+        readonly property int islandIdleHeight: UserConfig.snapshot.island.compactHeight
+        readonly property int islandCompactPadding: UserConfig.snapshot.island.compactPadding
         readonly property int islandWorkspaceIndicatorWidth: 28
         readonly property int islandWorkspaceIndicatorHeight: 22
         readonly property int islandSeparatorHeight: 18
@@ -393,6 +550,7 @@ Singleton {
         readonly property real surface: UserConfig.snapshot.appearance.surfaceOpacity
         readonly property real disabled: 0.45
         readonly property real shadow: 0.28
+        readonly property real border: UserConfig.snapshot.appearance.borderIntensity
     }
 
     readonly property QtObject elevation: QtObject {
@@ -403,10 +561,16 @@ Singleton {
     }
 
     readonly property QtObject motion: QtObject {
-        readonly property int durationFast: 70
-        readonly property int durationNormal: 120
-        readonly property int durationSlow: 170
-        readonly property int durationExpansion: 190
+        readonly property real scale: root.effectiveMotionScale(
+                                          UserConfig.snapshot.appearance.motion,
+                                          root.systemAppearance.animationFactor)
+        readonly property string effectiveMode: root.motionMode(scale)
+
+        readonly property int durationFast: scale <= 0 ? 0 : Math.max(1, Math.round(70 * scale))
+        readonly property int durationNormal: scale <= 0 ? 0 : Math.max(1, Math.round(120 * scale))
+        readonly property int durationSlow: scale <= 0 ? 0 : Math.max(1, Math.round(170 * scale))
+        readonly property int durationExpansion: scale <= 0 ? 0 : Math.max(1, Math.round(190
+                                                                                         * scale))
         readonly property int expansionAnchor: Qt.AlignTop
         readonly property int easingStandard: Easing.OutCubic
         readonly property int easingExpansion: Easing.OutCubic

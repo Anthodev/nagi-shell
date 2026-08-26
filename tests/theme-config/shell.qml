@@ -58,7 +58,7 @@ ShellRoot {
             "accentMode": "custom",
             "customSurface": "#101010",
             "customText": "#F0F0F0",
-            "customAccent": "#123456",
+            "customAccent": "#8090FF",
             "surfaceOpacity": 0.85,
             "borderIntensity": 1,
             "blurEnabled": true,
@@ -117,6 +117,46 @@ ShellRoot {
         require(parsed !== null && parsed.futureVersion === undefined
                 && UserConfig.snapshotKey(parsed) === UserConfig.snapshotKey(normalized),
                 "every schema field round-trips canonically");
+        const continuousPartitions = [{
+                                          "page": "appearance",
+                                          "key": "surfaceOpacity",
+                                          "values": [0.85, 0.9, 0.96, 1]
+                                      }, {
+                                          "page": "appearance",
+                                          "key": "borderIntensity",
+                                          "values": [0, 0.25, 0.5, 0.75, 1]
+                                      }, {
+                                          "page": "appearance",
+                                          "key": "outerRadius",
+                                          "values": [8, 12, 16, 24, 32]
+                                      }, {
+                                          "page": "island",
+                                          "key": "compactHeight",
+                                          "values": [44, 45, 46, 47, 48]
+                                      }, {
+                                          "page": "island",
+                                          "key": "compactPadding",
+                                          "values": [16, 20, 24, 28, 32]
+                                      }, {
+                                          "page": "island",
+                                          "key": "expandedWidthPercent",
+                                          "values": [0.6, 0.7, 0.8, 0.9, 1]
+                                      }, {
+                                          "page": "island",
+                                          "key": "expandedHeightPercent",
+                                          "values": [0.6, 0.7, 0.8, 0.9, 1]
+                                      }];
+        for (let partition = 0; partition < continuousPartitions.length; partition += 1) {
+            const entry = continuousPartitions[partition];
+            for (let valueIndex = 0; valueIndex < entry.values.length; valueIndex += 1) {
+                const candidate = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+                candidate[entry.page][entry.key] = entry.values[valueIndex];
+                require(UserConfig.validateCandidate(candidate) !== null,
+                        entry.page + "." + entry.key + " partition " + entry.values[valueIndex]
+                        + " stays inside the complete schema invariants");
+            }
+        }
+
 
         const legacyAlphaContent = "[theme]\nmode=accent\naccent=#CC24C78A\n";
         const legacyAlpha = UserConfig.parseLegacyConfiguration(
@@ -154,12 +194,89 @@ ShellRoot {
         require(future !== null && future.futureVersion === 3,
                 "future schema detection ignores unknown future fields safely");
     }
+    function validateAppearanceContract() {
+        const defaults = UserConfig.defaultSnapshot(0).appearance;
+        const schemes = ["nagi-dark", "nagi-oled", "nagi-light", "system", "custom"];
+        Theme.systemAppearance = Object.freeze({
+                                                   "accent": "#3DAEE9",
+                                                   "animationFactor": 1,
+                                                   "colorScheme": "light",
+                                                   "generation": 1,
+                                                   "schemeName": "BreezeLight",
+                                                   "surface": "#EFF0F1",
+                                                   "text": "#232629"
+                                               });
+        for (let index = 0; index < schemes.length; index += 1) {
+            const appearance = Object.assign({}, defaults, {
+                                                 "accentMode": "nagi",
+                                                 "customAccent": "#8090FF",
+                                                 "customSurface": "#101010",
+                                                 "customText": "#F0F0F0",
+                                                 "scheme": schemes[index]
+                                             });
+            const snapshot = Theme.buildSnapshot(Theme.visualConfiguration(appearance));
+            require(snapshot !== null && snapshot.scheme === schemes[index]
+                    && snapshot.contrast.textOnSurface >= 4.5
+                    && snapshot.contrast.textSecondaryOnSurface >= 4.5
+                    && snapshot.contrast.textMutedOnSurface >= 4.5
+                    && snapshot.contrast.statusOnSurface >= 4.5
+                    && snapshot.contrast.dangerOnFills >= 4.5
+                    && snapshot.contrast.focusRingOnSurface >= 3,
+                    "maintained scheme " + schemes[index] + " publishes a complete safe palette: "
+                    + JSON.stringify(snapshot));
+        }
+
+        const accentModes = ["nagi", "system", "wallpaper", "custom"];
+        Theme.wallpaperPalette = Object.freeze({
+                                                   "accent": "#D06BFF"
+                                               });
+        for (let index = 0; index < accentModes.length; index += 1) {
+            const appearance = Object.assign({}, defaults, {
+                                                 "accentMode": accentModes[index],
+                                                 "customAccent": "#8090FF"
+                                             });
+            const snapshot = Theme.buildSnapshot(Theme.visualConfiguration(appearance));
+            require(snapshot !== null && snapshot.mode === accentModes[index]
+                    && snapshot.contrast.accentForeground >= 4.5,
+                    "accent mode " + accentModes[index] + " derives readable state roles");
+        }
+        Theme.wallpaperPalette = null;
+
+        const unsafeText = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        unsafeText.appearance.scheme = "custom";
+        unsafeText.appearance.customSurface = "#101010";
+        unsafeText.appearance.customText = "#202020";
+        require(UserConfig.validateCandidate(unsafeText) === null,
+                "unreadable custom text is rejected before settings publication");
+        const unsafeAccent = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        unsafeAccent.appearance.scheme = "custom";
+        unsafeAccent.appearance.accentMode = "custom";
+        unsafeAccent.appearance.customSurface = "#101010";
+        unsafeAccent.appearance.customText = "#F0F0F0";
+        unsafeAccent.appearance.customAccent = "#202020";
+        const normalizedAccent = UserConfig.validateCandidate(unsafeAccent);
+        require(normalizedAccent !== null, "syntactically valid custom accent is normalized");
+        const derivedAccent = Theme.buildSnapshot(
+                    Theme.visualConfiguration(normalizedAccent.appearance));
+        require(derivedAccent !== null && derivedAccent.contrast.accentOnSurface >= 3
+                && derivedAccent.contrast.accentForeground >= 4.5,
+                "low-contrast custom accent derives safe non-text and foreground roles");
+        require(Theme.effectiveMotionScale("full", 1) === 1
+                && Theme.motionMode(Theme.effectiveMotionScale("full", 1)) === "full"
+                && Theme.effectiveMotionScale("reduced", 1) === 0.5
+                && Theme.motionMode(Theme.effectiveMotionScale("reduced", 1)) === "reduced"
+                && Theme.effectiveMotionScale("minimal", 1) === 0
+                && Theme.effectiveMotionScale("full", 0) === 0,
+                "effective motion always chooses the most restrictive Nagi or KDE preference");
+    }
+
 
     function runNormal() {
         switch (stage) {
         case "startup": {
             if (!schemaValidated) {
                 validateSchemaContract();
+                validateAppearanceContract();
                 schemaValidated = true;
             }
             if (!awaitState(UserConfig.status === "ready" && configReader.loaded,

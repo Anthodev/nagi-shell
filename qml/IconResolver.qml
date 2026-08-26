@@ -12,7 +12,7 @@ Singleton {
     id: root
 
     readonly property string placeholderSource: assetSource("placeholder.svg")
-    readonly property string iconSurface: "#080D16"
+    readonly property string iconSurface: Theme.snapshot.surface
     property var _warned: ({})
 
     readonly property var _identityFiles: Object.freeze({
@@ -110,7 +110,8 @@ Singleton {
     }
 
     function readableDynamicTint(candidate) {
-        return Theme.hex(Theme.ensureContrast(candidate, root.iconSurface, 4.5, "#FFFFFF"));
+        const toward = Theme.luminance(root.iconSurface) > 0.45 ? "#000000" : "#FFFFFF";
+        return Theme.hex(Theme.ensureContrast(candidate, root.iconSurface, 4.5, toward));
     }
 
     function tintFor(state) {

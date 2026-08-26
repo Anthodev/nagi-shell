@@ -19,6 +19,14 @@ FloatingWindow {
 
     readonly property var availableRoutes: Object.freeze([
                                                              {
+                                                                 "id": "island",
+                                                                 "name": "Island"
+                                                             },
+                                                             {
+                                                                 "id": "appearance",
+                                                                 "name": "Appearance"
+                                                             },
+                                                             {
                                                                  "id": "displays",
                                                                  "name": "Displays"
                                                              },
@@ -31,6 +39,7 @@ FloatingWindow {
                                          ? "sidebar" : "compact"
     readonly property bool pageLoaded: pageLoader.active && pageLoader.item !== null
     readonly property int loadedPageCount: pageLoaded ? 1 : 0
+    readonly property var loadedPageItem: pageLoaded ? pageLoader.item : null
     readonly property string activeRouteName: routeName(currentPageId)
     readonly property string diagnosticText: currentPageId === "about" && pageLoader.item !== null
                                              ? pageLoader.item.diagnosticText : ""
@@ -49,7 +58,8 @@ FloatingWindow {
                                                                screen.height - Theme.spacing.xxl))
 
     function routeAvailable(routeId) {
-        return routeId === "displays" || routeId === "about";
+        return routeId === "island" || routeId === "appearance" || routeId === "displays" || routeId
+                === "about";
     }
 
     function routeName(routeId) {
@@ -388,12 +398,36 @@ FloatingWindow {
                         Layout.fillHeight: true
                         active: root.visible && (root.layoutMode === "sidebar" ||
                                                  !root.compactNavigationVisible)
-                        sourceComponent: root.currentPageId === "displays" ? displaysPageComponent :
-                                                                             aboutPageComponent
+                        sourceComponent: root.currentPageId === "island" ? islandPageComponent :
+                                                                           root.currentPageId
+                                                                           === "appearance"
+                                                                           ? appearancePageComponent :
+                                                                             root.currentPageId
+                                                                             === "displays"
+                                                                             ? displaysPageComponent :
+                                                                               aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
             }
+        }
+    }
+
+    Component {
+        id: islandPageComponent
+
+        IslandPage {
+            settingsModel: root.settingsModel
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: appearancePageComponent
+
+        AppearancePage {
+            settingsModel: root.settingsModel
+            reducedMotion: root.reducedMotion
         }
     }
 

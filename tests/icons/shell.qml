@@ -187,6 +187,16 @@ ShellRoot {
             require(contrastForState(state) >= floor, state + " icon tint meets its " + floor
                     + ":1 contrast floor against the island base");
         }
+        const lightCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+        lightCandidate.appearance.scheme = "nagi-light";
+        UserConfig.publish(UserConfig.validateCandidate(lightCandidate));
+        require(IconResolver.iconSurface === Theme.snapshot.surface
+                && Theme.contrast(IconResolver.tintFor("normal").toString(),
+                                  IconResolver.iconSurface) >= 4.5
+                && Theme.luminance(IconResolver.iconSurface) > 0.45,
+                "semantic icons adapt their tint contract to the light scheme surface");
+        UserConfig.publish(UserConfig.defaultSnapshot(0));
+
 
         Theme.wallpaperPalette = {
             "accent": "#3B5D83"

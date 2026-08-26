@@ -708,7 +708,7 @@ test-dashboard: check-quickshell | $(BUILD_DIR)
 test-idle: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(IDLE_TEST_DIR)/qml
 	cp tests/idle/shell.qml $(IDLE_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/ReducedMotion.qml $(IDLE_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/KdeAppearanceAdapter.qml $(IDLE_TEST_DIR)/qml/
 	$(QS) -p $(IDLE_TEST_DIR) --no-duplicate
 
 test-typography: check-quickshell | $(BUILD_DIR)
@@ -728,8 +728,8 @@ test-control-center: check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
 	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
 	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
-	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
 	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
 
 # Issue #70 gate: one PanelWindow per connected screen, independent

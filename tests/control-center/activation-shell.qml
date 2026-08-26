@@ -19,7 +19,8 @@ ShellRoot {
         target: "nagi"
 
         function activate(reason: string): bool {
-            if (reason !== "control-center" && reason !== "displays" && reason !== "about") {
+            if (reason !== "control-center" && reason !== "island" && reason !== "appearance"
+                    && reason !== "displays" && reason !== "about") {
                 return false;
             }
             root.activationCount += 1;

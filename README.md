@@ -48,13 +48,14 @@ weather · media       connectivity · audio      tray · audio · session
 ## Highlights
 
 - **One real surface.** Idle, Expanded, focused subviews, and transients share one `PanelWindow`; a central coordinator owns priority, timeouts, preemption, and restoration.
-- **Adaptive geometry.** Content determines the island size. Empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
-- **Useful Idle state.** A two-digit workspace badge, clock, optional weather, and available media fit a metrics-derived 44 to 48 px bar. Media and its separator collapse when the selected MPRIS source disappears; a paused player with valid metadata stays visible.
+- **Adaptive geometry.** Content determines the island size. Compact height/padding and expanded screen fractions stay inside tested bounds; empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
+- **Useful Idle state.** Mandatory Clock plus optional Workspace, Weather, and Media stay in one fixed order inside a metrics-derived 44 to 48 px bar. Disabled or unavailable groups and separators collapse completely.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail.
 - **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
-- **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, D-Bus connectivity and session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, and the Plasma wallpaper palette feed normalized adapters.
-- **Semantic theme and icons.** A live theme snapshot provides contrast-checked roles. Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback; muted input has its own slashed-microphone shape.
-- **Restrained motion.** Focused content enters and exits over 120 ms while the outer geometry interpolates over 190 ms. Reduced-motion preferences settle both layers and focus synchronously.
+- **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, D-Bus connectivity and session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and the Plasma wallpaper palette feed normalized adapters.
+- **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback.
+- **Semantic icons.** Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback and adapt contrast to the current semantic surface; muted input has its own slashed-microphone shape.
+- **Restrained motion.** Full, Reduced, and Minimal combine with KDE's animation preference by selecting the most restrictive scale. Minimal settles geometry, loaders, and focus synchronously.
 
 ## State model
 
@@ -107,7 +108,7 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. It currently lists only complete Displays and About pages and unloads page content while closed. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. Its complete Island, Appearance, Displays, and About pages unload while closed; Island and Appearance changes publish immediately through the shared settings snapshot. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop the checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
