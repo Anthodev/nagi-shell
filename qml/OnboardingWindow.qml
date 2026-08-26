@@ -162,7 +162,7 @@ Scope {
 
             IslandText {
                 Layout.fillWidth: true
-                text: "Configure appearance, media, weather, and clock preferences in theme.conf under your Nagi configuration directory."
+                text: "Nagi stores appearance, media, weather, and clock preferences in a private versioned settings.conf and migrates an older theme.conf automatically."
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }

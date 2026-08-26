@@ -95,7 +95,7 @@ make requirements
 
 ### Scripted setup
 
-From a cloned checkout, `sudo ./install.sh` performs the full setup on any distribution running KDE Plasma Wayland: it verifies prerequisites and offers the missing ones through the detected package manager, builds the native helpers, installs the tree under `/usr/share/nagi-shell` (`--dest` overrides this), registers the **Nagi Shell** section in KDE keyboard settings immediately, creates a default `theme.conf` without ever overwriting an existing one, enables session autostart, and installs a `nagi-shell` launcher wrapper that hands `org.freedesktop.Notifications` from plasmashell to Nagi for each session. It asks for confirmation before acting; see `./install.sh --help`.
+From a cloned checkout, `sudo ./install.sh` performs the full setup on any distribution running KDE Plasma Wayland: it verifies prerequisites and offers the missing ones through the detected package manager, builds the native helpers, installs the tree under `/usr/share/nagi-shell` (`--dest` overrides this), registers the **Nagi Shell** section in KDE keyboard settings immediately, creates a private default `settings.conf` only when neither V2 settings nor a legacy `theme.conf` exists, enables session autostart, and installs a `nagi-shell` launcher wrapper that hands `org.freedesktop.Notifications` from plasmashell to Nagi for each session. It asks for confirmation before acting; see `./install.sh --help`.
 
 `./uninstall.sh --dest /usr/share/nagi-shell` reverses everything: it stops the instance, removes the **Nagi Shell** shortcut category through the KGlobalAccel D-Bus API (never by editing raw config files), deletes the installation, launcher, desktop and autostart entries plus `~/.config/nagi-shell` and `~/.local/state/nagi-shell`, and offers a plasmashell restart so Plasma reclaims notification delivery.
 
@@ -107,61 +107,97 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window points to the configuration file and KDE shortcut settings. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. While it runs, Nagi acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. While it runs, Nagi acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop this checkout synchronously.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
 ## Configuration
 
-Nagi reads `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/theme.conf`. If the file is missing, Nagi creates this default without replacing an existing file:
+Nagi owns one canonical file at `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/settings.conf`. Schema version `2` is a file-format version, not the product's internal V2 program name. New files use the private canonical template in `packaging/settings.conf`; valid legacy `theme.conf` values migrate once, byte-for-byte backup to `settings.conf.bak`, then the old file stops being active.
 
 > [!WARNING]
-> Weather is opt-in and performs no request until both valid coordinates exist. Enabling it means direct requests reveal your IP address and two-decimal truncated coordinates to MET Norway. Nagi never geolocates by IP address and never contacts a geocoding service; use the linked Nominatim page to look up coordinates manually.
+> Weather remains opt-in. Enabling migrated coordinates means direct requests reveal your IP address and four-decimal coordinates to MET Norway. Nagi never uses IP geolocation. Future location search is an explicit user action owned by the Weather page.
 
 ```ini
-[theme]
-mode=wallpaper
-accent=#5B6FF5
+[settings]
+schema_version=2
+
+[appearance]
+scheme=nagi-dark
+accent_mode=wallpaper
+custom_surface=#080D16
+custom_text=#EFF3F8
+custom_accent=#5B6FF5
 surface_opacity=0.96
+border_intensity=0
+blur_enabled=false
+motion=full
 font_family=Inter
 outer_radius=16
 
-[media]
-enabled=true
-
-[weather]
-enabled=false
-; Find a city's coordinates:
-; https://nominatim.openstreetmap.org/ui/search.html
-; latitude=48.85
-; longitude=2.35
+[island]
+compact_height=46
+compact_padding=24
+expanded_width_percent=1
+expanded_height_percent=1
+show_workspace=true
+show_weather=true
+show_media=true
+feedback_duration=normal
+gaming_indicator=true
 
 [clock]
 format=24h
+show_seconds=false
 date_format=dddd, d MMMM
 show_idle_date=false
+
+[media]
+enabled=true
+compact_visible=true
+dashboard_visible=true
+player_policy=automatic
+preferred_application=""
+
+[notifications]
+popups_enabled=true
+do_not_disturb=false
+critical_mode=bypass
+dashboard_visible=true
+history_visible=true
+
+[weather]
+enabled=false
+consent=false
+location_label=""
+latitude=-
+longitude=-
+temperature_unit=auto
+wind_unit=auto
+refresh_preset=1h
+
+[wallpaper]
+roots=[]
 ```
 
-| Section and key | Type and allowed value | Default | Effect |
-|---|---|---|---|
-| `theme.mode` | `wallpaper` or `accent` | `wallpaper` | Select the wallpaper-derived or fixed accent path |
-| `theme.accent` | `#RRGGBB` or `#AARRGGBB` | `#5B6FF5` | Set the fixed accent or wallpaper-mode fallback |
-| `theme.surface_opacity` | Decimal from `0.85` to `1.0` | `0.96` | Set only the outer island fill and shadow silhouette opacity |
-| `theme.font_family` | Non-empty UTF-8 family name, at most 128 bytes | `Inter` | Set the presentation-wide family through `Theme.type.family` |
-| `theme.outer_radius` | Whole logical pixels from `8` to `32` | `16` | Set the outer island and shadow radius |
-| `media.enabled` | `true` or `false` | `true` | Show media and enable MPRIS observation |
-| `weather.enabled` | `true` or `false` | `false` | Enable MET Norway weather only when both coordinates are valid |
-| `weather.latitude` | Decimal from `-90` to `90` | unset | Set the explicit weather latitude |
-| `weather.longitude` | Decimal from `-180` to `180` | unset | Set the explicit weather longitude |
-| `clock.format` | `12h` or `24h` | `24h` | Select localized 12-hour time with AM/PM or `HH:mm` |
-| `clock.date_format` | Non-empty Qt date pattern, at most 64 UTF-8 bytes | `dddd, d MMMM` | Format the date in Idle and Expanded presentations |
-| `clock.show_idle_date` | `true` or `false` | `false` | Place the formatted date beside Idle time |
+| Section | Allowed values and bounds |
+|---|---|
+| `settings` | Exact integer `schema_version=2`; newer versions enter read-only compatibility mode |
+| `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full`, `reduced`, or `minimal`; family: 1–128 UTF-8 bytes; radius: `8–32` |
+| `island` | Compact height `44–48`, padding `16–32`, expanded width/height fractions `0.6–1`; fixed booleans for compact content and Gaming feedback; duration `short`, `normal`, or `long` |
+| `clock` | Format `auto`, `12h`, or `24h`; seconds and Idle date booleans; non-empty Qt date pattern up to 64 UTF-8 bytes |
+| `media` | Integration, compact, and dashboard booleans; `automatic` or `preferred` player policy; preferred desktop-file ID up to 256 UTF-8 bytes |
+| `notifications` | Popup, DND, dashboard, and history booleans; critical policy `bypass` or `silence` |
+| `weather` | Enabled and consent booleans; label up to 128 UTF-8 bytes; latitude `-90–90`; longitude `-180–180`; temperature `auto`/`celsius`/`fahrenheit`; wind `auto`/`kmh`/`mph`/`ms`; refresh `15m`/`30m`/`1h`/`3h` |
+| `wallpaper` | JSON array of at most eight unique absolute roots, each at most 1024 UTF-8 bytes |
 
-The strict parser accepts only these sections and keys. The file is limited to 4 KiB. Empty, oversized, duplicate, unknown, malformed, NUL-containing, non-finite, or out-of-range values reject the entire candidate. Valid changes apply atomically without restarting Quickshell. Invalid, partial, deleted, or unavailable content preserves the last valid snapshot. If Nagi cannot create the default, built-in defaults still start the shell.
+The complete file is capped at 32 KiB: eight bounded wallpaper roots consume at most 8 KiB, while every other scalar remains below 2 KiB, leaving editorial headroom without permitting unbounded input. Unknown, duplicate, empty, malformed, NUL-containing, non-finite, or out-of-range input rejects the complete snapshot; no consumer sees a per-field hybrid.
 
-`clock.date_format` follows [Qt's date format syntax](https://doc.qt.io/qt-6/qdate.html#toString-1). Common fields are `d`/`dd` for the day number, `ddd`/`dddd` for the localized weekday, `M`/`MM` for the month number, `MMM`/`MMMM` for the localized month name, and `yy`/`yyyy` for the year. Examples: `dd/MM/yyyy`, `yyyy-MM-dd`, and `ddd d MMM`. Put literal text inside single quotes. Empty patterns, control characters, and patterns longer than 64 UTF-8 bytes invalidate the candidate snapshot.
+Valid UI changes publish one immutable generation immediately. Continuous controls persist after a bounded 180 ms debounce; a write failure rolls the complete snapshot back. Valid external replacements win atomically. Invalid, partial, unreadable, or removed content keeps `settings.conf.last-good`, retains the bad file, blocks ordinary writes, and requires explicit **Restore last-good** or **Reset defaults**. Recovery first saves invalid bytes to `settings.conf.invalid`. A newer schema is never rewritten or downgraded.
 
-Wallpaper mode derives a bounded accent from the current Plasma static-image wallpaper, then falls back through `theme.accent` to `#5B6FF5`. Accent mode requires `theme.accent`. Both paths keep the existing contrast floors. Disabling media stops MPRIS observation. Disabling weather or omitting valid coordinates performs no weather request. Nagi never uses IP geolocation or calls a geocoding service.
+All settings files and backups use mode `0600` inside a mode-`0700` directory. A native writer rejects symlinks, directories, devices, FIFOs, foreign ownership, and unsafe replacements before performing private atomic writes. Wi-Fi passwords, Bluetooth codes, Polkit secrets, notification content, wallpaper thumbnails, provider responses, hardware IDs, and backend paths never enter settings, backups, diagnostics, or logs. Reset all affects settings only; it does not clear histories, caches, credentials, paired devices, saved networks, or user files.
+
+`clock.date_format` follows [Qt's date format syntax](https://doc.qt.io/qt-6/qdate.html#toString-1). Common fields are `d`/`dd`, `ddd`/`dddd`, `M`/`MM`, `MMM`/`MMMM`, and `yy`/`yyyy`; literal text uses single quotes.
 
 ## Data storage
 

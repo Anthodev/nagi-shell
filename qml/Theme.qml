@@ -18,12 +18,23 @@ Singleton {
     readonly property var snapshot: root._snapshot
 
     readonly property string officialAccent: "#5B6FF5"
-    property var _configuration: UserConfig.snapshot.theme
+    property var _configuration: visualConfiguration(UserConfig.snapshot.appearance)
     property int _generation: 1
     property var _snapshot: buildSnapshot(_configuration)
     property string _snapshotKey: ""
     property bool _initialized: false
     property var _loggedFailures: ({})
+
+    function visualConfiguration(appearance) {
+        return Object.freeze({
+                                 "mode": appearance.accentMode === "wallpaper" ? "wallpaper" :
+                                                                                 "accent",
+                                 "configuredAccent": appearance.customAccent,
+                                 "surfaceOpacity": appearance.surfaceOpacity,
+                                 "fontFamily": appearance.fontFamily,
+                                 "outerRadius": appearance.outerRadius
+                             });
+    }
 
     function canonicalHex(value) {
         if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)) {
@@ -259,7 +270,7 @@ Singleton {
     }
 
     function syncUserConfiguration() {
-        root._configuration = UserConfig.snapshot.theme;
+        root._configuration = visualConfiguration(UserConfig.snapshot.appearance);
         publish(root._configuration);
     }
 
@@ -319,7 +330,7 @@ Singleton {
     readonly property QtObject radius: QtObject {
         // A 16 px outer radius reads as softly rectangular at both compact and
         // expanded scales. Inner radii subtract optical insets, not percentages.
-        readonly property int outer: UserConfig.snapshot.theme.outerRadius
+        readonly property int outer: UserConfig.snapshot.appearance.outerRadius
         readonly property int sm: 6
         readonly property int md: 10
         readonly property int lg: 12
@@ -330,7 +341,7 @@ Singleton {
     // deployment fallback chain is "Inter" -> "Noto Sans" -> "DejaVu Sans" -> sans-serif.
     // Fontconfig resolves unavailable faces and scripts.
     readonly property QtObject type: QtObject {
-        readonly property string family: UserConfig.snapshot.theme.fontFamily
+        readonly property string family: UserConfig.snapshot.appearance.fontFamily
         readonly property int caption: 11
         readonly property int display: 48
         readonly property int body: 13
@@ -373,7 +384,7 @@ Singleton {
     }
 
     readonly property QtObject opacity: QtObject {
-        readonly property real surface: UserConfig.snapshot.theme.surfaceOpacity
+        readonly property real surface: UserConfig.snapshot.appearance.surfaceOpacity
         readonly property real disabled: 0.45
         readonly property real shadow: 0.28
     }

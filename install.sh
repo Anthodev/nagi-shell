@@ -5,13 +5,13 @@
 #   Installs the checked-out configuration and its native helpers into a
 #   system or user location, registers the "Nagi Shell" section with
 #   KGlobalAccel so it appears in KDE shortcut settings immediately, creates
-#   a default theme.conf for the invoking user, and installs launcher files.
+#   a private default settings.conf for the invoking user, and installs launcher files.
 #
 #   Works on any distribution running a KDE Plasma 6 Wayland session. Package
 #   installation adapts to the detected distribution family; unmapped cases
 #   receive manual instructions instead of guessed package names.
 #
-#   Idempotent: safe to re-run. Never touches an existing theme.conf.
+#   Idempotent: safe to re-run. Never overwrites settings.conf or legacy theme.conf.
 # =============================================================================
 set -euo pipefail
 
@@ -49,9 +49,9 @@ Options:
 The script verifies prerequisites, offers to install anything missing,
 builds the native helpers in this checkout, copies the shell tree into
 --dest, generates a launcher wrapper and desktop entry, pre-registers the
-"Nagi Shell" section in KDE keyboard settings, and creates a default
-~/.config/nagi-shell/theme.conf for the invoking user (never overwriting
-an existing configuration).
+"Nagi Shell" section in KDE keyboard settings, and creates a private default
+~/.config/nagi-shell/settings.conf for the invoking user. Existing V2 settings
+or legacy theme.conf are preserved for runtime migration.
 EOF
 }
 
@@ -405,7 +405,7 @@ echo "  destination       : $DEST"
 echo "  launcher          : generated 'nagi-shell' wrapper on PATH"
 echo "  desktop entry     : share/applications/io.github.Anthodev.NagiShell.desktop"
 echo "  KDE shortcuts     : 'Nagi Shell' section registered in KGlobalAccel$([ "$SKIP_SHORTCUTS" -eq 1 ] && echo ' (skipped)')"
-echo "  default config    : $(real_user_config_home)/nagi-shell/theme.conf (created only if absent)"
+echo "  default config    : $(real_user_config_home)/nagi-shell/settings.conf (created only if no V2 or legacy config exists)"
 echo "  notifications     : the wrapper hands org.freedesktop.Notifications from"
 echo "                      plasmashell to Nagi while it runs; Plasma regains it on its next restart."
 echo "  autostart         : launcher registered for session startup$([ "$AUTOSTART" -eq 0 ] && echo ' (skipped)')"
@@ -433,7 +433,7 @@ log_info "Building native helpers in the checkout..."
     fi
     # shellcheck disable=SC2086
     make -s helper audio-helper connectivity-helper brightness-helper \
-        session-helper application-helper global-shortcut-helper \
+        session-helper application-helper settings-helper global-shortcut-helper \
         wallpaper-helper notification-plugin platform-plugin
 )
 
@@ -446,6 +446,7 @@ build/nagi-brightness
 build/nagi-connectivity
 build/nagi-session
 build/nagi-applications
+build/nagi-settings
 build/global-shortcut/nagi-global-shortcut
 build/wallpaper/nagi-wallpaper
 build/qml/Nagi/Notifications/libnaginotificationsplugin.so
@@ -542,38 +543,25 @@ log_ok "Desktop entry installed at $APPLICATIONS_DIR/io.github.Anthodev.NagiShel
 # --- default user configuration ----------------------------------------------------
 
 CONFIG_DIR="$(real_user_config_home)/nagi-shell"
-CONFIG_FILE="$CONFIG_DIR/theme.conf"
-if run_as_real_user test -f "$CONFIG_FILE"; then
-    log_info "Existing configuration kept: $CONFIG_FILE"
+CONFIG_FILE="$CONFIG_DIR/settings.conf"
+LEGACY_CONFIG_FILE="$CONFIG_DIR/theme.conf"
+SETTINGS_TEMPLATE="$SOURCE_DIR/packaging/settings.conf"
+[ -f "$SETTINGS_TEMPLATE" ] || log_fatal "packaging/settings.conf is missing from the checkout."
+if run_as_real_user test -e "$CONFIG_FILE" || run_as_real_user test -L "$CONFIG_FILE"; then
+    log_info "Existing settings kept: $CONFIG_FILE"
+elif run_as_real_user test -e "$LEGACY_CONFIG_FILE" || run_as_real_user test -L "$LEGACY_CONFIG_FILE"; then
+    log_info "Legacy configuration kept for safe runtime migration: $LEGACY_CONFIG_FILE"
 else
-    priv "$CONFIG_DIR" mkdir -p "$CONFIG_DIR"
-    priv "$CONFIG_FILE" tee "$CONFIG_FILE" >/dev/null <<'THEMECONF'
-[theme]
-mode=wallpaper
-accent=#5B6FF5
-surface_opacity=0.96
-font_family=Inter
-outer_radius=16
-
-[media]
-enabled=true
-
-[weather]
-enabled=false
-; Find a city's coordinates:
-; https://nominatim.openstreetmap.org/ui/search.html
-; latitude=48.85
-; longitude=2.35
-
-[clock]
-format=24h
-date_format=dddd, d MMMM
-show_idle_date=false
-THEMECONF
-    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-        as_root chown -R "$REAL_USER:" "$CONFIG_DIR"
+    run_as_real_user mkdir -p "$CONFIG_DIR"
+    SETTINGS_BYTES="$(wc -c < "$SETTINGS_TEMPLATE")"
+    if run_as_real_user "$SOURCE_DIR/build/nagi-settings" create "$CONFIG_DIR" "$SETTINGS_BYTES" \
+        < "$SETTINGS_TEMPLATE"; then
+        log_ok "Private default settings created at $CONFIG_FILE."
+    elif run_as_real_user test -f "$CONFIG_FILE"; then
+        log_info "A concurrently created settings file was kept: $CONFIG_FILE"
+    else
+        log_fatal "Default settings could not be created safely at $CONFIG_FILE."
     fi
-    log_ok "Default configuration created at $CONFIG_FILE."
 fi
 
 # --- KDE shortcut section -------------------------------------------------------------

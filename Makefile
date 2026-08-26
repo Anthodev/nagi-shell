@@ -40,6 +40,8 @@ SESSION_MOC := $(BUILD_DIR)/session/main.moc
 SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
 SESSION_DBUS_TEST_MOC := $(BUILD_DIR)/session_dbus_test.moc
 APPLICATION_HELPER := $(BUILD_DIR)/nagi-applications
+SETTINGS_HELPER := $(BUILD_DIR)/nagi-settings
+export NAGI_SETTINGS_HELPER ?= $(abspath $(SETTINGS_HELPER))
 GLOBAL_SHORTCUT_BUILD_DIR := $(BUILD_DIR)/global-shortcut
 GLOBAL_SHORTCUT_HELPER := $(GLOBAL_SHORTCUT_BUILD_DIR)/nagi-global-shortcut
 GLOBAL_SHORTCUT_TEST := $(GLOBAL_SHORTCUT_BUILD_DIR)/nagi-global-shortcut-test
@@ -105,6 +107,7 @@ HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
 AUDIO_HELPER_HEADERS := src/pipewire-audio/protocol.h src/pipewire-audio/volume.h
 APPLICATION_HELPER_SOURCE := src/applications/main.cpp
+SETTINGS_HELPER_SOURCE := src/settings/main.cpp
 NOTIFICATION_SOURCES := src/notifications/runtime.cpp src/notifications/notification_text.cpp
 NOTIFICATION_HEADERS := src/notifications/runtime.h src/notifications/notification_text.h
 QT_CFLAGS := $(shell $(PKG_CONFIG) --cflags Qt6Core Qt6DBus)
@@ -128,7 +131,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-platform-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-surface-state test-ui-primitives test-idle test-dashboard test-polkit-ui test-theme-config test-onboarding test-icons test-subview-frame test-typography test-global-shortcut-live test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract format format-check lint-advisory launch diagnose instances logs logs-follow stop check check-nondisplay clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-platform-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-surface-state test-ui-primitives test-dashboard test-idle test-polkit-ui test-theme-config test-onboarding test-icons test-subview-frame test-typography test-settings-helper check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop clean
 .PHONY: test-dashboard
 .PHONY: test-polkit-ui
 .PHONY: test-theme-config
@@ -157,6 +160,7 @@ help:
 		'make brightness-helper  Build the PowerDevil brightness bridge' \
 		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
+		'make settings-helper  Build the private atomic settings writer' \
 		'make global-shortcut-helper  Build the KF6 KGlobalAccel global shortcut helper' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make platform-plugin  Build the pointer-to-live-surface routing bridge' \
@@ -194,7 +198,8 @@ help:
 		'make test-tray       Test system tray lifecycle and actions' \
 		'make test-tray-live  Exercise a controlled real tray item on KDE' \
 		'make test-ui-primitives  Render theme tokens and primitives in isolated virtual KWin' \
-		'make test-theme-config  Test XDG theme parsing, live reload, fallback, and failures' \
+		'make test-theme-config  Test versioned settings, migration, recovery, and rollback' \
+		'make test-settings-helper  Test settings path safety, migration, and recovery' \
 		'make test-icons       Test semantic icon resolution, rendering, and fallback' \
 		'make test-subview-frame  Test shared subview structure, focus, bounds, and motion' \
 		'make test-polkit-ui  Test the dormant Polkit authentication presentation' \
@@ -359,6 +364,9 @@ $(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(B
 
 $(APPLICATION_HELPER): $(APPLICATION_HELPER_SOURCE) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) $(GIO_CFLAGS) $(APPLICATION_HELPER_SOURCE) -o $@ $(LDFLAGS) $(QT_LIBS) $(GIO_LIBS)
+$(SETTINGS_HELPER): $(SETTINGS_HELPER_SOURCE) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(SETTINGS_HELPER_SOURCE) -o $@ $(LDFLAGS)
+
 
 $(GLOBAL_SHORTCUT_HELPER): src/global-shortcut/main.cpp src/global-shortcut/registration_policy.h src/global-shortcut/shortcut_contract.h src/global-shortcut/CMakeLists.txt | $(BUILD_DIR)
 	$(CMAKE) -S src/global-shortcut -B '$(GLOBAL_SHORTCUT_BUILD_DIR)'
@@ -404,6 +412,8 @@ brightness-helper: check-helper-toolchain $(BRIGHTNESS_HELPER)
 session-helper: check-helper-toolchain $(SESSION_HELPER)
 
 application-helper: check-application-toolchain $(APPLICATION_HELPER)
+settings-helper: $(SETTINGS_HELPER)
+
 
 global-shortcut-helper: check-global-shortcut-toolchain $(GLOBAL_SHORTCUT_HELPER)
 
@@ -619,7 +629,8 @@ test-wallpaper: check-quickshell wallpaper-helper | $(BUILD_DIR)
 	mkdir -p $(WALLPAPER_TEST_DIR)/qml $(WALLPAPER_TEST_DIR)/config/nagi-shell
 	cp tests/wallpaper/shell.qml $(WALLPAPER_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/WallpaperPaletteBridge.qml $(WALLPAPER_TEST_DIR)/qml/
-	printf '%s\n' '[theme]' 'mode=wallpaper' 'accent=#FF8A00' > $(WALLPAPER_TEST_DIR)/config/nagi-shell/theme.conf
+	cp packaging/settings.conf $(WALLPAPER_TEST_DIR)/config/nagi-shell/settings.conf
+	sed -i 's/custom_accent=#5B6FF5/custom_accent=#FF8A00/' $(WALLPAPER_TEST_DIR)/config/nagi-shell/settings.conf
 	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(WALLPAPER_TEST_DIR))/config' NAGI_WALLPAPER_HELPER='$(abspath tests/wallpaper_stub_helper.py)' $(QS) -p $(WALLPAPER_TEST_DIR) --no-duplicate
 
 test-wallpaper-live: wallpaper-helper
@@ -628,13 +639,30 @@ test-wallpaper-live: wallpaper-helper
 
 test-theme-config: check-quickshell | $(BUILD_DIR)
 	rm -rf $(THEME_CONFIG_TEST_DIR)
-	mkdir -p $(THEME_CONFIG_TEST_DIR)/qml $(THEME_CONFIG_TEST_DIR)/config
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/qml $(THEME_CONFIG_TEST_DIR)/normal
 	cp tests/theme-config/shell.qml $(THEME_CONFIG_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) $(THEME_CONFIG_TEST_DIR)/qml/
-	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/config' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
-	rm -rf $(THEME_CONFIG_TEST_DIR)/race-config
-	mkdir -p $(THEME_CONFIG_TEST_DIR)/race-config
-	QT_QPA_PLATFORM='offscreen' NAGI_THEME_CONFIG_TEST_PHASE='race' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/race-config' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='normal' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/normal' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	cmp packaging/settings.conf $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf
+	test "$$(stat -c '%a' $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf)" = 600
+	test "$$(stat -c '%a' $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf.last-good)" = 600
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/migration/nagi-shell
+	printf '%s\n' '; preserved comment' '[theme]' 'mode=accent' 'accent=#123456' 'surface_opacity=0.85' 'font_family=Noto Sans' 'outer_radius=32' '' '[media]' 'enabled=false' '' '[weather]' 'enabled=true' 'latitude=-90' 'longitude=180' '' '[clock]' 'format=12h' 'date_format=yyyy-MM-dd' 'show_idle_date=true' > $(THEME_CONFIG_TEST_DIR)/migration/nagi-shell/theme.conf
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='migration' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/migration' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/future/nagi-shell
+	cp $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf.last-good $(THEME_CONFIG_TEST_DIR)/future/nagi-shell/settings.conf.last-good
+	sed -i 's/custom_accent=#5B6FF5/custom_accent=#ABCDEF/' $(THEME_CONFIG_TEST_DIR)/future/nagi-shell/settings.conf.last-good
+	printf '%s\n' '[settings]' 'schema_version=99' '[future]' 'value=kept' > $(THEME_CONFIG_TEST_DIR)/future/nagi-shell/settings.conf
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='future' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/future' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/unsafe/nagi-shell
+	printf '%s\n' 'outside-content' > $(THEME_CONFIG_TEST_DIR)/unsafe/outside.conf
+	ln -s ../outside.conf $(THEME_CONFIG_TEST_DIR)/unsafe/nagi-shell/settings.conf
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='unsafe' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/unsafe' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	test "$$(cat $(THEME_CONFIG_TEST_DIR)/unsafe/outside.conf)" = outside-content
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/failure/nagi-shell
+	cp $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf $(THEME_CONFIG_TEST_DIR)/failure/nagi-shell/settings.conf
+	cp $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf.last-good $(THEME_CONFIG_TEST_DIR)/failure/nagi-shell/settings.conf.last-good
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='failure' NAGI_REAL_SETTINGS_HELPER='$(abspath $(SETTINGS_HELPER))' NAGI_SETTINGS_HELPER='$(abspath tests/theme-config/helper-wrapper.sh)' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/failure' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
 test-onboarding: check-quickshell | $(BUILD_DIR)
 	rm -rf $(ONBOARDING_TEST_DIR)
 	mkdir -p $(ONBOARDING_TEST_DIR)/qml $(ONBOARDING_TEST_DIR)/config $(ONBOARDING_TEST_DIR)/state
@@ -716,6 +744,9 @@ test-appearance-watcher: check-quickshell
 test-settings-writer: check-quickshell
 	@bash $(CURDIR)/tests/settings-writer/run-probe.sh
 
+test-settings-helper: $(SETTINGS_HELPER)
+	@bash $(CURDIR)/tests/settings-helper/run-test.sh '$(abspath $(SETTINGS_HELPER))'
+
 # Issue #70 gates: private D-Bus fixture probes for downstream integration
 # contracts (NetworkManager, BlueZ, gaming performance, Plasma wallpaper).
 test-networkmanager-contract:
@@ -730,7 +761,7 @@ test-gaming-power-contract: check-helper-toolchain
 test-wallpaper-write-contract:
 	@bash $(CURDIR)/tests/wallpaper-write-contract/run-probe.sh
 
-check-quickshell:
+check-quickshell: $(SETTINGS_HELPER)
 	@set -eu; \
 	version="$$($(QS) --version | sed -n 's/^Quickshell \([0-9][0-9.]*\).*/\1/p')"; \
 	if [ -z "$$version" ]; then \
@@ -744,10 +775,10 @@ check-quickshell:
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -794,7 +825,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)
