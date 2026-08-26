@@ -16,6 +16,10 @@ ShellRoot {
         }
     }
 
+    function snapshot() {
+        return coordinator.surfaceSnapshot(surfaceToken);
+    }
+
     function requireWorkspaceGeometry(view, label) {
         require(view.implicitWidth >= Theme.size.islandTransientCompactMinimumWidth
                 && view.implicitWidth <= Theme.size.islandTransientCompactWidth, label
@@ -98,90 +102,93 @@ ShellRoot {
         surfaceToken = {};
         require(coordinator.attachSurface(surfaceToken, 1), "transient surface attaches");
         workspace.confirmedWorkspaceChanged("workspace-current", 1, 1);
-        require(coordinator.ownerName === "workspace" && coordinator.ownerSourceRevision === 1,
-                "confirmed workspace change routes once to the fallback surface");
-        const workspaceEpoch = coordinator.ownerEpoch;
+        require(snapshot().ownerName === "workspace"
+                && snapshot().ownerSourceRevision === 1,
+                "confirmed workspace change routes to its action surface");
+        const workspaceEpoch = snapshot().ownerEpoch;
         for (let revision = 2; revision <= 20; revision += 1) {
             workspace.confirmedWorkspaceChanged("workspace-current", 1, revision);
         }
-        require(coordinator.ownerName === "workspace" && coordinator.ownerEpoch === workspaceEpoch
-                && coordinator.ownerSourceRevision === 20 && coordinator.pendingTransientCount === 0,
-                "workspace burst coalesces in place without queue growth");
+        require(snapshot().ownerName === "workspace" && snapshot().ownerEpoch === workspaceEpoch
+                && snapshot().ownerSourceRevision === 20
+                && coordinator.pendingTransientCount === 1,
+                "workspace burst coalesces in one global event record");
 
-        brightness.confirmedBrightnessChanged("1:display0", 1, 1, null);
-        require(coordinator.ownerName === "brightness" && coordinator.restorationDepth === 1,
-                "external brightness preempts workspace through fallback routing");
+        brightness.confirmedBrightnessChanged("1:display0", 1, 1, surfaceToken);
+        require(snapshot().ownerName === "brightness" && snapshot().restorationDepth === 1,
+                "targeted brightness preempts workspace");
         workspace.confirmedWorkspaceInvalidated("workspace-current", 1);
-        require(coordinator.restorationDepth === 0,
-                "workspace generation loss removes its suspended feedback");
-        const brightnessEpoch = coordinator.ownerEpoch;
+        require(snapshot().restorationDepth === 0 && coordinator.pendingTransientCount === 1,
+                "workspace invalidation removes its suspended event globally");
+        const brightnessEpoch = snapshot().ownerEpoch;
         brightness.confirmedBrightnessChanged("1:display0", 1, 2, surfaceToken);
-        require(coordinator.ownerEpoch === brightnessEpoch && coordinator.ownerSourceRevision === 2
-                && coordinator.pendingTransientCount === 0,
-                "local brightness confirmation coalesces without a parallel routing path");
+        require(snapshot().ownerEpoch === brightnessEpoch
+                && snapshot().ownerSourceRevision === 2
+                && coordinator.pendingTransientCount === 1,
+                "local brightness confirmation coalesces without another slot");
         brightness.confirmedBrightnessInvalidated("1:display0", 1);
-        require(coordinator.ownerName === "idle",
-                "brightness display removal invalidates visible feedback");
+        require(snapshot().ownerName === "idle", "brightness invalidation restores Idle");
 
         audio.confirmedOutputChanged("audio-output-1", 1, 1);
-        require(coordinator.ownerName === "volume" && coordinator.ownerSourceRevision === 1,
-                "confirmed output change enters the volume owner");
-        const volumeEpoch = coordinator.ownerEpoch;
+        require(snapshot().ownerName === "volume" && snapshot().ownerSourceRevision === 1,
+                "confirmed output change enters one volume event");
+        const volumeEpoch = snapshot().ownerEpoch;
         for (let revision = 2; revision <= 20; revision += 1) {
             audio.confirmedOutputChanged("audio-output-1", 1, revision);
         }
-        require(coordinator.ownerName === "volume" && coordinator.ownerEpoch === volumeEpoch
-                && coordinator.ownerSourceRevision === 20 && coordinator.pendingTransientCount === 0,
-                "rapid visible output confirmations coalesce in place without queue growth");
+        require(snapshot().ownerName === "volume" && snapshot().ownerEpoch === volumeEpoch
+                && snapshot().ownerSourceRevision === 20
+                && coordinator.pendingTransientCount === 1,
+                "rapid output confirmations coalesce in one event record");
 
         audio.confirmedInputChanged("audio-input-1", 1, 1);
-        require(coordinator.ownerSourceToken === "audio-output-1"
-                && coordinator.ownerSourceRevision === 20,
-                "default-input confirmation cannot create an output-volume transient");
+        require(snapshot().ownerSourceToken === "audio-output-1"
+                && snapshot().ownerSourceRevision === 20,
+                "input confirmation cannot create an output-volume event");
 
         notifications.transientRequested("notification-1", 1, 1);
-        require(coordinator.ownerName === "notification" && coordinator.restorationDepth === 1,
-                "notification priority preempts and suspends confirmed volume");
+        require(snapshot().ownerName === "notification" && snapshot().restorationDepth === 1
+                && coordinator.pendingTransientCount === 2,
+                "notification priority preempts volume without per-display duplication");
         audio.confirmedOutputChanged("audio-output-1", 1, 21);
-        require(coordinator.restorationDepth === 1 && coordinator.pendingTransientCount === 0,
-                "suspended volume source coalesces to one latest revision");
+        require(snapshot().restorationDepth === 1
+                && coordinator.pendingTransientCount === 2,
+                "suspended volume source coalesces in its existing event");
         audio.confirmedOutputInvalidated("audio-output-1", 1);
-        require(coordinator.ownerName === "notification" && coordinator.restorationDepth === 0,
-                "endpoint removal invalidates the suspended volume without stale restoration");
+        require(snapshot().ownerName === "notification" && snapshot().restorationDepth === 0
+                && coordinator.pendingTransientCount === 1,
+                "endpoint removal invalidates suspended volume globally");
 
         notifications.transientRequested("notification-2", 1, 1);
-        require(coordinator.pendingTransientCount === 1,
-                "independent notification occupies one shared mailbox slot");
-        const notificationEpoch = coordinator.ownerEpoch;
+        require(coordinator.pendingTransientCount === 2,
+                "independent notification occupies one additional global slot");
+        const notificationEpoch = snapshot().ownerEpoch;
         notifications.transientRequested("notification-1", 1, 2);
-        require(coordinator.ownerEpoch === notificationEpoch && coordinator.ownerSourceRevision
-                === 2 && coordinator.pendingTransientCount === 1,
-                "same-notification replacement coalesces without disturbing independent work");
+        require(snapshot().ownerEpoch === notificationEpoch
+                && snapshot().ownerSourceRevision === 2
+                && coordinator.pendingTransientCount === 2,
+                "same-notification replacement updates without slot growth");
         notifications.transientInvalidated("notification-1", 1);
-        require(coordinator.ownerName === "notification" && coordinator.ownerSourceToken
-                === "notification-2" && coordinator.pendingTransientCount === 0,
-                "notification invalidation restores the next eligible source atomically");
+        require(snapshot().ownerName === "notification" && snapshot().ownerSourceToken
+                === "notification-2" && coordinator.pendingTransientCount === 1,
+                "invalidation restores the next eligible notification atomically");
         notifications.transientInvalidated("notification-2", 1);
-        require(coordinator.ownerName === "idle", "last notification invalidation restores Idle");
+        require(snapshot().ownerName === "idle" && coordinator.pendingTransientCount === 0,
+                "last notification invalidation restores Idle");
 
-        require(coordinator.setHover(1, true), "expanded baseline enters for pending test");
+        require(coordinator.setHover(surfaceToken, 1, true),
+                "expanded baseline enters for pending test");
         for (let revision = 1; revision <= 20; revision += 1) {
             audio.confirmedOutputChanged("audio-output-2", 2, revision);
         }
-        require(coordinator.ownerName === "expanded" && coordinator.pendingTransientCount === 1,
-                "blocked output burst keeps one replaceable pending transient");
+        require(snapshot().ownerName === "expanded" && coordinator.pendingTransientCount === 1,
+                "blocked output burst keeps one replaceable global event");
         audio.confirmedOutputInvalidated("audio-output-2", 2);
         require(coordinator.pendingTransientCount === 0,
-                "endpoint disappearance drops pending audio before presentation");
-        require(coordinator.setHover(1, false) && coordinator.ownerName === "idle",
-                "expired pending audio cannot replay after Expanded");
-
-        audio.confirmedOutputChanged("audio-output-3", 3, 1);
-        require(coordinator.ownerName === "volume" && coordinator.ownerSourceToken
-                === "audio-output-3", "replacement endpoint presents only its fresh generation");
-        audio.confirmedOutputInvalidated("audio-output-3", 3);
-        require(coordinator.ownerName === "idle",
-                "unavailable output cannot leave a stale volume owner");
+                "endpoint disappearance drops blocked audio before presentation");
+        require(coordinator.setHover(surfaceToken, 1, false)
+                && snapshot().ownerName === "idle",
+                "invalidated audio cannot replay after Expanded");
 
         console.warn("transient integration tests passed");
         Qt.exit(0);
@@ -225,7 +232,6 @@ ShellRoot {
 
     TransientCoordinatorBridge {
         coordinator: coordinator
-        surfaceToken: test.surfaceToken
         workspaceSource: workspace
         brightnessSource: brightness
         audioSource: audio

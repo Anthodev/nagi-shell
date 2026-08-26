@@ -9,7 +9,7 @@ ShellRoot {
     property int systemSettingsRequestId: 0
     property string systemSettingsFailure: ""
 
-    function launchSystemSettings() {
+    function launchSystemSettings(initiatingSurfaceToken) {
         systemSettingsFailure = "";
         const requestId = applicationModel.dispatchLaunch("systemsettings.desktop");
         if (requestId === 0) {
@@ -19,7 +19,9 @@ ShellRoot {
             return false;
         }
         systemSettingsRequestId = requestId;
-        islandState.resetToIdle(islandHost.surfaceToken);
+        if (initiatingSurfaceToken !== null && initiatingSurfaceToken !== undefined) {
+            islandState.resetToIdle(initiatingSurfaceToken);
+        }
         return true;
     }
 
@@ -51,7 +53,7 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/global-shortcut/nagi-global-shortcut")
         onSystemSettingsRequested: {
             if (!islandState.modalPresent) {
-                launchSystemSettings();
+                launchSystemSettings(islandHost.routeSurfaceToken(null));
             }
         }
     }
@@ -66,8 +68,7 @@ ShellRoot {
     MediaAdapter {
         id: mediaAdapter
         enabled: UserConfig.snapshot.media.enabled
-        detailsVisible: islandState.ownerKind === islandState.ownerExpanded
-                        && islandState.presentationVisible
+        detailsVisible: islandState.anyExpanded
     }
 
     AudioAdapter {
@@ -97,7 +98,7 @@ ShellRoot {
 
     OnboardingWindow {
         settingsFailure: systemSettingsFailure
-        onSystemSettingsRequested: launchSystemSettings()
+        onSystemSettingsRequested: launchSystemSettings(islandHost.routeSurfaceToken(null))
     }
 
     NotificationService {
@@ -106,65 +107,6 @@ ShellRoot {
 
     TrayAdapter {
         id: trayAdapter
-    }
-
-    Component {
-        id: dashboardMedia
-
-        DashboardMedia {
-            media: mediaAdapter
-        }
-    }
-
-    Component {
-        id: dashboardClock
-
-        DashboardClock {
-            clock: clockState
-        }
-    }
-
-    Component {
-        id: dashboardQuickControls
-
-        DashboardQuickControls {
-            centerStatusInMainLane: !mediaAdapter.available
-            connectivity: connectivityAdapter
-            applicationModel: applicationModel
-            tray: trayAdapter
-            menuParentWindow: islandHost.menuParentWindow
-            onExternalActionDispatched: islandHost.completeShellMenuAction()
-            onShellMenuOpening: islandHost.beginShellMenu()
-            onShellMenuOpenResult: result => islandHost.finishShellMenuOpen(result)
-        }
-    }
-
-    Component {
-        id: dashboardAudio
-
-        DashboardAudio {
-            audio: audioAdapter
-            onDeviceSelectionRequested: islandState.openAudio(islandHost.surfaceToken)
-        }
-    }
-
-    Component {
-        id: dashboardNotifications
-
-        DashboardNotifications {
-            service: notificationService
-        }
-    }
-
-    Component {
-        id: dashboardNavigation
-
-        DashboardNavigation {
-            coordinator: islandState
-            surfaceToken: islandHost.surfaceToken
-            settingsFailure: systemSettingsFailure
-            onSystemSettingsRequested: launchSystemSettings()
-        }
     }
 
     Connections {
@@ -206,6 +148,7 @@ ShellRoot {
         clock: clockState
         weather: weather
         media: mediaAdapter
+        connectivityAdapter: connectivityAdapter
         sessionService: session
         notificationService: notificationService
         applicationModel: applicationModel
@@ -216,17 +159,12 @@ ShellRoot {
         volumeTransientSource: audioAdapter
         notificationTransientSource: notificationService
         reducedMotion: motion.active
-        dashboardMediaContent: mediaAdapter.available ? dashboardMedia : null
-        dashboardClockContent: dashboardClock
-        dashboardQuickControlsContent: dashboardQuickControls
-        dashboardAudioContent: dashboardAudio
-        dashboardNotificationsContent: dashboardNotifications
-        dashboardNavigationContent: dashboardNavigation
+        settingsFailure: systemSettingsFailure
+        onSystemSettingsRequested: token => launchSystemSettings(token)
     }
 
     TransientCoordinatorBridge {
         coordinator: islandState
-        surfaceToken: islandHost.surfaceToken
         workspaceSource: virtualDesktops
         brightnessSource: brightness
         audioSource: audioAdapter

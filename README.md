@@ -225,8 +225,8 @@ Polkit credentials never enter the production shell because the backend is dorma
 
 ## Limitations
 
-- The runtime creates one island on the primary/default display Qt selects when the surface starts; there is no per-monitor island set. Changing the desktop primary while that display stays connected does not move the island dynamically — losing the output or recreating the surface selects the then-current primary/default again. Events without reliable output identity, including global shortcut activation, target the one live surface; a Nagi-initiated brightness confirmation may return only to the surface that started it.
-- Moving pointer focus between outputs with different current virtual desktops updates Idle state without presenting a workspace-switch transient.
+- Every connected display starts with an enabled island. Visibility and fallback selection are session-only because Quickshell 0.3.x exposes no reliable persistent display identity; Nagi never guesses from connector names, labels, serials, indexes, or geometry. Global shortcuts target the pointer screen, then the enabled fallback.
+- One Interactive task or Modal flow exists across all islands. Notifications and confirmed output-volume feedback may appear on every eligible island, while workspace and brightness remain routed and sensitive flows never mirror.
 - Wi-Fi supports state and toggle only. Network selection is outside the island.
 - Bluetooth supports adapter state and toggle only. Discovery, pairing, and device management are outside the island.
 - Audio covers default output/input selection, volume, and mute. It has no per-application mixer.
@@ -240,24 +240,24 @@ Polkit credentials never enter the production shell because the backend is dorma
 ```text
 shell.qml
    │
-   ├── one PanelWindow and adaptive content host
-   │      ├── Idle / Expanded
-   │      ├── focused subviews
-   │      └── transient replacement
+   ├── one PanelWindow per enabled live display
+   │      ├── independent Idle / Expanded / focus / geometry
+   │      ├── one globally exclusive focused or Modal task
+   │      └── shared-event transient projections
    │
-   ├── IslandStateCoordinator
-   │      └── priority · deadlines · preemption · restoration
+   ├── one IslandStateCoordinator
+   │      └── per-surface records · global priority · mailbox · deadlines · restoration
    │
    ├── normalized QML adapters
    │      └── media · audio · connectivity · apps · tray · notifications
    │
-   └── native helpers and runtime plugin
-          └── KWin · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
+   └── native helpers and runtime plugins
+          └── pointer routing · KWin · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
 ```
 
 Presentation consumes semantic theme roles and normalized adapter state. Native protocol details remain inside helpers and bridges. Rare views load lazily; histories, queues, caches, strings, and wallpaper analysis are bounded.
 
-Changes must preserve the single-surface coordinator, normalized adapter boundary, semantic presentation layer, bounded lazy views, and native-helper isolation shown above.
+Changes must preserve the single process-wide coordinator, one service graph, normalized adapter boundary, semantic presentation layer, bounded lazy views, and native-helper isolation shown above.
 
 ## Quality assurance
 

@@ -1,13 +1,12 @@
 import Quickshell
 import QtQuick
 
-// Routes normalized producer identities into the one owner reducer. It owns no
-// payload, queue, timer, or backend action.
+// Routes normalized producer identities into the process-wide owner reducer.
+// It owns no payload, queue, timer, or backend action.
 Scope {
     id: bridge
 
     required property var coordinator
-    required property var surfaceToken
     property var workspaceSource: null
     property var brightnessSource: null
     property var audioSource: null
@@ -46,8 +45,7 @@ Scope {
         ignoreUnknownSignals: true
 
         function onConfirmedOutputChanged(sourceToken, sourceGeneration, revision) {
-            bridge.coordinator.requestVolume(sourceToken, sourceGeneration, revision,
-                                             bridge.surfaceToken);
+            bridge.coordinator.requestVolume(sourceToken, sourceGeneration, revision, null);
         }
 
         function onConfirmedOutputInvalidated(sourceToken, sourceGeneration) {
@@ -60,8 +58,7 @@ Scope {
         ignoreUnknownSignals: true
 
         function onTransientRequested(sourceToken, sourceGeneration, revision) {
-            bridge.coordinator.requestNotification(sourceToken, sourceGeneration, revision,
-                                                   bridge.surfaceToken);
+            bridge.coordinator.requestNotification(sourceToken, sourceGeneration, revision, null);
         }
 
         function onTransientInvalidated(sourceToken, sourceGeneration) {

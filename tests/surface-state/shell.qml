@@ -243,7 +243,7 @@ ShellRoot {
                     "surface keeps the outer radius override while standard panels default to md");
             initialSurfaceToken = host.surfaceToken;
             initialSurfaceGeneration = host.surfaceGeneration;
-            require(mountedRegionCount === 6,
+            require(mountedRegionCount === host.liveSurfaceCount * 6,
                     "all dashboard regions mount before expansion starts");
             startGeometrySampling("expanding", function () {
                 return coordinator.setHover(host.surfaceGeneration, true);
@@ -617,7 +617,7 @@ ShellRoot {
                             "final transient cleanup did not restore Idle")) {
                 return;
             }
-            require(mountedRegionCount === 6,
+            require(mountedRegionCount === host.liveSurfaceCount * 6,
                     "dashboard regions stay mounted across Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
@@ -635,15 +635,20 @@ ShellRoot {
         } else if (step === 21) {
             if (!awaitState(coordinator.ownerName === "polkitModal"
                             && coordinator.presentationVisible && host.surfaceFocusable
-                            && host.polkitLoaded && host.polkitFocused,
+                            && host.polkitLoaded && host.polkitFocused
+                            && Math.abs(host.surfaceWidth - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.surfaceHeight - host.surfacePreferredHeight) <= 1,
                             "Polkit presentation did not load, acknowledge, and focus")) {
                 return;
             }
             require(host.surfacePreferredWidth > 0 && host.surfacePreferredHeight > 0
-                    && host.surfaceWidth <= host.surfacePreferredWidth
-                    && host.surfaceHeight <= host.surfacePreferredHeight
+                    && host.surfaceWidth <= host.surfacePreferredWidth + 1
+                    && host.surfaceHeight <= host.surfacePreferredHeight + 1
                     && host.geometryAnimationDuration === 0,
-                    "Polkit Modal uses content-sized reduced-motion geometry");
+                    "Polkit geometry actual=" + host.surfaceWidth + "x" + host.surfaceHeight
+                    + " preferred=" + host.surfacePreferredWidth + "x"
+                    + host.surfacePreferredHeight + " duration="
+                    + host.geometryAnimationDuration);
             require(host.polkitIdentityCount === 2 && host.polkitResponseFieldVisible,
                     "normalized identities and the live prompt reach the Modal view");
             require(!coordinator.openLauncher(host.surfaceToken)
@@ -700,7 +705,11 @@ ShellRoot {
         } else if (step === 26) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.dashboardFocused && !host.polkitLoaded,
-                            "Modal completion did not restore its focused predecessor")) {
+                            "Modal completion state owner=" + coordinator.ownerName + " visible="
+                            + coordinator.presentationVisible + " focused=" + host.dashboardFocused
+                            + " polkitLoaded=" + host.polkitLoaded + " target="
+                            + coordinator.focusTarget + " serial="
+                            + coordinator.focusRequestSerial)) {
                 return;
             }
             require(host.cancelDashboard(), "restored predecessor remains cancellable");
@@ -1133,14 +1142,90 @@ ShellRoot {
     }
 
     IslandStateCoordinator {
-        id: coordinator
+        id: coordinatorCore
     }
 
+    QtObject {
+        id: coordinator
+
+        readonly property var snapshot: coordinatorCore.surfaceSnapshot(host.surfaceToken)
+        readonly property string ownerName: snapshot.ownerName
+        readonly property bool presentationVisible: snapshot.presentationVisible
+        readonly property real ownerEpoch: snapshot.ownerEpoch
+        readonly property real revision: snapshot.revision
+        readonly property int focusTarget: snapshot.focusTarget
+        readonly property real focusRequestSerial: snapshot.focusRequestSerial
+        readonly property bool hoverIntent: snapshot.hoverIntent
+        readonly property bool explicitExpandedIntent: snapshot.explicitExpandedIntent
+        readonly property int focusNone: coordinatorCore.focusNone
+        readonly property int focusExpandedDashboard: coordinatorCore.focusExpandedDashboard
+        readonly property int focusLauncherSearch: coordinatorCore.focusLauncherSearch
+        readonly property int focusSessionActions: coordinatorCore.focusSessionActions
+        readonly property int focusNotificationHistory: coordinatorCore.focusNotificationHistory
+        readonly property int focusTray: coordinatorCore.focusTray
+        readonly property int focusAudio: coordinatorCore.focusAudio
+
+        function refreshFallback(result) {
+            if (host.fallbackSurface !== null) {
+                host.fallbackSurface.refreshSurfaceState();
+            }
+            return result;
+        }
+
+        function cancelInteractive(epoch) {
+            return refreshFallback(coordinatorCore.cancelInteractive(epoch));
+        }
+        function invalidateTransient(token, generation) {
+            return refreshFallback(coordinatorCore.invalidateTransient(token, generation));
+        }
+        function openAudio(token) {
+            return coordinatorCore.openAudio(token);
+        }
+        function openHistory(token) {
+            return coordinatorCore.openHistory(token);
+        }
+        function openLauncher(token) {
+            return coordinatorCore.openLauncher(token);
+        }
+        function openSession(token) {
+            return coordinatorCore.openSession(token);
+        }
+        function openTray(token) {
+            return coordinatorCore.openTray(token);
+        }
+        function requestNotification(token, generation, sourceRevision, initiatingToken) {
+            return coordinatorCore.requestNotification(token, generation, sourceRevision,
+                                                       initiatingToken);
+        }
+        function requestVolume(token, generation, sourceRevision, initiatingToken) {
+            return coordinatorCore.requestVolume(token, generation, sourceRevision,
+                                                 initiatingToken);
+        }
+        function requestWorkspace(token, generation, sourceRevision, initiatingToken) {
+            return coordinatorCore.requestWorkspace(token, generation, sourceRevision,
+                                                    initiatingToken);
+        }
+        function setExplicitExpanded(generation, value) {
+            const accepted = coordinatorCore.setExplicitExpanded(host.surfaceToken, generation,
+                                                                 value);
+            host.fallbackSurface.refreshSurfaceState();
+            return accepted;
+        }
+        function setHover(generation, value) {
+            const accepted = coordinatorCore.setHover(host.surfaceToken, generation, value);
+            host.fallbackSurface.refreshSurfaceState();
+            return accepted;
+        }
+        function syncPolkitModal(active, flowPresent, flowGeneration) {
+            return refreshFallback(coordinatorCore.syncPolkitModal(active, flowPresent,
+                                                                   flowGeneration));
+        }
+    }
 
     IslandSurfaceHost {
         id: host
 
-        coordinator: coordinator
+        coordinator: coordinatorCore
         dashboardMediaContent: mediaRegion
         dashboardClockContent: clockRegion
         dashboardQuickControlsContent: quickControlsRegion
