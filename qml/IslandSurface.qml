@@ -68,6 +68,7 @@ PanelWindow {
     readonly property bool history: ownerKind === coordinator.ownerHistory
     readonly property bool tray: ownerKind === coordinator.ownerTray
     readonly property bool audio: ownerKind === coordinator.ownerAudio
+    readonly property bool weatherDetails: ownerKind === coordinator.ownerWeather
     readonly property bool polkitControllerReady: polkitController !== null && polkitController
                                                   !== undefined && polkitController.available
                                                   === true
@@ -83,10 +84,10 @@ PanelWindow {
                                            === coordinator.ownerVolume || ownerKind
                                            === coordinator.ownerNotification
     readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
-    readonly property bool largeContent: expanded || launcher || history || tray || audio || session
-                                         || polkit
-    readonly property bool interactiveOwner: launcher || history || tray || audio || session
-                                             || polkit
+    readonly property bool largeContent: expanded || launcher || history || tray || audio
+                                         || weatherDetails || session || polkit
+    readonly property bool interactiveOwner: launcher || history || tray || audio || weatherDetails
+                                             || session || polkit
     property int previousOwnerKind: -1
     property int exitingOwnerKind: -1
     property var exitingLoader: null
@@ -112,9 +113,10 @@ PanelWindow {
     readonly property Item interactiveContent: launcher ? launcherLoader.item : history
                                                           ? historyLoader.item : tray
                                                             ? trayLoader.item : audio
-                                                              ? audioLoader.item : session
-                                                                ? sessionLoader.item : polkit
-                                                                  ? polkitLoader.item : null
+                                                              ? audioLoader.item : weatherDetails
+                                                                ? weatherLoader.item : session
+                                                                  ? sessionLoader.item : polkit
+                                                                    ? polkitLoader.item : null
     readonly property real interactivePreferredWidth: interactiveContent === null
                                                       ? Theme.size.islandIdleWidth :
                                                         interactiveContent.implicitWidth
@@ -192,6 +194,9 @@ PanelWindow {
     readonly property bool trayFocused: trayLoader.item !== null && trayLoader.item.activeFocus
     readonly property bool audioLoaded: audioLoader.item !== null
     readonly property bool audioFocused: audioLoader.item !== null && audioLoader.item.activeFocus
+    readonly property bool weatherLoaded: weatherLoader.item !== null
+    readonly property bool weatherFocused: weatherLoader.item !== null
+                                           && weatherLoader.item.activeFocus
     readonly property bool polkitLoaded: polkitLoader.item !== null
     readonly property bool polkitFocused: polkitLoader.item !== null
                                           && polkitLoader.item.activeFocus
@@ -223,7 +228,8 @@ PanelWindow {
     function isInteractiveKind(kind) {
         return kind === coordinator.ownerLauncher || kind === coordinator.ownerHistory || kind
                 === coordinator.ownerTray || kind === coordinator.ownerAudio || kind
-                === coordinator.ownerSession || kind === coordinator.ownerPolkitModal;
+                === coordinator.ownerWeather || kind === coordinator.ownerSession || kind
+                === coordinator.ownerPolkitModal;
     }
 
     function loaderForKind(kind) {
@@ -238,6 +244,9 @@ PanelWindow {
         }
         if (kind === coordinator.ownerAudio) {
             return audioLoader;
+        }
+        if (kind === coordinator.ownerWeather) {
+            return weatherLoader;
         }
         if (kind === coordinator.ownerSession) {
             return sessionLoader;
@@ -339,12 +348,14 @@ PanelWindow {
               && trayLoader.item.visible;
         const audioVisible = ownerKind === coordinator.ownerAudio && audioLoader.item !== null
               && audioLoader.item.visible;
+        const weatherVisible = ownerKind === coordinator.ownerWeather && weatherLoader.item
+              !== null && weatherLoader.item.visible;
         const polkitVisible = polkit && polkitLoader.item !== null && polkitLoader.item.visible;
         const transientVisible = transientOwner && transientLoader.item !== null
               && transientLoader.item.visible && transientLoader.item.committed;
         if (!idleVisible && !dashboardVisible && !launcherVisible && !historyVisible &&
-                !trayVisible && !audioVisible && !sessionVisible && !polkitVisible &&
-                !transientVisible) {
+                !trayVisible && !audioVisible && !weatherVisible && !sessionVisible &&
+                !polkitVisible && !transientVisible) {
             return;
         }
 
@@ -421,6 +432,9 @@ PanelWindow {
             } else if (surface.focusTarget === surface.coordinator.focusAudio && surface.audio
                        && audioLoader.item !== null) {
                 target = audioLoader.item;
+            } else if (surface.focusTarget === surface.coordinator.focusWeather
+                       && surface.weatherDetails && weatherLoader.item !== null) {
+                target = weatherLoader.item;
             } else if (surface.focusTarget === surface.coordinator.focusPolkitModal
                        && surface.polkit && polkitLoader.item !== null) {
                 target = polkitLoader.item;
@@ -651,6 +665,9 @@ PanelWindow {
                                                                            === coordinator.focusTray)
                                                                        || (audio && focusTarget
                                                                            === coordinator.focusAudio)
+                                                                       || (weatherDetails
+                                                                           && focusTarget
+                                                                           === coordinator.focusWeather)
                                                                        || (session && focusTarget
                                                                            === coordinator.focusSessionActions)
                                                                        || (polkit && focusTarget
@@ -769,6 +786,7 @@ PanelWindow {
         showWorkspace: UserConfig.snapshot.island.showWorkspace
         showWeather: UserConfig.snapshot.island.showWeather
         showMedia: UserConfig.snapshot.media.compactVisible
+        onWeatherRequested: surface.coordinator.openWeather(surface.hostSurfaceToken)
     }
 
     ExpandedDashboard {
@@ -946,6 +964,34 @@ PanelWindow {
             AudioSelectionView {
                 active: audioLoader.visible
                 adapter: surface.audioAdapter
+                ownerEpoch: surface.ownerEpoch
+                reducedMotion: surface.reducedMotion
+                onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)
+            }
+        }
+
+        onLoaded: {
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
+    }
+
+    Loader {
+        id: weatherLoader
+
+        anchors.fill: parent
+        active: (surface.weatherDetails || surface.exitingOwnerKind
+                 === surface.coordinator.ownerWeather) && surface.weather !== null
+        visible: active
+        enabled: surface.weatherDetails
+        transform: Translate {
+            x: weatherLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
+        }
+
+        sourceComponent: Component {
+            WeatherView {
+                active: weatherLoader.visible
+                adapter: surface.weather
                 ownerEpoch: surface.ownerEpoch
                 reducedMotion: surface.reducedMotion
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)

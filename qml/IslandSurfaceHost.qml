@@ -97,6 +97,9 @@ Scope {
     readonly property bool trayFocused: fallbackSurface !== null && fallbackSurface.trayFocused
     readonly property bool audioLoaded: fallbackSurface !== null && fallbackSurface.audioLoaded
     readonly property bool audioFocused: fallbackSurface !== null && fallbackSurface.audioFocused
+    readonly property bool weatherLoaded: fallbackSurface !== null && fallbackSurface.weatherLoaded
+    readonly property bool weatherFocused: fallbackSurface !== null
+                                           && fallbackSurface.weatherFocused
     readonly property bool polkitLoaded: fallbackSurface !== null && fallbackSurface.polkitLoaded
     readonly property bool polkitFocused: fallbackSurface !== null && fallbackSurface.polkitFocused
     readonly property bool polkitResponseFocused: fallbackSurface !== null

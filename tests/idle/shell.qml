@@ -18,6 +18,7 @@ ShellRoot {
     id: test
 
     property string pendingMotionStage: ""
+    property int weatherRequests: 0
 
     function require(condition, message) {
         if (!condition) {
@@ -116,6 +117,11 @@ ShellRoot {
         require(islandFull.temperatureText === "24°", "temperature renders rounded Celsius");
         require(islandFull.weatherCaptionText === "Clear · Day",
                 "weather renders normalized condition and day phase context");
+        require(islandFull.weatherBlock.Accessible.role === Accessible.Button,
+                "compact Weather exposes one accessible detail action");
+        islandFull.weatherBlock.clicked();
+        require(weatherRequests === 1,
+                "activating compact Weather requests its detailed subview once");
         require(islandFull.mediaSummary === "Artist — Track", "media renders the selected summary");
         require(islandFull.workspaceBlock.x < islandFull.workspaceBoundary.x
                 && islandFull.workspaceBoundary.x < islandFull.clockGroupBlock.x
@@ -418,6 +424,7 @@ ShellRoot {
         clock: FakeClock {}
         weather: islandFullWeather
         media: FakeMedia {}
+        onWeatherRequested: test.weatherRequests += 1
     }
 
     IdleIsland {

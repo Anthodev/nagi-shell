@@ -51,7 +51,7 @@ weather · media       connectivity · audio      tray · audio · session
 - **Adaptive geometry.** Content determines the island size. Compact height/padding and expanded screen fractions stay inside tested bounds; empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
 - **Useful Idle state.** Mandatory Clock plus optional Workspace, Weather, and Media stay in one fixed order inside a metrics-derived 44 to 48 px bar. Disabled or unavailable groups and separators collapse completely.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail.
-- **Focused tools.** Launcher, notification history, tray, audio-device selection, and six session actions replace dashboard content inside the same island. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
+- **Focused tools.** Launcher, notification history, tray, audio-device selection, detailed Weather, and six session actions replace dashboard content inside the same island. Weather shows the shared current conditions, next 12 returned hours, and five returned days in a bounded scrolling view. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
 - **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, D-Bus connectivity and session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and the Plasma wallpaper palette feed normalized adapters.
 - **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback.
 - **Semantic icons.** Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback and adapt contrast to the current semantic surface; muted input has its own slashed-microphone shape.
@@ -63,7 +63,7 @@ weather · media       connectivity · audio      tray · audio · session
 |---|---|---|
 | **Idle** | Show compact, display-only status | Workspace, clock, optional weather and media |
 | **Expanded** | Expose frequent controls and recent context | Media, connectivity, audio, pinned apps, notifications |
-| **Interactive** | Complete one focused task | Launcher, History, Tray, Audio, Session |
+| **Interactive** | Complete one focused task | Launcher, History, Tray, Audio, Weather, Session |
 | **Transient** | Replace Idle with short-lived feedback | Notification, volume, brightness, workspace |
 | **Modal** | Hold a normalized authentication presentation | Dormant Polkit UI seam only |
 
@@ -108,7 +108,7 @@ Run the checkout in the foreground. `make launch` builds the native helpers and 
 make launch
 ```
 
-Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. Its complete Island, Appearance, Clock & Date, Media, Notifications, Displays, and About pages unload while closed; setting changes publish immediately through the shared settings snapshot. While Nagi runs, it acts as the session's freedesktop notification server. Use Back or `Escape` to leave a focused island subview. Run `make stop` from another terminal to stop the checkout synchronously.
+Hover the island to open the dashboard. On first launch, an independent onboarding window explains the private versioned settings, Control Center, and KDE shortcut management. Close it with its visible action, `Escape`, or the window manager; Nagi records that dismissal under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`, and a missing or unwritable record simply means onboarding appears again later. Dashboard Settings opens the normal resizable Control Center in the same Nagi process. Its complete Island, Appearance, Clock & Date, Media, Weather, Notifications, Displays, and About pages unload while closed; setting changes publish immediately through the shared settings snapshot. While Nagi runs, it acts as the session's freedesktop notification server.
 
 For startup diagnostics, use `make diagnose`, then inspect the checkout with `make instances` and `make logs`.
 
@@ -117,7 +117,7 @@ For startup diagnostics, use `make diagnose`, then inspect the checkout with `ma
 Nagi owns one canonical file at `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/settings.conf`. Schema version `2` is a file-format version, not the product's internal V2 program name. New files use the private canonical template in `packaging/settings.conf`; valid legacy `theme.conf` values migrate once, byte-for-byte backup to `settings.conf.bak`, then the old file stops being active.
 
 > [!WARNING]
-> Weather remains opt-in. Enabling migrated coordinates means direct requests reveal your IP address and four-decimal coordinates to MET Norway. Nagi never uses IP geolocation. Future location search is an explicit user action owned by the Weather page.
+> Weather is opt-in. Manual search sends the submitted city or postal text and your IP address to Open-Meteo; if it is unavailable, Nagi may send the same submitted search to the configured Nominatim endpoint. Confirmed forecasts send your IP address and four-decimal coordinates to MET Norway. Nagi stores no search history, uses no IP geolocation or automatic location tracking, and saves only the confirmed local label and coordinates. Accept this disclosure before searching or enabling Weather.
 
 ```ini
 [settings]
@@ -208,7 +208,7 @@ Everything below stays on this machine; Nagi has no telemetry or sync.
 
 **Notification history.** Memory-only: no history file or database exists, and history is lost entirely when the process exits. It keeps at most 50 records for at most 24 hours, newest first, with the four most recent mirrored on the dashboard. Transient notifications never enter history. Expired notifications remain as text-only records until evicted; dismissed, action-consumed, and sender-closed records are removed immediately. A separate safety cap of 50 tracked protocol notifications expires the lowest-ranked item deterministically under pressure, even critical or never-expiring ones. Notification actions remain disabled on current supported Quickshell versions.
 
-**Weather cache.** One record per configured location lives in Quickshell's per-shell cache directory as `weather.json`, written atomically and reused at startup. Refreshes follow provider cache headers with bounded backoff, and content older than six hours is discarded automatically. Clearing the configured location also clears its cache.
+**Weather cache.** One private record for the confirmed label-and-coordinate identity lives in Quickshell's per-shell cache directory as `weather.json`, written atomically and reused at startup. It holds one bounded MET Norway compact response for process-wide current, 12-hour, and five-day projections; it never duplicates the human-readable label. Refreshes honor provider expiry and conditional requests before the selected `15m`, `30m`, `1h`, or `3h` preference, with a ten-minute minimum gap, manual-refresh cooldown, Retry-After, and bounded backoff. Expired valid data is marked stale with age for at most six hours, then discarded. Disabling Weather or changing/clearing the confirmed location aborts work and clears the prior cache.
 
 **Onboarding record.** First-launch dismissal persists under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`.
 
@@ -254,9 +254,9 @@ Brightness uses PowerDevil 6.7's `org.kde.ScreenBrightness` interface exclusivel
 
 ## Privacy
 
-Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, and wallpaper analysis stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, wallpaper paths, and backend errors out of the presentation.
+Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, and wallpaper analysis stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, wallpaper paths, network payloads, coordinates, location labels, submitted searches, and backend errors out of presentation diagnostics and logs.
 
-Weather is opt-in. It sends coordinates truncated to two decimal places and the user's IP address to MET Norway, then stores a bounded local cache. No location label leaves the machine. Use the linked Nominatim web page to look up coordinates manually; Nagi does not contact Nominatim. Weather data comes from [MET Norway Locationforecast](https://api.met.no/weatherapi/locationforecast/2.0/documentation), transformed into compact Nagi Shell condition categories and licensed under [CC BY 4.0](https://api.met.no/doc/License). MET Norway provides no delivery SLA.
+Weather is opt-in and performs no automatic location lookup. The Weather page repeats the disclosure before its explicit city/postal search. Search uses the keyless [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api), based on GeoNames and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), while Nagi remains non-commercial. Service failure may use the switchable [Nominatim](https://nominatim.org/) fallback at no more than one request per second; its data is © OpenStreetMap contributors under [ODbL](https://www.openstreetmap.org/copyright). Forecasts use only [MET Norway Locationforecast](https://api.met.no/weatherapi/locationforecast/2.0/documentation), transformed into bounded Nagi condition categories and calculated feels-like values, under [NLOD 2.0 / CC BY 4.0](https://api.met.no/doc/License). MET Norway provides no delivery SLA.
 
 Polkit credentials never enter the production shell because the backend is dormant. Synthetic presentation tests still enforce explicit submission and secret cleanup.
 

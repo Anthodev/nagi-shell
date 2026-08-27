@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 
 // Compact Idle composition: workspace, time, optional weather, optional
 // active media, in that order.
@@ -33,6 +34,8 @@ Item {
     property bool showWorkspace: true
     property bool showWeather: true
     property bool showMedia: true
+
+    signal weatherRequested
 
     readonly property int contentPadding: Theme.size.islandCompactPadding
     readonly property int contentGap: Theme.size.islandCompactPadding
@@ -294,7 +297,7 @@ Item {
             visible: clockGroup.visible && (weatherGroup.visible || mediaText.visible)
         }
 
-        Item {
+        AbstractButton {
             id: weatherGroup
 
             x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup,
@@ -304,6 +307,12 @@ Item {
             implicitWidth: weatherGlyph.implicitWidth + idle.weatherGap
                            + weatherLabels.implicitWidth
             implicitHeight: Math.max(weatherGlyph.implicitHeight, weatherLabels.implicitHeight)
+            focusPolicy: Qt.NoFocus
+            hoverEnabled: true
+            Accessible.role: Accessible.Button
+            Accessible.name: "Open detailed weather for " + idle.temperatureText + ", "
+                             + idle.weatherCaptionText
+            onClicked: idle.weatherRequested()
 
             WeatherGlyph {
                 id: weatherGlyph
@@ -341,6 +350,13 @@ Item {
                     size: "caption"
                     font.weight: Theme.type.weightRegular
                 }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                cursorShape: Qt.PointingHandCursor
+                enabled: weatherGroup.enabled
             }
         }
 

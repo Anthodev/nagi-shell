@@ -52,11 +52,20 @@ ShellRoot {
         }
     }
 
+    WeatherLocationSearchAdapter {
+        id: weatherLocationSearch
+        allowed: controlCenter.weatherLookupAllowed
+    }
+
     WeatherAdapter {
         id: weather
-        enabled: UserConfig.snapshot.weather.enabled && UserConfig.snapshot.island.showWeather
+        enabled: UserConfig.snapshot.weather.enabled
+        label: UserConfig.snapshot.weather.locationLabel
         latitude: UserConfig.snapshot.weather.latitude ?? Number.NaN
         longitude: UserConfig.snapshot.weather.longitude ?? Number.NaN
+        temperatureUnit: UserConfig.snapshot.weather.temperatureUnit
+        windUnit: UserConfig.snapshot.weather.windUnit
+        refreshPreset: UserConfig.snapshot.weather.refreshPreset
     }
 
     MediaAdapter {
@@ -149,6 +158,8 @@ ShellRoot {
         clock: clockState
         media: mediaAdapter
         notificationService: notificationService
+        weather: weather
+        locationSearch: weatherLocationSearch
         reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": islandHost.liveSurfaceCount > 0,
@@ -166,8 +177,8 @@ ShellRoot {
 
         function activate(reason: string): bool {
             if (reason !== "control-center" && reason !== "island" && reason !== "appearance" && reason
-                    !== "clock-date" && reason !== "media" && reason !== "notifications" && reason
-                    !== "displays" && reason !== "about") {
+                    !== "clock-date" && reason !== "media" && reason !== "weather" && reason
+                    !== "notifications" && reason !== "displays" && reason !== "about") {
                 return false;
             }
             return openControlCenter(reason, null);
