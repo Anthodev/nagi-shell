@@ -52,7 +52,8 @@ weather · media       connectivity · audio      tray · audio · session
 - **Useful Idle state.** Mandatory Clock plus optional Workspace, Weather, and Media stay in one fixed order inside a metrics-derived 44 to 48 px bar. Disabled or unavailable groups and separators collapse completely.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail. Each connectivity tile keeps its backend-confirmed quick toggle and exposes a secondary path to its complete manager.
 - **Focused tools.** Launcher, notification history, tray, audio-device selection, detailed Weather, and six session actions replace dashboard content inside the same island. Weather shows the shared current conditions, next 12 returned hours, and five returned days in a bounded scrolling view. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
-- **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, NetworkManager Wi-Fi management, BlueZ Bluetooth management, D-Bus session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and the Plasma wallpaper palette feed normalized adapters.
+- **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, NetworkManager Wi-Fi management, BlueZ Bluetooth management, D-Bus session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and one Plasma wallpaper service feed normalized adapters.
+- **Local wallpaper management.** The Control Center shows common, mixed, and unsupported per-display state; indexes only approved local folders; renders lazy cached thumbnails; previews a static image without changing Theme; and applies it to every active display only after an explicit action and fresh readback.
 - **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback.
 - **Semantic icons.** Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback and adapt contrast to the current semantic surface; muted input has its own slashed-microphone shape.
 - **Restrained motion.** Full, Reduced, and Minimal combine with KDE's animation preference by selecting the most restrictive scale. Minimal settles geometry, loaders, and focus synchronously.
@@ -190,7 +191,9 @@ roots=[]
 | `media` | Integration, compact, and dashboard booleans; `automatic` or `preferred` player policy; preferred desktop-file ID up to 256 UTF-8 bytes |
 | `notifications` | Popup, DND, dashboard, and history booleans; critical policy `bypass` or `silence` |
 | `weather` | Enabled and consent booleans; label up to 128 UTF-8 bytes; latitude `-90–90`; longitude `-180–180`; temperature `auto`/`celsius`/`fahrenheit`; wind `auto`/`kmh`/`mph`/`ms`; refresh `15m`/`30m`/`1h`/`3h` |
-| `wallpaper` | JSON array of at most eight unique absolute roots, each at most 1024 UTF-8 bytes |
+| `wallpaper` | JSON array of at most eight unique user-approved absolute roots, each at most 1024 UTF-8 bytes; the default is empty |
+
+Nagi never adds a wallpaper folder automatically. The Wallpaper page suggests the XDG Pictures wallpaper folder, commonly `~/Pictures/Wallpapers`, and KDE's shared `/usr/share/wallpapers` directory. Add either through the read-only folder dialog if you want it indexed. Browse image may preview and apply one validated file elsewhere without approving or copying its directory.
 
 The complete file is capped at 32 KiB: eight bounded wallpaper roots consume at most 8 KiB, while every other scalar remains below 2 KiB, leaving editorial headroom without permitting unbounded input. Unknown, duplicate, empty, malformed, NUL-containing, non-finite, or out-of-range input rejects the complete snapshot; no consumer sees a per-field hybrid.
 
@@ -209,6 +212,8 @@ Everything below stays on this machine; Nagi has no telemetry or sync.
 **Notification history.** Memory-only: no history file or database exists, and history is lost entirely when the process exits. It keeps at most 50 records for at most 24 hours, newest first, with the four most recent mirrored on the dashboard. Transient notifications never enter history. Expired notifications remain as text-only records until evicted; dismissed, action-consumed, and sender-closed records are removed immediately. A separate safety cap of 50 tracked protocol notifications expires the lowest-ranked item deterministically under pressure, even critical or never-expiring ones. Notification actions remain disabled on current supported Quickshell versions.
 
 **Weather cache.** One private record for the confirmed label-and-coordinate identity lives in Quickshell's per-shell cache directory as `weather.json`, written atomically and reused at startup. It holds one bounded MET Norway compact response for process-wide current, 12-hour, and five-day projections; it never duplicates the human-readable label. Refreshes honor provider expiry and conditional requests before the selected `15m`, `30m`, `1h`, or `3h` preference, with a ten-minute minimum gap, manual-refresh cooldown, Retry-After, and bounded backoff. Expired valid data is marked stale with age for at most six hours, then discarded. Disabling Weather or changing/clearing the confirmed location aborts work and clears the prior cache.
+
+**Wallpaper cache.** Source images remain in their original folders. While the Wallpaper page is open, the helper indexes up to eight approved roots and decodes only visible or selected static images. Thumbnails use an 8 MiB memory LRU and a private atomic version-1 disk LRU capped at 64 MiB and 512 entries under `${XDG_CACHE_HOME:-$HOME/.cache}/nagi-shell/`. File-byte changes create a new cache identity; deleted and renamed files leave the live library model. Closing the page cancels indexing, queued thumbnail work, preview analysis, and its watchdog.
 
 **Onboarding record.** First-launch dismissal persists under `${XDG_STATE_HOME:-$HOME/.local/state}/nagi-shell/`.
 
@@ -256,7 +261,7 @@ Brightness uses PowerDevil 6.7's `org.kde.ScreenBrightness` interface exclusivel
 
 ## Privacy
 
-Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, and wallpaper analysis stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, wallpaper paths, network payloads, coordinates, location labels, submitted searches, and backend errors out of presentation diagnostics and logs.
+Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, wallpaper discovery, previews, and apply state stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, current wallpaper paths and digests, network payloads, coordinates, location labels, submitted searches, and backend errors out of presentation diagnostics and logs.
 
 Weather is opt-in and performs no automatic location lookup. The Weather page repeats the disclosure before its explicit city/postal search. Search uses the keyless [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api), based on GeoNames and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), while Nagi remains non-commercial. Service failure may use the switchable [Nominatim](https://nominatim.org/) fallback at no more than one request per second; its data is © OpenStreetMap contributors under [ODbL](https://www.openstreetmap.org/copyright). Forecasts use only [MET Norway Locationforecast](https://api.met.no/weatherapi/locationforecast/2.0/documentation), transformed into bounded Nagi condition categories and calculated feels-like values, under [NLOD 2.0 / CC BY 4.0](https://api.met.no/doc/License). MET Norway provides no delivery SLA.
 
@@ -268,6 +273,7 @@ Polkit credentials never enter the production shell because the backend is dorma
 - One Interactive task or Modal flow exists across all islands. Notifications and confirmed output-volume feedback may appear on every eligible island, while workspace and brightness remain routed and sensitive flows never mirror.
 - Wi-Fi manages Open and WPA Personal networks through NetworkManager. Captive portals, IP/DNS editing, VPN, Enterprise/EAP, certificates, hotspots, and complete profile administration remain in KDE.
 - Bluetooth uses BlueZ for explicit bounded discovery, scoped Nagi-initiated pairing, connect, disconnect, and unpair. Codecs, audio profiles, service-authorization editing, file transfer, battery history, per-adapter tuning, and advanced reconnect policy remain in KDE/PipeWire.
+- Wallpaper management accepts local static JPEG, PNG, WebP, and BMP files only. It has no downloads, remote gallery, video, animation, slideshow editor, file operations, or per-display assignment. Apply replaces every active display with the selected static image; a partial Plasma write may leave successful displays changed and is reported per display.
 - Audio covers default output/input selection, volume, and mute. It has no per-application mixer.
 - The dashboard has no calendar panel, pre-sized geometry, or hardware-monitoring view.
 - External monitors may be only partially observable for brightness: PowerDevil supplies a label without a reliable screen identity, so display entries are opaque and their naming can change across replug or driver events.
@@ -288,10 +294,10 @@ shell.qml
    │      └── per-surface records · global priority · mailbox · deadlines · restoration
    │
    ├── normalized QML adapters
-   │      └── media · audio · connectivity · apps · tray · notifications
+   │      └── media · audio · connectivity · apps · tray · notifications · wallpaper
    │
    ├── one lazy Control Center
-   │      └── fixed complete routes · shared services/settings · safe diagnostics
+   │      └── fixed complete routes · lazy Wallpaper picker · shared services/settings
    │
    └── native helpers and runtime plugins
           └── pointer routing · KWin · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
@@ -309,7 +315,7 @@ make format-check
 make check
 ```
 
-`make check` runs native, adapter, coordinator, deterministic service, Control Center activation, and QML tests, then exercises the real `PanelWindow` and normal-window scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
+`make check` runs native, adapter, coordinator, deterministic service, Control Center activation, and QML tests, then exercises the real `PanelWindow` and normal-window scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. `make test-wallpaper` covers traversal, decoder/cache bounds, QML normalization, Theme isolation, and helper restart; `make test-wallpaper-dbus` covers observation lifecycle and stale-work cancellation; `make test-wallpaper-service` covers mixed displays, file changes, partial apply/readback, external authority, and unload with two virtual outputs. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
 
 `qmllint-qt6` remains advisory because it cannot resolve the valid Quickshell `PanelWindow`. Runtime diagnostics and the focused checks are authoritative.
 

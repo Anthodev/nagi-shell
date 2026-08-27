@@ -16,6 +16,7 @@ dbus.set_default_main_loop(DBusGMainLoop(set_as_default=True))
 
 PLUGIN_AVAILABLE = os.environ.get("MOCK_IMAGE_PLUGIN", "1") == "1"
 SESSION_FILE = os.environ.get("MOCK_STATE_FILE", "/tmp/mock-wallpaper-state.json")
+PARTIAL_APPLY = os.environ.get("MOCK_PARTIAL_APPLY", "0") == "1"
 
 
 class Containment:
@@ -72,6 +73,10 @@ class PlasmaShellMock(dbus.service.Object):
                     result["Image"] = containment.config["Image"]
                 return result
         return {}
+    @dbus.service.method("org.kde.PlasmaShell", in_signature="u", out_signature="a{sv}")
+    def wallpaper(self, screen):
+        return self.Wallpaper(screen)
+
 
     @dbus.service.method("org.kde.PlasmaShell", in_signature="sa{sv}u", out_signature="")
     def SetWallpaper(self, plugin, parameters, screen):  # noqa: N802
@@ -81,10 +86,15 @@ class PlasmaShellMock(dbus.service.Object):
                 if "Image" in parameters:
                     containment.config["Image"] = str(parameters["Image"])
         self.WallpaperChanged(screen)
+        self.wallpaperChanged(screen)
 
     @dbus.service.signal("org.kde.PlasmaShell", signature="u")
     def WallpaperChanged(self, screen):  # noqa: N802
         pass
+    @dbus.service.signal("org.kde.PlasmaShell", signature="u")
+    def wallpaperChanged(self, screen):
+        pass
+
 
     @dbus.service.method(
         "org.kde.PlasmaShell", in_signature="s", out_signature="s",
@@ -100,6 +110,11 @@ class PlasmaShellMock(dbus.service.Object):
                     name="org.freedesktop.DBus.Error.Failed")
         applied = []
         for containment in self.current_containments():
+            if PARTIAL_APPLY and applied:
+                save_state()
+                raise dbus.DBusException(
+                    "Injected partial apply",
+                    name="org.freedesktop.DBus.Error.Failed")
             if "knownWallpaperPlugins()" in "".join(lines):
                 if "org.kde.image" not in STATE["known_plugins"]:
                     raise dbus.DBusException(
@@ -108,14 +123,15 @@ class PlasmaShellMock(dbus.service.Object):
             target = None
             for line in lines:
                 if line.startswith("const image ="):
-                    image = line.split("'", 2)[1]
+                    literal = line.split("=", 1)[1].strip().rstrip(";")
+                    image = json.loads(literal) if literal.startswith('"') else literal.strip("'")
                 elif line == "throw new Error('injected-after-first-screen');" and applied:
                     raise dbus.DBusException(
                         "Injected script failure",
                         name="org.freedesktop.DBus.Error.Failed")
                 elif line.startswith("desktop.wallpaperPlugin ="):
                     plugin = line.split("=", 1)[1].strip().rstrip(";").strip("'")
-                    containment.plugin = plugin
+                    containment.plugin = "org.kde.image" if plugin == "plugin" else plugin
                     target = containment
                 elif line.startswith("desktop.writeConfig('Image',") and target is not None:
                     containment.config["Image"] = image
@@ -129,6 +145,12 @@ class PlasmaShellMock(dbus.service.Object):
                     )
         save_state()
         return "\n".join(output)
+    @dbus.service.method(
+        "org.kde.PlasmaShell", in_signature="s", out_signature="s",
+        sender_keyword="sender")
+    def evaluateScript(self, script, sender=None):
+        return self.EvaluateScript(script, sender)
+
 
 
 def main():

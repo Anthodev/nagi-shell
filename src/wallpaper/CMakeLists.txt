@@ -6,7 +6,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Concurrent Core DBus Gui)
 
 qt_standard_project_setup()
 
-qt_add_executable(nagi-wallpaper main.cpp analyzer.cpp analyzer.h)
+qt_add_executable(nagi-wallpaper main.cpp analyzer.cpp analyzer.h library.cpp library.h)
 target_compile_features(nagi-wallpaper PRIVATE cxx_std_20)
 target_compile_options(nagi-wallpaper PRIVATE -O2 -Wall -Wextra -Wpedantic)
 target_link_libraries(nagi-wallpaper PRIVATE Qt6::Concurrent Qt6::Core Qt6::DBus Qt6::Gui)
@@ -21,6 +21,19 @@ target_include_directories(nagi-wallpaper-analyzer-test PRIVATE ${CMAKE_CURRENT_
 target_compile_features(nagi-wallpaper-analyzer-test PRIVATE cxx_std_20)
 target_compile_options(nagi-wallpaper-analyzer-test PRIVATE -O2 -Wall -Wextra -Wpedantic)
 target_link_libraries(nagi-wallpaper-analyzer-test PRIVATE Qt6::Core Qt6::Gui)
+qt_add_executable(
+    nagi-wallpaper-library-test
+    ../../tests/wallpaper_library_test.cpp
+    analyzer.cpp
+    analyzer.h
+    library.cpp
+    library.h
+)
+target_include_directories(nagi-wallpaper-library-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(nagi-wallpaper-library-test PRIVATE cxx_std_20)
+target_compile_options(nagi-wallpaper-library-test PRIVATE -O2 -Wall -Wextra -Wpedantic)
+target_link_libraries(nagi-wallpaper-library-test PRIVATE Qt6::Core Qt6::Gui)
+
 
 qt_add_executable(
     nagi-wallpaper-dbus-test
@@ -28,6 +41,8 @@ qt_add_executable(
     main.cpp
     analyzer.cpp
     analyzer.h
+    library.cpp
+    library.h
 )
 target_include_directories(nagi-wallpaper-dbus-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(

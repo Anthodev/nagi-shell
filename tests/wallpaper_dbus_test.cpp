@@ -7,12 +7,14 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
+#include <QRegularExpression>
 
 #include <atomic>
 #include <cstdio>
@@ -44,17 +46,49 @@ public:
     bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) override
     {
         if (message.path() != QString::fromLatin1(PlasmaPath)
-            || message.interface() != QString::fromLatin1(PlasmaInterface)
-            || message.member() != QStringLiteral("wallpaper")) {
+            || message.interface() != QString::fromLatin1(PlasmaInterface)) {
             return false;
         }
-        wallpaperCalls += 1;
-        connection.send(message.createReply(QVariant::fromValue(wallpaper)));
+        if (message.member() == QStringLiteral("wallpaper")) {
+            wallpaperCalls += 1;
+            connection.send(message.createReply(QVariant::fromValue(wallpaper)));
+            return true;
+        }
+        if (message.member() != QStringLiteral("evaluateScript")
+            || message.arguments().size() != 1) {
+            return false;
+        }
+        evaluateCalls += 1;
+        const QString script = message.arguments().first().toString();
+        if (script.contains(QStringLiteral("desktop.writeConfig('Image', image)"))) {
+            const QRegularExpression expression(
+                QStringLiteral("const image = (\\\"(?:\\\\\\\\.|[^\\\"])*\\\");"));
+            const auto match = expression.match(script);
+            if (!match.hasMatch()) {
+                connection.send(message.createErrorReply(
+                    QStringLiteral("org.freedesktop.DBus.Error.InvalidArgs"),
+                    QStringLiteral("invalid image literal")));
+                return true;
+            }
+            const QJsonDocument literal = QJsonDocument::fromJson(
+                QByteArrayLiteral("[") + match.captured(1).toUtf8() + QByteArrayLiteral("]"));
+            wallpaper = {
+                {QStringLiteral("wallpaperPlugin"), QStringLiteral("org.kde.image")},
+                {QStringLiteral("Image"), literal.array().first().toString()},
+            };
+            connection.send(message.createReply(QStringLiteral("requested screen=0")));
+            return true;
+        }
+        const QString plugin = wallpaper.value(QStringLiteral("wallpaperPlugin")).toString();
+        const QString image = wallpaper.value(QStringLiteral("Image")).toString();
+        connection.send(message.createReply(
+            QStringLiteral("0 %1 %2").arg(plugin, image)));
         return true;
     }
 
     QVariantMap wallpaper;
     int wallpaperCalls = 0;
+    int evaluateCalls = 0;
 };
 
 class WallpaperDbusTest final : public QObject {
@@ -101,13 +135,15 @@ public:
 private:
     enum class Stage {
         Initial,
-        IgnoreNonPrimary,
+        AllScreenSignal,
         UnsupportedPlugin,
         Activity,
         Missing,
         Unreadable,
         OwnerLoss,
         Reappearance,
+        Preview,
+        AppliedCurrent,
         Cleanup,
     };
 
@@ -260,15 +296,53 @@ private:
     void process(const QJsonObject &snapshot)
     {
         require(!snapshot.isEmpty(), "helper emits JSON objects only");
+        const QString type = snapshot.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("library")) {
+            require(stage == Stage::Preview, "library work exists only while the page is interested");
+            return;
+        }
+        if (type == QStringLiteral("preview")) {
+            require(stage == Stage::Preview, "preview is page-owned");
+            const QString status = snapshot.value(QStringLiteral("status")).toString();
+            if (status == QStringLiteral("loading")) {
+                return;
+            }
+            require(status == QStringLiteral("ready"), "valid static preview decodes successfully");
+            require(snapshot.value(QStringLiteral("thumbnail")).toString().startsWith(
+                        QStringLiteral("data:image/png;base64,")),
+                    "preview bytes cross only as a bounded data URL");
+            const QString id = snapshot.value(QStringLiteral("id")).toString();
+            helper.write(QJsonDocument(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("apply")},
+                {QStringLiteral("id"), id},
+            }).toJson(QJsonDocument::Compact) + '\n');
+            return;
+        }
+        if (type == QStringLiteral("apply")) {
+            require(stage == Stage::Preview, "apply follows one opaque preview candidate");
+            if (snapshot.value(QStringLiteral("status")).toString() == QStringLiteral("success")) {
+                require(snapshot.value(QStringLiteral("success")).toBool()
+                            && !snapshot.value(QStringLiteral("partial")).toBool()
+                            && snapshot.value(QStringLiteral("results")).toArray().size() == 1,
+                        "apply reports one verified display result without false partial success");
+                require(services.evaluateCalls == 2,
+                        "apply uses one documented write and one fresh readback script");
+                stage = Stage::AppliedCurrent;
+                expectedGeneration += 1;
+            }
+            return;
+        }
+        require(type == QStringLiteral("current"), "helper event type is allowlisted");
         require(snapshot.value(QStringLiteral("generation")).toInteger() == expectedGeneration,
-                "generation advances exactly once per effective change");
+                "current generation advances exactly once per effective change");
         if (stage == Stage::Initial) {
             expect(snapshot, true, "Ready", "#D94A38");
             require(services.wallpaperCalls == 1, "startup queries wallpaper once");
-            stage = Stage::IgnoreNonPrimary;
+            stage = Stage::AllScreenSignal;
             emitWallpaperChanged(1);
             QTimer::singleShot(150, this, [this] {
-                require(stage == Stage::IgnoreNonPrimary, "non-primary wallpaper signal is ignored");
+                require(stage == Stage::AllScreenSignal,
+                        "an unchanged all-screen signal emits no duplicate state");
                 setWallpaper(QStringLiteral("org.kde.color"), {});
                 stage = Stage::UnsupportedPlugin;
                 expectedGeneration += 1;
@@ -315,15 +389,27 @@ private:
                     "mock Plasma owner reappears");
         } else if (stage == Stage::Reappearance) {
             expect(snapshot, true, "Ready", "#1E6FD9");
-            require(services.wallpaperCalls == 6,
+            require(services.wallpaperCalls == 7,
                     "only startup and applicable invalidations query wallpaper");
+            stage = Stage::Preview;
+            helper.write(QJsonDocument(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("interest")},
+                {QStringLiteral("active"), true},
+                {QStringLiteral("roots"), QJsonArray{}},
+            }).toJson(QJsonDocument::Compact) + '\n');
+            helper.write(QJsonDocument(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("preview-path")},
+                {QStringLiteral("path"), fixtures + QStringLiteral("/colorful.png")},
+            }).toJson(QJsonDocument::Compact) + '\n');
+        } else if (stage == Stage::AppliedCurrent) {
+            expect(snapshot, true, "Ready", "#D94A38");
             require(!QString::fromUtf8(diagnostics).contains(fixtures)
                         && !QString::fromUtf8(diagnostics).contains(QStringLiteral("activity-test")),
                     "helper diagnostics contain no paths or identifiers");
             stage = Stage::Cleanup;
-            helper.terminate();
+            helper.write("{\"op\":\"shutdown\"}\n");
         } else {
-            fail("unexpected helper snapshot");
+            fail("unexpected helper current snapshot");
         }
     }
 
@@ -339,9 +425,9 @@ private:
                 "status is normalized");
         require(snapshot.value(QStringLiteral("accent")).toString() == QString::fromLatin1(accent),
                 "accent matches state");
-        const QString path = snapshot.value(QStringLiteral("imagePath")).toString();
-        require(available ? !path.isEmpty() : path.isEmpty(),
-                "image path is exposed only for Ready snapshots");
+        require(!snapshot.contains(QStringLiteral("imagePath"))
+                    && snapshot.value(QStringLiteral("screens")).toArray().size() == 1,
+                "current paths stay private while every display has a public summary");
     }
 
     void require(bool condition, const char *message)
@@ -353,10 +439,14 @@ private:
 
     [[noreturn]] void fail(const char *message)
     {
-        std::fprintf(stderr, "wallpaper D-Bus test failed: %s\n", message);
+        std::fprintf(stderr, "wallpaper D-Bus test failed: %s (stage=%d)\n", message,
+                     static_cast<int>(stage));
         const QByteArray processError = helper.errorString().toUtf8();
         const QByteArray helperError = diagnostics.left(1024);
-        std::fprintf(stderr, "process: %s\nhelper: %s\n", processError.constData(), helperError.constData());
+        std::fprintf(stderr,
+                     "process: %s\nhelper: %s\npending: %s\nrace=%d extraction=%d recreate=%d\n",
+                     processError.constData(), helperError.constData(), output.left(1024).constData(),
+                     raceSnapshots, extractionCount, recreationScheduled ? 1 : 0);
         if (helper.state() != QProcess::NotRunning) {
             helper.kill();
             helper.waitForFinished();
