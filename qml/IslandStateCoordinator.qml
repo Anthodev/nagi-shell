@@ -21,6 +21,7 @@ Scope {
     readonly property int ownerHistory: 10
     readonly property int ownerTray: 11
     readonly property int ownerAudio: 12
+    readonly property int ownerWeather: 13
 
     readonly property int focusNone: 0
     readonly property int focusLauncherSearch: 1
@@ -30,6 +31,7 @@ Scope {
     readonly property int focusNotificationHistory: 5
     readonly property int focusTray: 6
     readonly property int focusAudio: 7
+    readonly property int focusWeather: 8
 
     readonly property int stateSerial: state.serial
     readonly property int surfaceCount: state.surfaces.length
@@ -72,6 +74,10 @@ Scope {
 
     function openAudio(initiatingSurfaceToken) {
         return state.openInteractive(root.ownerAudio, initiatingSurfaceToken);
+    }
+
+    function openWeather(initiatingSurfaceToken) {
+        return state.openInteractive(root.ownerWeather, initiatingSurfaceToken);
     }
 
     function openDashboard(initiatingSurfaceToken) {
@@ -372,6 +378,9 @@ Scope {
             if (kind === root.ownerAudio) {
                 return root.focusAudio;
             }
+            if (kind === root.ownerWeather) {
+                return root.focusWeather;
+            }
             if (kind === root.ownerSession) {
                 return root.focusSessionActions;
             }
@@ -426,7 +435,7 @@ Scope {
 
         function isInteractiveKind(kind) {
             return kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray || kind
-                    === root.ownerAudio || kind === root.ownerSession;
+                    === root.ownerAudio || kind === root.ownerWeather || kind === root.ownerSession;
         }
 
         function isRelevantFrame(frame, record, now) {
@@ -540,6 +549,8 @@ Scope {
                 return "tray";
             if (kind === root.ownerAudio)
                 return "audio";
+            if (kind === root.ownerWeather)
+                return "weather";
             if (kind === root.ownerPolkitModal)
                 return "polkitModal";
             return "none";
@@ -619,7 +630,7 @@ Scope {
             if (kind === root.ownerExpanded)
                 return 5;
             if (kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray
-                    || kind === root.ownerAudio)
+                    || kind === root.ownerAudio || kind === root.ownerWeather)
                 return 6;
             if (kind === root.ownerSession)
                 return 7;

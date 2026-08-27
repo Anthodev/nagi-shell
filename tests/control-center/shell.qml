@@ -134,14 +134,15 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 7
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 8
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
                 && controlCenter.availableRoutes[2].id === "clock-date"
                 && controlCenter.availableRoutes[3].id === "media"
-                && controlCenter.availableRoutes[4].id === "notifications"
-                && controlCenter.availableRoutes[5].id === "displays"
-                && controlCenter.availableRoutes[6].id === "about",
+                && controlCenter.availableRoutes[4].id === "weather"
+                && controlCenter.availableRoutes[5].id === "notifications"
+                && controlCenter.availableRoutes[6].id === "displays"
+                && controlCenter.availableRoutes[7].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
@@ -194,6 +195,26 @@ ShellRoot {
     function mediaStage() {
         require(controlCenter.loadedPageItem !== null && fakeMedia.availableApplications.length === 1,
                 "Media receives the normalized shared application policy source");
+        require(controlCenter.open("weather", tokenB)
+                && controlCenter.currentPageId === "weather",
+                "Weather joins the shared responsive page viewport");
+        stage = "weather";
+        settle.restart();
+    }
+
+    function weatherStage() {
+        const page = controlCenter.loadedPageItem;
+        require(page !== null && !controlCenter.weatherLookupAllowed,
+                "Weather preview loads without enabling location lookup");
+        page.privacyAccepted = true;
+        require(controlCenter.weatherLookupAllowed && fakeLocationSearch.search("Paris"),
+                "privacy acceptance gates explicit location search");
+        require(page.confirm(fakeLocationSearch.results[0])
+                && UserConfig.snapshot.weather.enabled
+                && UserConfig.snapshot.weather.locationLabel === "Paris, France",
+                "confirmed normalized location atomically enables Weather");
+        require(fakeLocationSearch.results.length === 0,
+                "confirmation clears page-owned lookup models and query state");
         require(controlCenter.open("notifications", tokenB)
                 && controlCenter.currentPageId === "notifications",
                 "Notifications joins the shared responsive page viewport");
@@ -317,6 +338,9 @@ ShellRoot {
         case "media":
             mediaStage();
             break;
+        case "weather":
+            weatherStage();
+            break;
         case "notifications":
             notificationsStage();
             break;
@@ -416,6 +440,36 @@ ShellRoot {
     }
 
     QtObject {
+        id: fakeWeather
+        property bool available: false
+        property bool stale: false
+        property var model: null
+        property var current: null
+    }
+
+    QtObject {
+        id: fakeLocationSearch
+        property bool inFlight: false
+        property var results: []
+        property string failure: "none"
+        property string attribution: "Location data by GeoNames via Open-Meteo · CC BY 4.0"
+        function search(query) {
+            if (query !== "Paris")
+                return false;
+            results = [{
+                           "label": "Paris, France",
+                           "latitude": 48.8534,
+                           "longitude": 2.3488
+                       }];
+            return true;
+        }
+        function clear() {
+            results = [];
+            failure = "none";
+        }
+    }
+
+    QtObject {
         id: fakeNotifications
         property int historyCount: 1
         function clearHistory() {
@@ -431,6 +485,8 @@ ShellRoot {
         clock: fakeClock
         media: fakeMedia
         notificationService: fakeNotifications
+        weather: fakeWeather
+        locationSearch: fakeLocationSearch
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,

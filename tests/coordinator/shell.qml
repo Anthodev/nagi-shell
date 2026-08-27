@@ -68,6 +68,16 @@ ShellRoot {
                 "lower-rank Interactive activation cannot preempt Session");
         require(coordinator.cancelInteractive(sessionEpoch), "current Interactive task cancels");
         require(snapshot(thirdToken).ownerName === "idle", "cancellation restores local baseline");
+
+        require(coordinator.openWeather(secondToken),
+                "Weather opens on its initiating surface");
+        const weatherSnapshot = snapshot(secondToken);
+        require(weatherSnapshot.ownerName === "weather"
+                && weatherSnapshot.focusTarget === coordinator.focusWeather
+                && coordinator.interactiveHostToken === secondToken,
+                "Weather uses the global Interactive owner and dedicated focus target");
+        require(coordinator.cancelInteractive(weatherSnapshot.ownerEpoch),
+                "Weather closes through normal Interactive cancellation");
     }
 
     function verifyDisableAndLoss() {

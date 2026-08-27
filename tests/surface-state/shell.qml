@@ -15,8 +15,10 @@ ShellRoot {
     property real historyEpoch: 0
     property real trayEpoch: 0
     property real audioEpoch: 0
+    property real weatherEpoch: 0
     property bool audioVerified: false
     property bool trayVerified: false
+    property bool weatherVerified: false
     property var initialSurfaceToken: null
     property int initialSurfaceGeneration: 0
     property int compactTransientWidth: 0
@@ -505,6 +507,34 @@ ShellRoot {
                         "disabled outgoing Audio cannot dispatch pointer selection");
                 audioVerified = true;
                 step = 11;
+            } else if (!weatherVerified && coordinator.ownerName === "weather") {
+                if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
+                                && host.weatherLoaded && host.weatherFocused
+                                && host.surfaceWidth > 0 && host.surfaceHeight > 0,
+                                "Weather view did not settle: loaded=" + host.weatherLoaded
+                                + " focused=" + host.weatherFocused + " surface="
+                                + host.surfaceWidth + "x" + host.surfaceHeight + " natural="
+                                + weatherReference.implicitWidth + "x"
+                                + weatherReference.implicitHeight)) {
+                    return;
+                }
+                require(coordinator.focusTarget === coordinator.focusWeather,
+                        "Weather presentation receives its dedicated focus target");
+                require(fakeWeatherAdapter.hourly.length === 12
+                        && fakeWeatherAdapter.daily.length === 5,
+                        "Weather renders the bounded shared 12-hour and five-day models");
+                require(host.surfaceWidth <= weatherReference.implicitWidth
+                        && host.surfaceHeight <= weatherReference.implicitHeight
+                        && host.backgroundCoversSurface,
+                        "Weather natural content is screen-bounded and clipped by SubviewFrame");
+                require(coordinator.cancelInteractive(weatherEpoch),
+                        "Weather Back accepts the current owner epoch");
+                require(host.interactiveExitRunning && host.weatherLoaded && !host.surfaceFocusable,
+                        "generic reverse exit retains Weather only for its fade");
+                require(!host.interactiveExitLoaderEnabled,
+                        "outgoing Weather disables actions immediately");
+                weatherVerified = true;
+                step = 11;
             } else {
                 if (!awaitState(coordinator.ownerName === "expanded"
                                 && coordinator.presentationVisible && host.dashboardFocused,
@@ -527,9 +557,16 @@ ShellRoot {
                             "visible dashboard audio entry is admitted");
                     audioEpoch = coordinator.ownerEpoch;
                     step = 11;
-                } else {
+                } else if (!weatherVerified) {
                     require(!host.audioLoaded,
                             "Audio unloads only after its reverse exit completes");
+                    require(coordinator.openWeather(host.surfaceToken),
+                            "compact Weather route is admitted on the initiating surface");
+                    weatherEpoch = coordinator.ownerEpoch;
+                    step = 11;
+                } else {
+                    require(!host.weatherLoaded,
+                            "Weather unloads only after its reverse exit completes");
                     require(host.cancelDashboard(), "restored dashboard remains cancellable");
                 }
             }
@@ -1168,6 +1205,67 @@ ShellRoot {
         }
     }
 
+    QtObject {
+        id: fakeWeatherAdapter
+
+        readonly property real temperatureC: current.temperature
+        readonly property string condition: current.condition
+        readonly property string dayPhase: current.dayPhase
+        readonly property bool stale: false
+        readonly property string failure: "none"
+        readonly property real lastUpdatedAgeMs: 600000
+        readonly property bool manualRefreshAvailable: true
+        readonly property bool refreshInFlight: false
+        readonly property var current: ({
+                                            "temperature": 18,
+                                            "temperatureUnit": "celsius",
+                                            "feelsLike": 17,
+                                            "feelsLikeCalculated": true,
+                                            "humidity": 62,
+                                            "wind": 12,
+                                            "windUnit": "kmh",
+                                            "condition": "partlyCloudy",
+                                            "dayPhase": "day"
+                                        })
+        readonly property var hourly: {
+            const values = [];
+            for (let index = 1; index <= 12; index += 1) {
+                values.push({
+                                "forecastEpoch": Date.now() + index * 3600000,
+                                "temperature": 18 + index / 10,
+                                "temperatureUnit": "celsius",
+                                "condition": "partlyCloudy",
+                                "dayPhase": "day"
+                            });
+            }
+            return values;
+        }
+        readonly property var daily: {
+            const values = [];
+            for (let index = 0; index < 5; index += 1) {
+                values.push({
+                                "dateEpoch": Date.now() + index * 86400000,
+                                "minimumTemperature": 10 + index,
+                                "maximumTemperature": 20 + index,
+                                "temperatureUnit": "celsius",
+                                "condition": "clear",
+                                "dayPhase": "day"
+                            });
+            }
+            return values;
+        }
+        readonly property var model: ({
+                                          "location": "Fixture City",
+                                          "current": current,
+                                          "hourly": hourly,
+                                          "daily": daily
+                                      })
+
+        function manualRefresh() {
+            return true;
+        }
+    }
+
     Item {
         visible: false
 
@@ -1176,6 +1274,15 @@ ShellRoot {
 
             active: false
             adapter: fakeAudioAdapter
+            ownerEpoch: 0
+            reducedMotion: true
+        }
+
+        WeatherView {
+            id: weatherReference
+
+            active: true
+            adapter: fakeWeatherAdapter
             ownerEpoch: 0
             reducedMotion: true
         }
@@ -1244,6 +1351,7 @@ ShellRoot {
         readonly property int focusNotificationHistory: coordinatorCore.focusNotificationHistory
         readonly property int focusTray: coordinatorCore.focusTray
         readonly property int focusAudio: coordinatorCore.focusAudio
+        readonly property int focusWeather: coordinatorCore.focusWeather
 
         function refreshFallback(result) {
             if (host.fallbackSurface !== null) {
@@ -1260,6 +1368,9 @@ ShellRoot {
         }
         function openAudio(token) {
             return coordinatorCore.openAudio(token);
+        }
+        function openWeather(token) {
+            return coordinatorCore.openWeather(token);
         }
         function openHistory(token) {
             return coordinatorCore.openHistory(token);
@@ -1315,6 +1426,7 @@ ShellRoot {
         sessionService: fakeSessionService
         trayAdapter: fakeTrayAdapter
         audioAdapter: fakeAudioAdapter
+        weather: fakeWeatherAdapter
         polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel

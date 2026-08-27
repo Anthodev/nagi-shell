@@ -12,6 +12,8 @@ FloatingWindow {
     required property var clock
     required property var media
     required property var notificationService
+    required property var weather
+    required property var locationSearch
     required property var capabilities
     property bool reducedMotion: false
     property string version: "0.1.0"
@@ -38,6 +40,10 @@ FloatingWindow {
                                                                  "name": "Media"
                                                              },
                                                              {
+                                                                 "id": "weather",
+                                                                 "name": "Weather"
+                                                             },
+                                                             {
                                                                  "id": "notifications",
                                                                  "name": "Notifications"
                                                              },
@@ -58,6 +64,8 @@ FloatingWindow {
     readonly property string activeRouteName: routeName(currentPageId)
     readonly property string diagnosticText: currentPageId === "about" && pageLoader.item !== null
                                              ? pageLoader.item.diagnosticText : ""
+    readonly property bool weatherLookupAllowed: currentPageId === "weather" && pageLoader.item
+                                                 !== null && pageLoader.item.lookupAllowed === true
     readonly property var backingWindow: contentItem.Window.window
 
     title: "Nagi Control Center"
@@ -74,8 +82,8 @@ FloatingWindow {
 
     function routeAvailable(routeId) {
         return routeId === "island" || routeId === "appearance" || routeId === "clock-date"
-                || routeId === "media" || routeId === "notifications" || routeId === "displays"
-                || routeId === "about";
+                || routeId === "media" || routeId === "weather" || routeId === "notifications"
+                || routeId === "displays" || routeId === "about";
     }
 
     function routeName(routeId) {
@@ -425,12 +433,15 @@ FloatingWindow {
                                                                                === "media"
                                                                                ? mediaPageComponent :
                                                                                  root.currentPageId
-                                                                                 === "notifications"
-                                                                                 ? notificationsPageComponent :
+                                                                                 === "weather"
+                                                                                 ? weatherPageComponent :
                                                                                    root.currentPageId
-                                                                                   === "displays"
-                                                                                   ? displaysPageComponent :
-                                                                                     aboutPageComponent
+                                                                                   === "notifications"
+                                                                                   ? notificationsPageComponent :
+                                                                                     root.currentPageId
+                                                                                     === "displays"
+                                                                                     ? displaysPageComponent :
+                                                                                       aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
@@ -471,6 +482,17 @@ FloatingWindow {
         MediaPage {
             settingsModel: root.settingsModel
             media: root.media
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: weatherPageComponent
+
+        WeatherPage {
+            settingsModel: root.settingsModel
+            weather: root.weather
+            locationSearch: root.locationSearch
             reducedMotion: root.reducedMotion
         }
     }

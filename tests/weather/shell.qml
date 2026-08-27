@@ -58,27 +58,39 @@ ShellRoot {
         };
     }
 
-    function metEntry(offsetMs, temperature, symbolCode) {
-        return {
-            "time": new Date(test.nowMs + offsetMs).toISOString(),
-            "data": {
-                "instant": {
-                    "details": {
-                        "air_temperature": temperature
-                    }
-                },
-                "next_1_hours": {
-                    "summary": {
-                        "symbol_code": symbolCode
-                    }
+    function metEntry(offsetMs, temperature, symbolCode, humidity, windMs) {
+        const data = {
+            "instant": {
+                "details": {
+                    "air_temperature": temperature,
+                    "relative_humidity": humidity === undefined ? 55 : humidity,
+                    "wind_speed": windMs === undefined ? 3 : windMs
                 }
             }
+        };
+        if (symbolCode !== null) {
+            data.next_1_hours = {
+                "summary": {
+                    "symbol_code": symbolCode
+                }
+            };
+        }
+        return {
+            "time": new Date(test.nowMs + offsetMs).toISOString(),
+            "data": data
         };
     }
 
     function metBody(entries) {
         return JSON.stringify({
                                   "properties": {
+                                      "meta": {
+                                          "units": {
+                                              "air_temperature": "celsius",
+                                              "relative_humidity": "%",
+                                              "wind_speed": "m/s"
+                                          }
+                                      },
                                       "timeseries": entries
                                   }
                               });
@@ -98,6 +110,7 @@ ShellRoot {
     function makeWeather(overrides) {
         const properties = {
             "enabled": true,
+            "label": "Test location",
             "wallNow": function () {
                 return test.nowMs;
             },
@@ -112,6 +125,139 @@ ShellRoot {
         }
 
         return weatherFactory.createObject(test, properties);
+    }
+
+    function makeLookup(overrides) {
+        const properties = {
+            "allowed": true,
+            "wallNow": function () {
+                return test.nowMs;
+            }
+        };
+        for (const key in overrides) {
+            properties[key] = overrides[key];
+        }
+        return lookupFactory.createObject(test, properties);
+    }
+
+    function runLocationLookupTests() {
+        const disabledCap = newCapture(null);
+        const disabledLookup = makeLookup({
+                                                   "allowed": false,
+                                                   "transport": disabledCap.transport
+                                               });
+        require(!disabledLookup.search("Paris") && disabledCap.record.requests.length === 0,
+                "disabled location lookup performs zero requests");
+
+        const cityCap = newCapture(function () {
+            return {
+                "status": 200,
+                "bodyText": JSON.stringify({
+                                                "results": [{
+                                                        "name": "Paris",
+                                                        "admin1": "Île-de-France",
+                                                        "country": "France",
+                                                        "latitude": 48.85341,
+                                                        "longitude": 2.3488
+                                                    }]
+                                            })
+            };
+        });
+        const cityLookup = makeLookup({
+                                               "transport": cityCap.transport
+                                           });
+        require(cityLookup.search("Paris, France") && cityLookup.results.length === 1
+                && cityLookup.results[0].label === "Paris, Île-de-France, France",
+                "explicit city lookup publishes one bounded normalized result");
+        require(cityCap.record.requests[0].url.indexOf("Paris%2C%20France") !== -1
+                && cityLookup.results[0].latitude === 48.85341,
+                "city query is submitted only on explicit search and coordinates stay normalized");
+
+        const postalCap = newCapture(function () {
+            return {
+                "status": 200,
+                "bodyText": JSON.stringify({
+                                                "results": [{
+                                                        "name": "Berlin",
+                                                        "country": "Germany",
+                                                        "latitude": 52.52,
+                                                        "longitude": 13.41
+                                                    }]
+                                            })
+            };
+        });
+        const postalLookup = makeLookup({
+                                                 "transport": postalCap.transport
+                                             });
+        require(postalLookup.search("10115")
+                && postalCap.record.requests[0].url.indexOf("name=10115") !== -1,
+                "postal input uses the same explicit bounded lookup contract");
+
+        const fallbackCap = newCapture(function (index) {
+            return index === 1 ? {
+                                     "networkError": true
+                                 } : {
+                "status": 200,
+                "bodyText": JSON.stringify([{
+                                                "display_name": "Paris, Île-de-France, France",
+                                                "lat": "48.8534",
+                                                "lon": "2.3488"
+                                            }])
+            };
+        });
+        const fallbackLookup = makeLookup({
+                                                   "transport": fallbackCap.transport
+                                               });
+        require(fallbackLookup.search("Paris") && fallbackCap.record.requests.length === 2
+                && fallbackCap.record.requests[1].url.indexOf("/search?format=jsonv2") !== -1
+                && fallbackLookup.results.length === 1
+                && fallbackLookup.attribution.indexOf("OpenStreetMap") !== -1,
+                "Open-Meteo failure uses the bounded attributed Nominatim fallback");
+        fallbackLookup.clear();
+        require(fallbackLookup.results.length === 0 && fallbackLookup.failure === "none",
+                "clearing lookup retains no result or query history");
+
+        const boundedQueryCap = newCapture(null);
+        const boundedQuery = makeLookup({
+                                                 "transport": boundedQueryCap.transport
+                                             });
+        require(!boundedQuery.search("é".repeat(65))
+                && boundedQueryCap.record.requests.length === 0
+                && boundedQuery.failure === "invalid-query",
+                "location queries are bounded by UTF-8 bytes before transport");
+
+        const invalidEndpointCap = newCapture(function () {
+            return {
+                "networkError": true
+            };
+        });
+        const invalidEndpoint = makeLookup({
+                                                    "nominatimEndpoint": "http://unsafe.example",
+                                                    "transport": invalidEndpointCap.transport
+                                                });
+        require(invalidEndpoint.search("Paris") && invalidEndpointCap.record.requests.length === 1
+                && invalidEndpoint.failure === "unavailable",
+                "fallback rejects a non-HTTPS endpoint before dispatch");
+
+        const cancellation = {
+            "aborted": false
+        };
+        const pendingLookup = makeLookup({
+                                                  "transport": {
+                                                      "create": function () {
+                                                          return {
+                                                              "abort": function () {
+                                                                  cancellation.aborted = true;
+                                                              }
+                                                          };
+                                                      }
+                                                  }
+                                              });
+        require(pendingLookup.search("Helsinki") && pendingLookup.inFlight,
+                "lookup exposes one pending request");
+        pendingLookup.allowed = false;
+        require(!pendingLookup.inFlight && cancellation.aborted && pendingLookup.results.length === 0,
+                "closing the lookup gate cancels work and clears normalized results");
     }
 
     function conditionFor(symbolCode) {
@@ -135,6 +281,7 @@ ShellRoot {
 
     function run() {
         rngQueue = [];
+        runLocationLookupTests();
 
         const disabledCap = newCapture(null);
         const disabled = makeWeather({
@@ -172,25 +319,13 @@ ShellRoot {
                 && invalidLatitudeCap.record.requests.length === 0,
                 "out-of-range latitude performs no request");
 
-        const fractionalAltitudeCap = newCapture(null);
-        const fractionalAltitude = makeWeather({
-                                                   "latitude": 10.0,
-                                                   "longitude": 10.0,
-                                                   "altitude": 12.5,
-                                                   "transport": fractionalAltitudeCap.transport
-                                               });
-        fractionalAltitude.refreshDeadlineReached();
-        require(fractionalAltitude.failure === "unconfigured"
-                && fractionalAltitudeCap.record.requests.length === 0,
-                "fractional altitude performs no request");
 
-        // Requests carry truncated coarse coordinates, the identifying public
-        // User-Agent, no credential, and never the local label.
+        // Requests carry four-decimal coordinates and the identifying public
+        // User-Agent only; Qt supplies transparent compression support.
         const shapedCap = newCapture(null);
         const shaped = makeWeather({
-                                       "latitude": 48.8566,
-                                       "longitude": 2.3522,
-                                       "altitude": 35,
+                                       "latitude": 48.85667,
+                                       "longitude": 2.35229,
                                        "label": "Home label",
                                        "transport": shapedCap.transport
                                    });
@@ -199,35 +334,36 @@ ShellRoot {
                 "configured weather sends exactly its scheduled request");
         const shapedRequest = shapedCap.record.requests[0];
         require(shapedRequest.url
-                === "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=48.85&lon=2.35&altitude=35",
-                "request URL uses two-decimal truncated coordinates");
+                === "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=48.8566&lon=2.3522",
+                "request URL uses four-decimal truncated coordinates");
         require(shapedRequest.headers["User-Agent"]
-                === "NagiShell/0.1.0 github.com/Anthodev/nagi-shell",
+                === "NagiShell/0.1.0 https://github.com/Anthodev/nagi-shell",
                 "requests identify Nagi Shell with the public User-Agent");
+        require(Object.keys(shapedRequest.headers).length === 1,
+                "requests add no credential or provider-unsupported custom header");
         require(shapedRequest.url.indexOf("Home") === -1,
                 "the local label never leaves the machine");
-        require(Object.keys(shapedRequest.headers).length === 1,
-                "requests carry no credential or extra header");
 
         const negativeShapedCap = newCapture(null);
         const negativeShaped = makeWeather({
-                                               "latitude": -33.8688,
-                                               "longitude": -74.0066,
+                                               "latitude": -33.86889,
+                                               "longitude": -74.00669,
                                                "transport": negativeShapedCap.transport
                                            });
         negativeShaped.refreshDeadlineReached();
-        require(negativeShapedCap.record.requests[0].url.indexOf("?lat=-33.86&lon=-74.00")
-                !== -1 && negativeShapedCap.record.requests[0].url.indexOf("altitude") === -1,
-                "negative coordinates truncate toward zero and unknown altitude is omitted");
+        require(negativeShapedCap.record.requests[0].url.indexOf(
+                    "?lat=-33.8688&lon=-74.0066") !== -1,
+                "negative coordinates truncate toward zero");
 
         const zeroishShapedCap = newCapture(null);
         const zeroishShaped = makeWeather({
-                                              "latitude": 0.001,
-                                              "longitude": -0.001,
+                                              "latitude": 0.00001,
+                                              "longitude": -0.00001,
                                               "transport": zeroishShapedCap.transport
                                           });
         zeroishShaped.refreshDeadlineReached();
-        require(zeroishShapedCap.record.requests[0].url.indexOf("?lat=0.00&lon=0.00") !== -1,
+        require(zeroishShapedCap.record.requests[0].url.indexOf(
+                    "?lat=0.0000&lon=0.0000") !== -1,
                 "near-zero coordinates normalize without a negative-zero sign");
 
         // A valid response exposes temperature and normalized condition from
@@ -255,9 +391,103 @@ ShellRoot {
                 "forecast time matches the selected entry");
         require(valid.fetchedAt.getTime() === completionTime,
                 "fetched time marks the retrieval");
-        require(valid.nextRequestAt === Math.max(completionTime + 1800000,
-                                                 completionTime + 600000),
-                "zero jitter schedules the next request exactly at expiry");
+        require(valid.nextRequestAt === completionTime + 3600000,
+                "refresh preference defers a shorter provider expiry");
+        valid.label = "Replacement location";
+        valid.applyLocation();
+        require(!valid.available && valid.failure === "none",
+                "changing the confirmed label atomically invalidates prior-location state");
+        valid.refreshDeadlineReached();
+        require(validCap.record.requests.length === 2
+                && validCap.record.requests[1].headers["If-Modified-Since"] === undefined,
+                "a changed location never reuses the old label's conditional cache");
+
+        // Extended state publishes one deeply frozen, provider-independent
+        // generation with bounded 12-hour and five-day projections.
+        const forecastEntries = [metEntry(-600000, 30, "clearsky_day", 70, 1)];
+        for (let hour = 1; hour <= 144; hour += 1) {
+            forecastEntries.push(metEntry(hour * 3600000, 10 + hour / 10,
+                                          hour % 2 === 0 ? "partlycloudy_day" : "rain",
+                                          40 + hour % 50, 2 + hour % 8));
+        }
+        const modelCap = newCapture(function () {
+            return ok(200, metBody(forecastEntries), 900000, "LM-MODEL");
+        });
+        const extended = makeWeather({
+                                         "latitude": 48.8566,
+                                         "longitude": 2.3522,
+                                         "temperatureUnit": "celsius",
+                                         "windUnit": "ms",
+                                         "transport": modelCap.transport
+                                     });
+        extended.refreshDeadlineReached();
+        require(extended.model !== null && extended.current.location === undefined
+                && extended.model.location === "Test location",
+                "normalized model keeps only the local bounded location label");
+        require(extended.hourly.length === 12 && extended.daily.length === 5,
+                "forecast model caps returned hourly and daily projections at 12 and 5");
+        require(Object.isFrozen(extended.model) && Object.isFrozen(extended.current)
+                && Object.isFrozen(extended.hourly) && Object.isFrozen(extended.daily),
+                "one immutable model generation publishes atomically");
+        require(extended.current.feelsLikeCalculated
+                && extended.current.feelsLike > extended.current.temperature,
+                "hot humid conditions expose a calculated heat-index feels-like value");
+        const celsiusGeneration = extended.modelGeneration;
+        extended.temperatureUnit = "fahrenheit";
+        extended.windUnit = "mph";
+        require(extended.modelGeneration > celsiusGeneration
+                && Math.round(extended.current.temperature) === 86
+                && extended.current.temperatureUnit === "fahrenheit"
+                && extended.current.windUnit === "mph",
+                "independent temperature and wind overrides rebuild converted presentation");
+
+        const windChillCap = newCapture(function () {
+            return ok(200, metBody([metEntry(-600000, 0, "snow", 70, 10)]), 3600000,
+                      "LM-CHILL");
+        });
+        const windChill = makeWeather({
+                                        "latitude": 48.8566,
+                                        "longitude": 2.3522,
+                                        "temperatureUnit": "celsius",
+                                        "transport": windChillCap.transport
+                                    });
+        windChill.refreshDeadlineReached();
+        require(windChill.current.feelsLikeCalculated && windChill.current.feelsLike < 0,
+                "cold windy conditions expose a calculated wind-chill value");
+
+        const badUnitsCap = newCapture(function () {
+            const payload = JSON.parse(metBody([metEntry(-600000, 12, "clear")]));
+            payload.properties.meta.units.wind_speed = "knots";
+            return ok(200, JSON.stringify(payload), 3600000, "LM-BAD-UNITS");
+        });
+        const badUnits = makeWeather({
+                                         "latitude": 48.8566,
+                                         "longitude": 2.3522,
+                                         "transport": badUnitsCap.transport
+                                     });
+        badUnits.refreshDeadlineReached();
+        require(!badUnits.available && badUnits.failure === "transient",
+                "unexpected provider units reject the complete generation");
+
+        const manualCap = newCapture(null);
+        const manual = makeWeather({
+                                      "latitude": 48.8566,
+                                      "longitude": 2.3522,
+                                      "refreshPreset": "3h",
+                                      "transport": manualCap.transport
+                                  });
+        manual.refreshDeadlineReached();
+        manualCap.record.requests[0].onCompleted(ok(200,
+                                                    metBody([metEntry(-600000, 12, "clear")]),
+                                                    900000, "LM-MANUAL"));
+        require(manual.nextRequestAt === test.nowMs + 10800000
+                && !manual.manualRefreshAvailable && !manual.manualRefresh(),
+                "provider expiry and cooldown block premature manual refresh");
+        test.nowMs += 900000;
+        manual.manualRefreshDeadlineReached();
+        require(manual.manualRefreshAvailable && manual.manualRefresh()
+                && manualCap.record.requests.length === 2,
+                "manual refresh bypasses the preference only after provider expiry");
 
         // Symbol normalization matrix: intensity and shower variants collapse;
         // day-phase suffixes separate; thunder wins over precipitation families.
@@ -441,7 +671,7 @@ ShellRoot {
                                                        metBody([metEntry(-600000, 7.5, "fog")]),
                                                        600000, "LM-3"));
         require(resilient.temperatureC === 7.5, "preservation scenario reaches a valid state");
-        test.nowMs += 600000;
+        test.nowMs = resilient.nextRequestAt;
         resilient.localDeadlineReached();
         resilient.refreshDeadlineReached();
         resilientCap.record.requests[1].onCompleted(ok(200, "{not json", 600000, "LM-4"));
@@ -639,6 +869,12 @@ ShellRoot {
         id: weatherFactory
 
         WeatherAdapter {}
+    }
+
+    Component {
+        id: lookupFactory
+
+        WeatherLocationSearchAdapter {}
     }
 
     CompactClock {

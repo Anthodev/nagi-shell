@@ -451,6 +451,10 @@ ShellRoot {
                 && UserConfig.snapshot.appearance.customAccent === "#123456"
                 && UserConfig.snapshot.appearance.surfaceOpacity === 0.85
                 && !UserConfig.snapshot.media.enabled && UserConfig.snapshot.weather.enabled
+                && UserConfig.snapshot.weather.consent
+                && UserConfig.snapshot.weather.locationLabel === "Configured location"
+                && UserConfig.snapshot.weather.latitude === -90
+                && UserConfig.snapshot.weather.longitude === 180
                 && UserConfig.snapshot.clock.format === "12h",
                 "all valid V1 values migrated without loss");
         require(backupReader.text() === legacyContent,
