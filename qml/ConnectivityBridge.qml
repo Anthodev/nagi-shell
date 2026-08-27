@@ -14,7 +14,7 @@ Scope {
 
     readonly property bool ready: state.ready
     readonly property int activeTimerCount: restartTimer.running ? 1 : 0
-    readonly property int maximumLineLength: 8192
+    readonly property int maximumLineLength: 16384
     readonly property int maximumDiagnostics: 4
 
     signal snapshotReceived(var snapshot)
@@ -80,6 +80,77 @@ Scope {
                     });
     }
 
+    function setBluetoothInterest(requestId, interested) {
+        return send({
+                        "op": "bluetooth-interest",
+                        "requestId": requestId,
+                        "interested": interested
+                    });
+    }
+
+    function scanBluetooth(requestId) {
+        return send({
+                        "op": "bluetooth-scan",
+                        "requestId": requestId
+                    });
+    }
+
+    function stopBluetoothScan(requestId) {
+        return send({
+                        "op": "bluetooth-stop-scan",
+                        "requestId": requestId
+                    });
+    }
+
+    function pairBluetooth(requestId, token) {
+        return send({
+                        "op": "bluetooth-pair",
+                        "requestId": requestId,
+                        "token": token
+                    });
+    }
+
+    function connectBluetooth(requestId, token) {
+        return send({
+                        "op": "bluetooth-connect",
+                        "requestId": requestId,
+                        "token": token
+                    });
+    }
+
+    function disconnectBluetooth(requestId, token) {
+        return send({
+                        "op": "bluetooth-disconnect",
+                        "requestId": requestId,
+                        "token": token
+                    });
+    }
+
+    function unpairBluetooth(requestId, token) {
+        return send({
+                        "op": "bluetooth-unpair",
+                        "requestId": requestId,
+                        "token": token
+                    });
+    }
+
+    function cancelBluetoothPairing(requestId) {
+        return send({
+                        "op": "bluetooth-cancel",
+                        "requestId": requestId
+                    });
+    }
+
+    function respondBluetoothAgent(requestId, generation, accepted, response) {
+        return send({
+                        "op": "bluetooth-agent-response",
+                        "requestId": requestId,
+                        "generation": generation,
+                        "accepted": accepted,
+                        "response": response
+                    });
+    }
+
     function send(command) {
         if (!state.ready || !helper.running) {
             return false;
@@ -115,7 +186,7 @@ Scope {
             state.restartAttempts = 0;
             return;
         }
-        if (message.type !== "state" || !validWifiState(message.wifi) || !validAdapterState(
+        if (message.type !== "state" || !validWifiState(message.wifi) || !validBluetoothState(
                     message.bluetooth)) {
             warnBounded("invalid helper state");
             return;
@@ -123,43 +194,68 @@ Scope {
 
         root.snapshotReceived({
                                   "wifi": normalizedWifiState(message.wifi),
-                                  "bluetooth": normalizedAdapterState(message.bluetooth)
+                                  "bluetooth": normalizedBluetoothState(message.bluetooth)
                               });
     }
 
-    function normalizedAdapterState(candidate) {
+    function normalizedBluetoothState(candidate) {
         return {
             "available": candidate.available,
             "enabled": candidate.enabled,
             "hardwareEnabled": candidate.hardwareEnabled,
-            "pending": candidate.pending,
-            "failure": candidate.failure,
-            "requestId": candidate.requestId
-        };
-    }
-
-    function normalizedWifiState(candidate) {
-        return {
-            "available": candidate.available,
-            "enabled": candidate.enabled,
-            "hardwareEnabled": candidate.hardwareEnabled,
-            "networkingEnabled": candidate.networkingEnabled,
             "pending": candidate.pending,
             "failure": candidate.failure,
             "requestId": candidate.requestId,
-            "scanning": candidate.scanning,
-            "currentNetwork": candidate.currentNetwork,
-            "networks": candidate.networks.map(network => ({
-                "token": network.token,
-                "ssid": network.ssid,
-                "security": network.security,
-                "strength": network.strength,
-                "connected": network.connected,
-                "saved": network.saved,
-                "forgettable": network.forgettable,
-                "connectable": network.connectable,
-                "forgetReason": network.forgetReason
+            "controllerCount": candidate.controllerCount,
+            "selectedController": candidate.selectedController,
+            "discovering": candidate.discovering,
+            "discoveryDeadlineMs": candidate.discoveryDeadlineMs,
+            "devices": candidate.devices.map(device => ({
+                "token": device.token,
+                "name": device.name,
+                "type": device.type,
+                "signal": device.signal,
+                "paired": device.paired,
+                "connected": device.connected,
+                "trusted": device.trusted,
+                "pairable": device.pairable,
+                "connectable": device.connectable,
+                "disconnectable": device.disconnectable,
+                "unpairable": device.unpairable
             })),
+        "operation": candidate.operation,
+        "operationGeneration": candidate.operationGeneration,
+        "operationFailure": candidate.operationFailure,
+        "operationResult": candidate.operationResult,
+        "pairingPrompt": candidate.pairingPrompt,
+        "pairingValue": candidate.pairingValue,
+        "pairingEntered": candidate.pairingEntered,
+        "pairingToken": candidate.pairingToken
+    };
+    }
+
+        function normalizedWifiState(candidate) {
+        return {
+        "available": candidate.available,
+        "enabled": candidate.enabled,
+        "hardwareEnabled": candidate.hardwareEnabled,
+        "networkingEnabled": candidate.networkingEnabled,
+        "pending": candidate.pending,
+        "failure": candidate.failure,
+        "requestId": candidate.requestId,
+        "scanning": candidate.scanning,
+        "currentNetwork": candidate.currentNetwork,
+        "networks": candidate.networks.map(network => ({
+        "token": network.token,
+        "ssid": network.ssid,
+        "security": network.security,
+        "strength": network.strength,
+        "connected": network.connected,
+        "saved": network.saved,
+        "forgettable": network.forgettable,
+        "connectable": network.connectable,
+        "forgetReason": network.forgetReason
+    })),
         "operation": candidate.operation,
         "operationGeneration": candidate.operationGeneration,
         "operationFailure": candidate.operationFailure,
@@ -214,6 +310,71 @@ Scope {
         return result === "none" || result === "scan-complete" || result === "connected" || result
         === "disconnected" || result === "forgotten" || result === "radio-updated" || result
         === "cancelled" || result === "replaced";
+    }
+
+        function validBluetoothState(candidate) {
+        if (!validAdapterState(candidate) || !Number.isInteger(candidate.controllerCount)
+        || candidate.controllerCount < 0 || candidate.controllerCount > 2147483647 ||
+        !Number.isInteger(candidate.selectedController) || candidate.selectedController < 0
+        || candidate.selectedController > candidate.controllerCount || typeof candidate.discovering
+        !== "boolean" || !Number.isInteger(candidate.discoveryDeadlineMs)
+        || candidate.discoveryDeadlineMs < 0 || candidate.discoveryDeadlineMs > 30000 ||
+        !Array.isArray(candidate.devices) || candidate.devices.length > 32 ||
+        !validBluetoothOperation(candidate.operation) || !Number.isInteger(
+        candidate.operationGeneration) || candidate.operationGeneration < 0
+        || candidate.operationGeneration > 2147483647 || !validBluetoothFailure(
+        candidate.operationFailure) || !validBluetoothResult(candidate.operationResult) ||
+        !validPairingPrompt(candidate.pairingPrompt) || typeof candidate.pairingValue !== "string"
+        || candidate.pairingValue.length > 16 || !Number.isInteger(candidate.pairingEntered)
+        || candidate.pairingEntered < 0 || candidate.pairingEntered > 16 || !Number.isInteger(
+        candidate.pairingToken) || candidate.pairingToken < 0 || candidate.pairingToken
+        > 2147483647) {
+        return false;
+    }
+        for (let index = 0; index < candidate.devices.length; index += 1) {
+        if (!validBluetoothDevice(candidate.devices[index])) {
+        return false;
+    }
+    }
+        return candidate.available || (!candidate.enabled && !candidate.discovering
+        && candidate.devices.length === 0 && candidate.operation === "idle");
+    }
+
+        function validBluetoothDevice(candidate) {
+        return candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)
+        && Number.isInteger(candidate.token) && candidate.token >= 1 && candidate.token
+        <= 2147483647 && typeof candidate.name === "string" && candidate.name.length >= 1
+        && candidate.name.length <= 64 && (candidate.type === "audio" || candidate.type === "input"
+        || candidate.type === "phone" || candidate.type === "computer" || candidate.type
+        === "other") && Number.isInteger(candidate.signal) && candidate.signal >= -1
+        && candidate.signal <= 100 && typeof candidate.paired === "boolean"
+        && typeof candidate.connected === "boolean" && typeof candidate.trusted === "boolean"
+        && typeof candidate.pairable === "boolean" && typeof candidate.connectable === "boolean"
+        && typeof candidate.disconnectable === "boolean" && typeof candidate.unpairable
+        === "boolean";
+    }
+
+        function validBluetoothOperation(operation) {
+        return operation === "idle" || operation === "discovering" || operation === "pairing"
+        || operation === "connecting" || operation === "disconnecting" || operation === "unpairing";
+    }
+
+        function validBluetoothFailure(failure) {
+        return validFailure(failure) || failure === "cancelled" || failure === "rejected"
+        || failure === "busy" || failure === "connection-failed" || failure === "trust-failed";
+    }
+
+        function validBluetoothResult(result) {
+        return result === "none" || result === "stopped" || result === "expired" || result
+        === "cancelled" || result === "replaced" || result === "connected" || result
+        === "disconnected" || result === "unpaired" || result === "paired" || result
+        === "paired-connected";
+    }
+
+        function validPairingPrompt(prompt) {
+        return prompt === "none" || prompt === "enter-pin" || prompt === "display-pin" || prompt
+        === "enter-passkey" || prompt === "display-passkey" || prompt === "confirm-passkey"
+        || prompt === "authorize-pairing";
     }
 
         function validAdapterState(candidate) {

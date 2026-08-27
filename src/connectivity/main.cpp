@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusContext>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusMetaType>
@@ -18,6 +19,7 @@
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QVariantMap>
+#include <QDateTime>
 #include <QElapsedTimer>
 
 #include <array>
@@ -27,6 +29,7 @@
 #include <limits>
 #include <optional>
 #include <pwd.h>
+#include <functional>
 #include <unistd.h>
 
 using InterfaceProperties = QMap<QString, QVariantMap>;
@@ -49,7 +52,11 @@ constexpr auto NetworkSettingsInterface = "org.freedesktop.NetworkManager.Settin
 constexpr auto NetworkConnectionInterface = "org.freedesktop.NetworkManager.Settings.Connection";
 constexpr auto BluezService = "org.bluez";
 constexpr auto BluezPath = "/";
+constexpr auto BluezManagerPath = "/org/bluez";
+constexpr auto BluezAgentPath = "/io/github/Anthodev/NagiShell/BluetoothAgent";
 constexpr auto BluezAdapterInterface = "org.bluez.Adapter1";
+constexpr auto BluezDeviceInterface = "org.bluez.Device1";
+constexpr auto BluezAgentManagerInterface = "org.bluez.AgentManager1";
 constexpr auto ObjectManagerInterface = "org.freedesktop.DBus.ObjectManager";
 constexpr auto PropertiesInterface = "org.freedesktop.DBus.Properties";
 constexpr int WifiDeviceType = 2;
@@ -63,7 +70,11 @@ constexpr int WifiOperationTimeoutMs = 30000;
 constexpr int MaximumCommandBytes = 4096;
 constexpr int MaximumDiagnostics = 8;
 constexpr int MaximumNetworks = 16;
+constexpr int MaximumBluetoothDevices = 32;
 constexpr int MaximumSsidBytes = 32;
+constexpr int MaximumBluetoothNameCharacters = 64;
+constexpr int DiscoveryDurationMs = 30000;
+constexpr int DiscoveredDeviceRetentionMs = 60000;
 constexpr qint64 ScanFreshnessMs = 30000;
 constexpr qint64 ManualScanCooldownMs = 10000;
 constexpr qsizetype MaximumUsernameBytes = 256;
@@ -109,11 +120,54 @@ struct WifiOperation {
     bool automaticScan = false;
 };
 
+struct BluetoothAdapter {
+    QString path;
+    bool powered = false;
+    bool discovering = false;
+};
+
+struct BluetoothDevice {
+    int token = 0;
+    QString path;
+    QString adapterPath;
+    QString name;
+    QString type = QStringLiteral("other");
+    int signal = -1;
+    bool paired = false;
+    bool connected = false;
+    bool trusted = false;
+    qint64 lastSeenMs = 0;
+};
+
+struct BluetoothOperation {
+    QString kind = QStringLiteral("idle");
+    QString failure = QStringLiteral("none");
+    QString result = QStringLiteral("none");
+    QString prompt = QStringLiteral("none");
+    QString displayValue;
+    int displayEntered = 0;
+    int generation = 0;
+    int targetToken = 0;
+};
+
 QDBusConnection connectivityBus()
 {
     return qEnvironmentVariable("NAGI_CONNECTIVITY_BUS") == QStringLiteral("session")
         ? QDBusConnection::sessionBus()
         : QDBusConnection::systemBus();
+}
+
+int bluetoothDiscoveryDurationMs()
+{
+    if (qEnvironmentVariable("NAGI_CONNECTIVITY_BUS") == QStringLiteral("session")) {
+        bool valid = false;
+        const int requested =
+            qEnvironmentVariableIntValue("NAGI_BLUETOOTH_DISCOVERY_MS", &valid);
+        if (valid) {
+            return std::clamp(requested, 50, DiscoveryDurationMs);
+        }
+    }
+    return DiscoveryDurationMs;
 }
 
 QString currentUserName()
@@ -160,6 +214,119 @@ QString normalizeFailure(const QDBusError &error)
     return QStringLiteral("backend");
 }
 
+class BluezAgent final : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.bluez.Agent1")
+
+public:
+    explicit BluezAgent(QDBusConnection connection, QObject *parent = nullptr)
+        : QObject(parent)
+        , bus(std::move(connection))
+    {
+    }
+
+signals:
+    void released();
+    void cancelled();
+    void promptRequested(
+        const QString &kind,
+        const QString &devicePath,
+        const QString &value,
+        uint entered,
+        const QDBusMessage &message);
+    void displayRequested(
+        const QString &kind,
+        const QString &devicePath,
+        const QString &value,
+        uint entered);
+
+public slots:
+    void Release()
+    {
+        emit released();
+    }
+
+    QString RequestPinCode(const QDBusObjectPath &device, const QDBusMessage &message)
+    {
+        message.setDelayedReply(true);
+        emit promptRequested(
+            QStringLiteral("enter-pin"),
+            device.path(),
+            QString(),
+            0,
+            message);
+        return {};
+    }
+
+    void DisplayPinCode(const QDBusObjectPath &device, const QString &pin)
+    {
+        emit displayRequested(QStringLiteral("display-pin"), device.path(), pin.left(16), 0);
+    }
+
+    uint RequestPasskey(const QDBusObjectPath &device, const QDBusMessage &message)
+    {
+        message.setDelayedReply(true);
+        emit promptRequested(
+            QStringLiteral("enter-passkey"),
+            device.path(),
+            QString(),
+            0,
+            message);
+        return 0;
+    }
+
+    void DisplayPasskey(const QDBusObjectPath &device, uint passkey, ushort entered)
+    {
+        emit displayRequested(
+            QStringLiteral("display-passkey"),
+            device.path(),
+            QStringLiteral("%1").arg(passkey, 6, 10, QLatin1Char('0')),
+            std::min<uint>(entered, 6));
+    }
+
+    void RequestConfirmation(
+        const QDBusObjectPath &device,
+        uint passkey,
+        const QDBusMessage &message)
+    {
+        message.setDelayedReply(true);
+        emit promptRequested(
+            QStringLiteral("confirm-passkey"),
+            device.path(),
+            QStringLiteral("%1").arg(passkey, 6, 10, QLatin1Char('0')),
+            0,
+            message);
+    }
+
+    void RequestAuthorization(const QDBusObjectPath &device, const QDBusMessage &message)
+    {
+        message.setDelayedReply(true);
+        emit promptRequested(
+            QStringLiteral("authorize-pairing"),
+            device.path(),
+            QString(),
+            0,
+            message);
+    }
+
+    void AuthorizeService(
+        const QDBusObjectPath &,
+        const QString &,
+        const QDBusMessage &message)
+    {
+        bus.send(message.createErrorReply(
+            QStringLiteral("org.bluez.Error.Rejected"),
+            QStringLiteral("service authorization is delegated to the default agent")));
+    }
+
+    void Cancel()
+    {
+        emit cancelled();
+    }
+private:
+    QDBusConnection bus;
+};
+
 class ConnectivityBridge final : public QObject {
     Q_OBJECT
 
@@ -167,6 +334,7 @@ public:
     explicit ConnectivityBridge(QObject *parent = nullptr)
         : QObject(parent)
         , bus(connectivityBus())
+        , bluezAgent(bus, this)
         , networkWatcher(
               QString::fromLatin1(NetworkService),
               bus,
@@ -184,6 +352,9 @@ public:
         wifiOperationTimer.setInterval(WifiOperationTimeoutMs);
         bluetoothRequestTimer.setSingleShot(true);
         bluetoothRequestTimer.setInterval(RadioTimeoutMs);
+        bluetoothDiscoveryTimer.setSingleShot(true);
+        bluetoothDiscoveryTimer.setInterval(bluetoothDiscoveryDurationMs());
+        bluetoothExpiryTimer.setSingleShot(true);
 
         connect(
             &networkWatcher,
@@ -204,6 +375,30 @@ public:
         connect(&bluetoothRequestTimer, &QTimer::timeout, this, [this] {
             failRequest(bluetooth, QStringLiteral("timeout"));
         });
+        connect(&bluetoothDiscoveryTimer, &QTimer::timeout, this, [this] {
+            stopBluetoothDiscovery(allocateOperationGeneration(), QStringLiteral("expired"));
+        });
+        connect(&bluetoothExpiryTimer, &QTimer::timeout, this, [this] {
+            expireBluetoothDevices();
+        });
+        connect(
+            &bluezAgent,
+            &BluezAgent::promptRequested,
+            this,
+            &ConnectivityBridge::handleAgentPrompt);
+        connect(
+            &bluezAgent,
+            &BluezAgent::displayRequested,
+            this,
+            &ConnectivityBridge::handleAgentDisplay);
+        connect(&bluezAgent, &BluezAgent::cancelled, this, [this] {
+            finishBluetoothOperation(QStringLiteral("cancelled"), QStringLiteral("cancelled"));
+        });
+        connect(&bluezAgent, &BluezAgent::released, this, [this] {
+            clearPairingReply(true);
+            bluetoothAgentRegistered = false;
+            finishBluetoothOperation(QStringLiteral("backend"));
+        });
 
         stdinNotifier = new QSocketNotifier(STDIN_FILENO, QSocketNotifier::Read, this);
         connect(stdinNotifier, &QSocketNotifier::activated, this, [this] { readCommands(); });
@@ -214,6 +409,7 @@ public:
     {
         detachNetworkOwner();
         detachBluezOwner();
+        bus.unregisterObject(QString::fromLatin1(BluezAgentPath));
     }
 
 private slots:
@@ -235,7 +431,10 @@ private slots:
         if (message.interface() == QString::fromLatin1(PropertiesInterface)) {
             const QList<QVariant> arguments = message.arguments();
             if (arguments.isEmpty()
-                || arguments.constFirst().toString() != QString::fromLatin1(BluezAdapterInterface)) {
+                || (arguments.constFirst().toString()
+                        != QString::fromLatin1(BluezAdapterInterface)
+                    && arguments.constFirst().toString()
+                        != QString::fromLatin1(BluezDeviceInterface))) {
                 return;
             }
         }
@@ -250,6 +449,13 @@ private:
             diagnose(QStringLiteral("system bus is unavailable"));
             publishState(true);
             return;
+        }
+        bluetoothClock.start();
+        if (!bus.registerObject(
+                QString::fromLatin1(BluezAgentPath),
+                &bluezAgent,
+                QDBusConnection::ExportAllSlots)) {
+            diagnose(QStringLiteral("BlueZ scoped agent object registration failed"));
         }
 
         const QString networkOwner = currentServiceOwner(QString::fromLatin1(NetworkService));
@@ -289,8 +495,10 @@ private:
     void onBluezOwnerChanged(const QString &, const QString &, const QString &newOwner)
     {
         detachBluezOwner();
-        bluetoothAdapters.clear();
+        clearBluetoothManagerState(QStringLiteral("replaced"));
         resetUnavailable(bluetooth);
+        bluetoothOperation.failure = newOwner.isEmpty() ? QStringLiteral("unavailable") :
+                                                          QStringLiteral("none");
         publishState();
         if (!newOwner.isEmpty()) {
             attachBluezOwner(newOwner);
@@ -412,6 +620,18 @@ private:
         if (!subscribed) {
             diagnose(QStringLiteral("BlueZ signal subscription failed"));
         }
+        QDBusMessage registerAgent = QDBusMessage::createMethodCall(
+            owner,
+            QString::fromLatin1(BluezManagerPath),
+            QString::fromLatin1(BluezAgentManagerInterface),
+            QStringLiteral("RegisterAgent"));
+        registerAgent << QDBusObjectPath(QString::fromLatin1(BluezAgentPath))
+                      << QStringLiteral("DisplayYesNo");
+        const QDBusMessage registrationReply = bus.call(registerAgent, QDBus::Block, DbusTimeoutMs);
+        bluetoothAgentRegistered = registrationReply.type() != QDBusMessage::ErrorMessage;
+        if (!bluetoothAgentRegistered) {
+            diagnose(QStringLiteral("BlueZ scoped agent registration failed"));
+        }
         scheduleBluezRefresh();
     }
 
@@ -419,8 +639,20 @@ private:
     {
         bluezRefreshScheduled = false;
         bluetoothRequestTimer.stop();
+        bluetoothDiscoveryTimer.stop();
+        bluetoothExpiryTimer.stop();
         if (bluezOwner.isEmpty()) {
             return;
+        }
+        if (bluetoothAgentRegistered) {
+            QDBusMessage unregisterAgent = QDBusMessage::createMethodCall(
+                bluezOwner,
+                QString::fromLatin1(BluezManagerPath),
+                QString::fromLatin1(BluezAgentManagerInterface),
+                QStringLiteral("UnregisterAgent"));
+            unregisterAgent << QDBusObjectPath(QString::fromLatin1(BluezAgentPath));
+            bus.call(unregisterAgent, QDBus::Block, DbusTimeoutMs);
+            bluetoothAgentRegistered = false;
         }
         bus.disconnect(
             bluezOwner,
@@ -446,6 +678,7 @@ private:
         bluezOwner.clear();
         bluetoothPendingCalls = 0;
         bluetoothCallFailure.clear();
+        clearPairingReply(true);
     }
 
     void scheduleNetworkRefresh()
@@ -1062,6 +1295,70 @@ private:
         }
     }
 
+    QString boundedBluetoothName(const QVariantMap &properties) const
+    {
+        QString name = unwrapDbusVariant(properties.value(QStringLiteral("Alias"))).toString();
+        if (name.isEmpty()) {
+            name = unwrapDbusVariant(properties.value(QStringLiteral("Name"))).toString();
+        }
+        name = name.simplified().left(MaximumBluetoothNameCharacters);
+        return name.isEmpty() ? QStringLiteral("Bluetooth device") : name;
+    }
+
+    QString bluetoothType(const QVariantMap &properties) const
+    {
+        const QString icon =
+            unwrapDbusVariant(properties.value(QStringLiteral("Icon"))).toString().toLower();
+        if (icon.contains(QStringLiteral("audio")) || icon.contains(QStringLiteral("headset"))
+            || icon.contains(QStringLiteral("headphones"))) {
+            return QStringLiteral("audio");
+        }
+        if (icon.contains(QStringLiteral("input")) || icon.contains(QStringLiteral("keyboard"))
+            || icon.contains(QStringLiteral("mouse"))) {
+            return QStringLiteral("input");
+        }
+        if (icon.contains(QStringLiteral("phone"))) {
+            return QStringLiteral("phone");
+        }
+        if (icon.contains(QStringLiteral("computer"))) {
+            return QStringLiteral("computer");
+        }
+        return QStringLiteral("other");
+    }
+
+    int normalizedBluetoothSignal(const QVariantMap &properties) const
+    {
+        const QVariant value = unwrapDbusVariant(properties.value(QStringLiteral("RSSI")));
+        if (!value.isValid() || !value.canConvert<int>()) {
+            return -1;
+        }
+        return std::clamp((value.toInt() + 100) * 100 / 80, 0, 100);
+    }
+
+    int tokenForBluetoothDevice(const QString &path)
+    {
+        const auto existing = bluetoothDeviceTokens.constFind(path);
+        if (existing != bluetoothDeviceTokens.constEnd()) {
+            return existing.value();
+        }
+        const int token = nextBluetoothDeviceToken;
+        nextBluetoothDeviceToken =
+            nextBluetoothDeviceToken >= std::numeric_limits<int>::max()
+            ? 1
+            : nextBluetoothDeviceToken + 1;
+        bluetoothDeviceTokens.insert(path, token);
+        return token;
+    }
+
+    const BluetoothDevice *bluetoothDeviceForToken(int token) const
+    {
+        const auto device = std::find_if(
+            bluetoothDevices.cbegin(),
+            bluetoothDevices.cend(),
+            [token](const BluetoothDevice &candidate) { return candidate.token == token; });
+        return device == bluetoothDevices.cend() ? nullptr : &*device;
+    }
+
     void refreshBluez()
     {
         bluezRefreshScheduled = false;
@@ -1077,8 +1374,8 @@ private:
             QStringLiteral("GetManagedObjects"));
         const QDBusReply<ManagedObjectMap> reply(bus.call(request, QDBus::Block, DbusTimeoutMs));
         if (!reply.isValid()) {
-            diagnose(QStringLiteral("BlueZ adapter snapshot failed"));
-            bluetoothAdapters.clear();
+            diagnose(QStringLiteral("BlueZ state snapshot failed"));
+            clearBluetoothManagerState(QStringLiteral("backend"));
             resetUnavailable(bluetooth, QStringLiteral("backend"));
             publishState();
             return;
@@ -1088,24 +1385,115 @@ private:
             return;
         }
 
-        QStringList adapters;
+        QList<BluetoothAdapter> adapters;
+        QList<BluetoothDevice> devices;
         bool anyPowered = false;
         bool allPowered = true;
+        const qint64 now = bluetoothClock.isValid() ? bluetoothClock.elapsed() : 0;
+        const auto deviceBefore = [this](
+                                      const BluetoothDevice &left,
+                                      const BluetoothDevice &right) {
+            const bool leftTarget = left.token == bluetoothOperation.targetToken;
+            const bool rightTarget = right.token == bluetoothOperation.targetToken;
+            if (leftTarget != rightTarget) {
+                return leftTarget;
+            }
+            if (left.connected != right.connected) {
+                return left.connected;
+            }
+            if (left.paired != right.paired) {
+                return left.paired;
+            }
+            const int nameOrder =
+                QString::compare(left.name, right.name, Qt::CaseInsensitive);
+            return nameOrder == 0 ? left.token < right.token : nameOrder < 0;
+        };
         for (auto object = reply.value().constBegin(); object != reply.value().constEnd(); ++object) {
             const auto adapter = object.value().constFind(QString::fromLatin1(BluezAdapterInterface));
-            if (adapter == object.value().constEnd()) {
+            if (adapter != object.value().constEnd()) {
+                const QVariant poweredValue =
+                    unwrapDbusVariant(adapter->value(QStringLiteral("Powered")));
+                if (poweredValue.metaType() == QMetaType::fromType<bool>()) {
+                    const bool powered = poweredValue.toBool();
+                    adapters.append(BluetoothAdapter{
+                        object.key().path(),
+                        powered,
+                        unwrapDbusVariant(adapter->value(QStringLiteral("Discovering"))).toBool(),
+                    });
+                    anyPowered = anyPowered || powered;
+                    allPowered = allPowered && powered;
+                }
+            }
+
+            const auto device = object.value().constFind(QString::fromLatin1(BluezDeviceInterface));
+            if (device == object.value().constEnd()) {
                 continue;
             }
-            const auto powered = adapter->constFind(QStringLiteral("Powered"));
-            if (powered == adapter->constEnd() || powered->metaType() != QMetaType::fromType<bool>()) {
+            const QString path = object.key().path();
+            const auto previous = std::find_if(
+                bluetoothDevices.cbegin(),
+                bluetoothDevices.cend(),
+                [&path](const BluetoothDevice &candidate) { return candidate.path == path; });
+            const bool paired =
+                unwrapDbusVariant(device->value(QStringLiteral("Paired"))).toBool();
+            const bool connected =
+                unwrapDbusVariant(device->value(QStringLiteral("Connected"))).toBool();
+            const qint64 lastSeen =
+                bluetoothDiscoveryActive ? now :
+                previous != bluetoothDevices.cend() ? previous->lastSeenMs : 0;
+            if (!paired && !connected && !bluetoothDiscoveryActive
+                && (lastSeen == 0 || now - lastSeen >= DiscoveredDeviceRetentionMs)) {
                 continue;
             }
-            adapters.append(object.key().path());
-            anyPowered = anyPowered || powered->toBool();
-            allPowered = allPowered && powered->toBool();
+            devices.append(BluetoothDevice{
+                tokenForBluetoothDevice(path),
+                path,
+                unwrapDbusVariant(device->value(QStringLiteral("Adapter"))).value<QDBusObjectPath>().path(),
+                boundedBluetoothName(*device),
+                bluetoothType(*device),
+                normalizedBluetoothSignal(*device),
+                paired,
+                connected,
+                unwrapDbusVariant(device->value(QStringLiteral("Trusted"))).toBool(),
+                lastSeen,
+            });
+            if (devices.size() > MaximumBluetoothDevices) {
+                std::sort(devices.begin(), devices.end(), deviceBefore);
+                devices.resize(MaximumBluetoothDevices);
+                QHash<QString, int> boundedTokens;
+                boundedTokens.reserve(devices.size());
+                for (const BluetoothDevice &retained : std::as_const(devices)) {
+                    boundedTokens.insert(retained.path, retained.token);
+                }
+                bluetoothDeviceTokens = boundedTokens;
+            }
         }
-        adapters.sort();
+        std::sort(
+            adapters.begin(),
+            adapters.end(),
+            [](const BluetoothAdapter &left, const BluetoothAdapter &right) {
+                return left.path < right.path;
+            });
+        std::sort(devices.begin(), devices.end(), deviceBefore);
+        QHash<QString, int> retainedTokens;
+        retainedTokens.reserve(devices.size());
+        for (const BluetoothDevice &device : std::as_const(devices)) {
+            retainedTokens.insert(device.path, device.token);
+        }
+        bluetoothDeviceTokens = retainedTokens;
+
         bluetoothAdapters = adapters;
+        bluetoothDevices = devices;
+        selectedBluetoothAdapter.clear();
+        const auto poweredAdapter = std::find_if(
+            adapters.cbegin(),
+            adapters.cend(),
+            [](const BluetoothAdapter &candidate) { return candidate.powered; });
+        if (poweredAdapter != adapters.cend()) {
+            selectedBluetoothAdapter = poweredAdapter->path;
+        } else if (!adapters.isEmpty()) {
+            selectedBluetoothAdapter = adapters.constFirst().path;
+        }
         bluetooth.available = !adapters.isEmpty();
         bluetooth.hardwareEnabled = bluetooth.available;
         bluetooth.enabled = bluetooth.available && anyPowered;
@@ -1120,6 +1508,23 @@ private:
                 bluetooth.failure = QStringLiteral("none");
                 bluetoothRequestTimer.stop();
             }
+        }
+
+        const BluetoothDevice *target =
+            bluetoothDeviceForToken(bluetoothOperation.targetToken);
+        if (bluetoothOperation.kind == QStringLiteral("connecting") && target != nullptr
+            && target->connected) {
+            finishBluetoothOperation(QStringLiteral("none"), QStringLiteral("connected"));
+            return;
+        }
+        if (bluetoothOperation.kind == QStringLiteral("disconnecting")
+            && (target == nullptr || !target->connected)) {
+            finishBluetoothOperation(QStringLiteral("none"), QStringLiteral("disconnected"));
+            return;
+        }
+        if (bluetoothOperation.kind == QStringLiteral("unpairing") && target == nullptr) {
+            finishBluetoothOperation(QStringLiteral("none"), QStringLiteral("unpaired"));
+            return;
         }
         publishState();
     }
@@ -1210,6 +1615,17 @@ private:
             publishState();
             return;
         }
+        if (!enabled) {
+            if (bluetoothOperation.kind == QStringLiteral("pairing")) {
+                cancelBluetoothPairing(requestId);
+            }
+            if (bluetoothDiscoveryActive) {
+                stopBluetoothDiscovery(requestId, QStringLiteral("cancelled"));
+            }
+        }
+        if (bluetoothOperation.kind != QStringLiteral("idle")) {
+            return;
+        }
 
         bluetooth.pending = true;
         bluetooth.targetEnabled = enabled;
@@ -1221,10 +1637,10 @@ private:
         publishState();
 
         const QString requestedOwner = bluezOwner;
-        for (const QString &path : std::as_const(bluetoothAdapters)) {
+        for (const BluetoothAdapter &adapter : std::as_const(bluetoothAdapters)) {
             QDBusMessage request = QDBusMessage::createMethodCall(
                 requestedOwner,
-                path,
+                adapter.path,
                 QString::fromLatin1(PropertiesInterface),
                 QStringLiteral("Set"));
             request << QString::fromLatin1(BluezAdapterInterface) << QStringLiteral("Powered")
@@ -1258,6 +1674,499 @@ private:
         if (bluetoothPendingCalls == 0) {
             scheduleBluezRefresh();
         }
+    }
+
+    QString normalizeBluetoothFailure(const QDBusError &error) const
+    {
+        const QString name = error.name().toLower();
+        if (name.contains(QStringLiteral("canceled"))
+            || name.contains(QStringLiteral("cancelled"))) {
+            return QStringLiteral("cancelled");
+        }
+        if (name.contains(QStringLiteral("rejected"))
+            || name.contains(QStringLiteral("failed"))) {
+            return QStringLiteral("rejected");
+        }
+        if (name.contains(QStringLiteral("timeout")) || error.type() == QDBusError::Timeout
+            || error.type() == QDBusError::NoReply) {
+            return QStringLiteral("timeout");
+        }
+        if (name.contains(QStringLiteral("notready"))) {
+            return QStringLiteral("unavailable");
+        }
+        if (name.contains(QStringLiteral("inprogress"))) {
+            return QStringLiteral("busy");
+        }
+        return normalizeFailure(error);
+    }
+
+    void clearPairingReply(bool reject)
+    {
+        if (pendingAgentReply.type() == QDBusMessage::MethodCallMessage) {
+            if (reject) {
+                bus.send(pendingAgentReply.createErrorReply(
+                    QStringLiteral("org.bluez.Error.Rejected"),
+                    QStringLiteral("pairing request is no longer active")));
+            }
+            pendingAgentReply = {};
+        }
+        bluetoothOperation.prompt = QStringLiteral("none");
+        bluetoothOperation.displayValue.clear();
+        bluetoothOperation.displayEntered = 0;
+    }
+
+    void finishBluetoothOperation(
+        const QString &failure,
+        const QString &result = QStringLiteral("none"))
+    {
+        clearPairingReply(failure != QStringLiteral("none"));
+        bluetoothOperation.kind = QStringLiteral("idle");
+        bluetoothOperation.failure = failure;
+        bluetoothOperation.result = result;
+        bluetoothOperation.targetToken = 0;
+        publishState();
+    }
+
+    bool beginBluetoothOperation(const QString &kind, int generation, int targetToken = 0)
+    {
+        if (bluetoothOperation.kind != QStringLiteral("idle")) {
+            return false;
+        }
+        bluetoothOperation.kind = kind;
+        bluetoothOperation.failure = QStringLiteral("none");
+        bluetoothOperation.result = QStringLiteral("none");
+        bluetoothOperation.prompt = QStringLiteral("none");
+        bluetoothOperation.displayValue.clear();
+        bluetoothOperation.displayEntered = 0;
+        bluetoothOperation.generation = generation;
+        bluetoothOperation.targetToken = targetToken;
+        publishState();
+        return true;
+    }
+
+    void handleAgentPrompt(
+        const QString &kind,
+        const QString &devicePath,
+        const QString &value,
+        uint entered,
+        const QDBusMessage &message)
+    {
+        const BluetoothDevice *target =
+            bluetoothDeviceForToken(bluetoothOperation.targetToken);
+        if (bluetoothOperation.kind != QStringLiteral("pairing") || target == nullptr
+            || target->path != devicePath
+            || pendingAgentReply.type() == QDBusMessage::MethodCallMessage) {
+            bus.send(message.createErrorReply(
+                QStringLiteral("org.bluez.Error.Rejected"),
+                QStringLiteral("pairing was not initiated by Nagi")));
+            return;
+        }
+        pendingAgentReply = message;
+        bluetoothOperation.prompt = kind;
+        bluetoothOperation.displayValue = value.left(16);
+        bluetoothOperation.displayEntered = std::min<uint>(entered, 16);
+        publishState();
+    }
+
+    void handleAgentDisplay(
+        const QString &kind,
+        const QString &devicePath,
+        const QString &value,
+        uint entered)
+    {
+        const BluetoothDevice *target =
+            bluetoothDeviceForToken(bluetoothOperation.targetToken);
+        if (bluetoothOperation.kind != QStringLiteral("pairing") || target == nullptr
+            || target->path != devicePath) {
+            return;
+        }
+        bluetoothOperation.prompt = kind;
+        bluetoothOperation.displayValue = value.left(16);
+        bluetoothOperation.displayEntered = std::min<uint>(entered, 16);
+        publishState();
+    }
+
+    void respondToBluetoothPrompt(
+        int generation,
+        bool accepted,
+        const QString &response)
+    {
+        if (bluetoothOperation.kind != QStringLiteral("pairing")
+            || bluetoothOperation.generation != generation
+            || pendingAgentReply.type() != QDBusMessage::MethodCallMessage) {
+            return;
+        }
+        const QString prompt = bluetoothOperation.prompt;
+        QDBusMessage reply;
+        if (!accepted) {
+            reply = pendingAgentReply.createErrorReply(
+                QStringLiteral("org.bluez.Error.Rejected"),
+                QStringLiteral("pairing rejected"));
+        } else if (prompt == QStringLiteral("enter-pin")) {
+            if (response.isEmpty() || response.size() > 16) {
+                return;
+            }
+            reply = pendingAgentReply.createReply(QVariantList{response});
+        } else if (prompt == QStringLiteral("enter-passkey")) {
+            bool valid = false;
+            const uint passkey = response.toUInt(&valid);
+            if (!valid || response.size() > 6 || passkey > 999999U) {
+                return;
+            }
+            reply = pendingAgentReply.createReply(QVariantList{passkey});
+        } else if (prompt == QStringLiteral("confirm-passkey")
+                   || prompt == QStringLiteral("authorize-pairing")) {
+            reply = pendingAgentReply.createReply();
+        } else {
+            return;
+        }
+        bus.send(reply);
+        pendingAgentReply = {};
+        bluetoothOperation.prompt = QStringLiteral("none");
+        bluetoothOperation.displayValue.clear();
+        bluetoothOperation.displayEntered = 0;
+        publishState();
+    }
+
+    void expireBluetoothDevices()
+    {
+        const qint64 now = bluetoothClock.isValid() ? bluetoothClock.elapsed() : 0;
+        bluetoothDevices.erase(
+            std::remove_if(
+                bluetoothDevices.begin(),
+                bluetoothDevices.end(),
+                [now](const BluetoothDevice &device) {
+                    return !device.paired && !device.connected
+                        && (device.lastSeenMs == 0
+                            || now - device.lastSeenMs >= DiscoveredDeviceRetentionMs);
+                }),
+            bluetoothDevices.end());
+        QHash<QString, int> retainedTokens;
+        retainedTokens.reserve(bluetoothDevices.size());
+        for (const BluetoothDevice &device : std::as_const(bluetoothDevices)) {
+            retainedTokens.insert(device.path, device.token);
+        }
+        bluetoothDeviceTokens = retainedTokens;
+        publishState();
+    }
+
+    void clearBluetoothManagerState(const QString &failure)
+    {
+        bluetoothDiscoveryTimer.stop();
+        bluetoothExpiryTimer.stop();
+        bluetoothDiscoveryActive = false;
+        bluetoothDiscoveryAdapters.clear();
+        bluetoothDevices.clear();
+        bluetoothAdapters.clear();
+        bluetoothDeviceTokens.clear();
+        nextBluetoothDeviceToken = 1;
+        selectedBluetoothAdapter.clear();
+        clearPairingReply(true);
+        bluetoothOperation = BluetoothOperation{};
+        bluetoothOperation.failure = failure;
+    }
+
+    bool startBluetoothDiscovery(int generation)
+    {
+        if (!bluetoothInterest || !bluetooth.available || !bluetooth.enabled
+            || bluezOwner.isEmpty() || bluetoothOperation.kind != QStringLiteral("idle")) {
+            return false;
+        }
+        QStringList startedAdapters;
+        const QString requestedOwner = bluezOwner;
+        for (const BluetoothAdapter &adapter : std::as_const(bluetoothAdapters)) {
+            if (!adapter.powered) {
+                continue;
+            }
+            QVariantMap filter;
+            filter.insert(
+                QStringLiteral("Transport"),
+                QVariant::fromValue(QDBusVariant(QStringLiteral("auto"))));
+            QDBusMessage setFilter = QDBusMessage::createMethodCall(
+                requestedOwner,
+                adapter.path,
+                QString::fromLatin1(BluezAdapterInterface),
+                QStringLiteral("SetDiscoveryFilter"));
+            setFilter << filter;
+            const QDBusMessage filterReply = bus.call(setFilter, QDBus::Block, DbusTimeoutMs);
+            if (filterReply.type() == QDBusMessage::ErrorMessage) {
+                break;
+            }
+            QDBusMessage start = QDBusMessage::createMethodCall(
+                requestedOwner,
+                adapter.path,
+                QString::fromLatin1(BluezAdapterInterface),
+                QStringLiteral("StartDiscovery"));
+            const QDBusMessage startReply = bus.call(start, QDBus::Block, DbusTimeoutMs);
+            if (startReply.type() == QDBusMessage::ErrorMessage
+                && !startReply.errorName().contains(QStringLiteral("InProgress"))) {
+                break;
+            }
+            startedAdapters.append(adapter.path);
+        }
+        const int poweredCount = static_cast<int>(std::count_if(
+            bluetoothAdapters.cbegin(),
+            bluetoothAdapters.cend(),
+            [](const BluetoothAdapter &adapter) { return adapter.powered; }));
+        if (startedAdapters.size() != poweredCount || startedAdapters.isEmpty()) {
+            bluetoothDiscoveryAdapters = startedAdapters;
+            bluetoothDiscoveryActive = true;
+            stopBluetoothDiscovery(generation, QStringLiteral("backend"));
+            return false;
+        }
+        bluetoothDiscoveryAdapters = startedAdapters;
+        bluetoothDiscoveryActive = true;
+        bluetoothDiscoveryTimer.start();
+        bluetoothOperation.kind = QStringLiteral("discovering");
+        bluetoothOperation.failure = QStringLiteral("none");
+        bluetoothOperation.result = QStringLiteral("none");
+        bluetoothOperation.generation = generation;
+        bluetoothOperation.targetToken = 0;
+        publishState();
+        scheduleBluezRefresh();
+        return true;
+    }
+
+    void stopBluetoothDiscovery(int generation, const QString &result)
+    {
+        if (!bluetoothDiscoveryActive) {
+            return;
+        }
+        bluetoothDiscoveryTimer.stop();
+        const QString requestedOwner = bluezOwner;
+        for (const QString &path : std::as_const(bluetoothDiscoveryAdapters)) {
+            if (requestedOwner.isEmpty()) {
+                break;
+            }
+            QDBusMessage stop = QDBusMessage::createMethodCall(
+                requestedOwner,
+                path,
+                QString::fromLatin1(BluezAdapterInterface),
+                QStringLiteral("StopDiscovery"));
+            bus.call(stop, QDBus::Block, DbusTimeoutMs);
+        }
+        bluetoothDiscoveryActive = false;
+        bluetoothDiscoveryAdapters.clear();
+        bluetoothExpiryTimer.start(DiscoveredDeviceRetentionMs);
+        bluetoothOperation.kind = QStringLiteral("idle");
+        bluetoothOperation.generation = generation;
+        bluetoothOperation.failure =
+            result == QStringLiteral("backend") ? QStringLiteral("backend") :
+                                                  QStringLiteral("none");
+        bluetoothOperation.result = result;
+        publishState();
+        scheduleBluezRefresh();
+    }
+
+    void setBluetoothInterest(bool interested, int generation)
+    {
+        bluetoothInterest = interested;
+        if (!interested) {
+            if (bluetoothOperation.kind == QStringLiteral("pairing")) {
+                cancelBluetoothPairing(generation);
+            }
+            if (bluetoothDiscoveryActive) {
+                stopBluetoothDiscovery(generation, QStringLiteral("cancelled"));
+            } else {
+                publishState();
+            }
+        } else {
+            publishState();
+        }
+    }
+
+    void cancelBluetoothPairing(int generation)
+    {
+        if (bluetoothOperation.kind != QStringLiteral("pairing")) {
+            return;
+        }
+        const BluetoothDevice *target =
+            bluetoothDeviceForToken(bluetoothOperation.targetToken);
+        if (target != nullptr && !bluezOwner.isEmpty()) {
+            QDBusMessage cancel = QDBusMessage::createMethodCall(
+                bluezOwner,
+                target->path,
+                QString::fromLatin1(BluezDeviceInterface),
+                QStringLiteral("CancelPairing"));
+            bus.call(cancel, QDBus::NoBlock);
+        }
+        bluetoothOperation.generation = generation;
+        finishBluetoothOperation(QStringLiteral("cancelled"), QStringLiteral("cancelled"));
+    }
+
+    void connectAfterPairing(
+        const QString &owner,
+        const QString &path,
+        int generation,
+        int token)
+    {
+        if (bluezOwner != owner || bluetoothOperation.kind != QStringLiteral("pairing")
+            || bluetoothOperation.generation != generation) {
+            return;
+        }
+        QDBusMessage trust = QDBusMessage::createMethodCall(
+            owner,
+            path,
+            QString::fromLatin1(PropertiesInterface),
+            QStringLiteral("Set"));
+        trust << QString::fromLatin1(BluezDeviceInterface) << QStringLiteral("Trusted")
+              << QVariant::fromValue(QDBusVariant(true));
+        const QDBusMessage trustReply = bus.call(trust, QDBus::Block, DbusTimeoutMs);
+        if (trustReply.type() == QDBusMessage::ErrorMessage) {
+            finishBluetoothOperation(QStringLiteral("trust-failed"), QStringLiteral("paired"));
+            scheduleBluezRefresh();
+            return;
+        }
+        QDBusMessage connectRequest = QDBusMessage::createMethodCall(
+            owner,
+            path,
+            QString::fromLatin1(BluezDeviceInterface),
+            QStringLiteral("Connect"));
+        auto *watcher =
+            new QDBusPendingCallWatcher(bus.asyncCall(connectRequest, WifiOperationTimeoutMs), this);
+        connect(
+            watcher,
+            &QDBusPendingCallWatcher::finished,
+            this,
+            [this, watcher, owner, generation, token] {
+                const QDBusPendingReply<> reply = *watcher;
+                watcher->deleteLater();
+                if (bluezOwner != owner || bluetoothOperation.kind != QStringLiteral("pairing")
+                    || bluetoothOperation.generation != generation
+                    || bluetoothOperation.targetToken != token) {
+                    return;
+                }
+                if (reply.isError()
+                    && !reply.error().name().contains(QStringLiteral("AlreadyConnected"))) {
+                    finishBluetoothOperation(
+                        QStringLiteral("connection-failed"),
+                        QStringLiteral("paired"));
+                } else {
+                    finishBluetoothOperation(
+                        QStringLiteral("none"),
+                        QStringLiteral("paired-connected"));
+                }
+                scheduleBluezRefresh();
+            });
+    }
+
+    bool requestBluetoothPair(int token, int generation)
+    {
+        if (!bluetoothInterest || !bluetoothAgentRegistered || !bluetooth.enabled
+            || bluezOwner.isEmpty()) {
+            return false;
+        }
+        if (bluetoothDiscoveryActive) {
+            stopBluetoothDiscovery(generation, QStringLiteral("replaced"));
+        }
+        const BluetoothDevice *device = bluetoothDeviceForToken(token);
+        if (device == nullptr || device->paired || bluetoothOperation.kind != QStringLiteral("idle")
+            || !beginBluetoothOperation(QStringLiteral("pairing"), generation, token)) {
+            return false;
+        }
+        const QString owner = bluezOwner;
+        const QString path = device->path;
+        QDBusMessage pair = QDBusMessage::createMethodCall(
+            owner,
+            path,
+            QString::fromLatin1(BluezDeviceInterface),
+            QStringLiteral("Pair"));
+        auto *watcher = new QDBusPendingCallWatcher(
+            bus.asyncCall(pair, std::numeric_limits<int>::max()),
+            this);
+        connect(
+            watcher,
+            &QDBusPendingCallWatcher::finished,
+            this,
+            [this, watcher, owner, path, generation, token] {
+                const QDBusPendingReply<> reply = *watcher;
+                watcher->deleteLater();
+                if (bluezOwner != owner || bluetoothOperation.kind != QStringLiteral("pairing")
+                    || bluetoothOperation.generation != generation
+                    || bluetoothOperation.targetToken != token) {
+                    return;
+                }
+                clearPairingReply(false);
+                if (reply.isError()) {
+                    finishBluetoothOperation(normalizeBluetoothFailure(reply.error()));
+                    scheduleBluezRefresh();
+                    return;
+                }
+                connectAfterPairing(owner, path, generation, token);
+            });
+        return true;
+    }
+
+    bool requestBluetoothDeviceAction(
+        const QString &kind,
+        int token,
+        int generation)
+    {
+        if (!bluetoothInterest || !bluetooth.enabled || bluezOwner.isEmpty()) {
+            return false;
+        }
+        if (bluetoothDiscoveryActive) {
+            stopBluetoothDiscovery(generation, QStringLiteral("replaced"));
+        }
+        const BluetoothDevice *device = bluetoothDeviceForToken(token);
+        if (device == nullptr || bluetoothOperation.kind != QStringLiteral("idle")) {
+            return false;
+        }
+        QString member;
+        QString operation;
+        QString targetPath = device->path;
+        if (kind == QStringLiteral("connect") && device->paired && !device->connected) {
+            member = QStringLiteral("Connect");
+            operation = QStringLiteral("connecting");
+        } else if (kind == QStringLiteral("disconnect") && device->connected) {
+            member = QStringLiteral("Disconnect");
+            operation = QStringLiteral("disconnecting");
+        } else if (kind == QStringLiteral("unpair") && device->paired
+                   && std::any_of(
+                       bluetoothAdapters.cbegin(),
+                       bluetoothAdapters.cend(),
+                       [&device](const BluetoothAdapter &adapter) {
+                           return adapter.path == device->adapterPath;
+                       })) {
+            member = QStringLiteral("RemoveDevice");
+            operation = QStringLiteral("unpairing");
+            targetPath = device->adapterPath;
+        } else {
+            return false;
+        }
+        if (!beginBluetoothOperation(operation, generation, token)) {
+            return false;
+        }
+        const QString owner = bluezOwner;
+        QDBusMessage request = QDBusMessage::createMethodCall(
+            owner,
+            targetPath,
+            kind == QStringLiteral("unpair") ? QString::fromLatin1(BluezAdapterInterface) :
+                                               QString::fromLatin1(BluezDeviceInterface),
+            member);
+        if (kind == QStringLiteral("unpair")) {
+            request << QDBusObjectPath(device->path);
+        }
+        auto *watcher =
+            new QDBusPendingCallWatcher(bus.asyncCall(request, WifiOperationTimeoutMs), this);
+        connect(
+            watcher,
+            &QDBusPendingCallWatcher::finished,
+            this,
+            [this, watcher, owner, generation, operation] {
+                const QDBusPendingReply<> reply = *watcher;
+                watcher->deleteLater();
+                if (bluezOwner != owner || bluetoothOperation.kind != operation
+                    || bluetoothOperation.generation != generation) {
+                    return;
+                }
+                if (reply.isError()) {
+                    finishBluetoothOperation(normalizeBluetoothFailure(reply.error()));
+                } else {
+                    scheduleBluezRefresh();
+                }
+            });
+        return true;
     }
 
     void rejectRequest(AdapterState &state, int requestId, const QString &failure)
@@ -1667,6 +2576,63 @@ private:
             setWifiInterest(interested.toBool(), requestId);
             return;
         }
+        if (operation == QStringLiteral("bluetooth-interest")) {
+            const QJsonValue interested = command.value(QStringLiteral("interested"));
+            if (!interested.isBool()) {
+                diagnose(QStringLiteral("invalid command schema"));
+                return;
+            }
+            setBluetoothInterest(interested.toBool(), requestId);
+            return;
+        }
+        if (operation == QStringLiteral("bluetooth-scan")) {
+            startBluetoothDiscovery(requestId);
+            return;
+        }
+        if (operation == QStringLiteral("bluetooth-stop-scan")) {
+            stopBluetoothDiscovery(requestId, QStringLiteral("stopped"));
+            return;
+        }
+        if (operation == QStringLiteral("bluetooth-cancel")) {
+            cancelBluetoothPairing(requestId);
+            return;
+        }
+        if (operation == QStringLiteral("bluetooth-agent-response")) {
+            const QJsonValue generation = command.value(QStringLiteral("generation"));
+            const QJsonValue accepted = command.value(QStringLiteral("accepted"));
+            const QJsonValue response = command.value(QStringLiteral("response"));
+            if (!validPositiveInteger(generation) || !accepted.isBool() || !response.isString()
+                || response.toString().size() > 16) {
+                diagnose(QStringLiteral("invalid command schema"));
+                return;
+            }
+            QString privateResponse = response.toString();
+            respondToBluetoothPrompt(
+                generation.toInt(),
+                accepted.toBool(),
+                privateResponse);
+            privateResponse.fill(QChar());
+            return;
+        }
+        if (operation == QStringLiteral("bluetooth-pair")
+            || operation == QStringLiteral("bluetooth-connect")
+            || operation == QStringLiteral("bluetooth-disconnect")
+            || operation == QStringLiteral("bluetooth-unpair")) {
+            const QJsonValue token = command.value(QStringLiteral("token"));
+            if (!validPositiveInteger(token)) {
+                diagnose(QStringLiteral("invalid command schema"));
+                return;
+            }
+            if (operation == QStringLiteral("bluetooth-pair")) {
+                requestBluetoothPair(token.toInt(), requestId);
+            } else {
+                requestBluetoothDeviceAction(
+                    operation.mid(QStringLiteral("bluetooth-").size()),
+                    token.toInt(),
+                    requestId);
+            }
+            return;
+        }
         if (operation == QStringLiteral("scan")) {
             requestScan(requestId, false);
             return;
@@ -1821,12 +2787,61 @@ private:
         return state;
     }
 
+    QJsonObject bluetoothJson() const
+    {
+        QJsonObject state = adapterJson(bluetooth);
+        QJsonArray devices;
+        const bool actionsAvailable =
+            bluetoothOperation.kind == QStringLiteral("idle")
+            || bluetoothOperation.kind == QStringLiteral("discovering");
+        for (const BluetoothDevice &device : bluetoothDevices) {
+            devices.append(QJsonObject{
+                {QStringLiteral("token"), device.token},
+                {QStringLiteral("name"), device.name},
+                {QStringLiteral("type"), device.type},
+                {QStringLiteral("signal"), device.signal},
+                {QStringLiteral("paired"), device.paired},
+                {QStringLiteral("connected"), device.connected},
+                {QStringLiteral("trusted"), device.trusted},
+                {QStringLiteral("pairable"),
+                 !device.paired && actionsAvailable && bluetoothAgentRegistered},
+                {QStringLiteral("connectable"),
+                 device.paired && !device.connected && actionsAvailable},
+                {QStringLiteral("disconnectable"), device.connected && actionsAvailable},
+                {QStringLiteral("unpairable"), device.paired && actionsAvailable},
+            });
+        }
+        int selectedController = 0;
+        for (qsizetype index = 0; index < bluetoothAdapters.size(); ++index) {
+            if (bluetoothAdapters.at(index).path == selectedBluetoothAdapter) {
+                selectedController = static_cast<int>(index + 1);
+                break;
+            }
+        }
+        state.insert(QStringLiteral("controllerCount"), bluetoothAdapters.size());
+        state.insert(QStringLiteral("selectedController"), selectedController);
+        state.insert(QStringLiteral("discovering"), bluetoothDiscoveryActive);
+        state.insert(
+            QStringLiteral("discoveryDeadlineMs"),
+            bluetoothDiscoveryActive ? std::max(0, bluetoothDiscoveryTimer.remainingTime()) : 0);
+        state.insert(QStringLiteral("devices"), devices);
+        state.insert(QStringLiteral("operation"), bluetoothOperation.kind);
+        state.insert(QStringLiteral("operationGeneration"), bluetoothOperation.generation);
+        state.insert(QStringLiteral("operationFailure"), bluetoothOperation.failure);
+        state.insert(QStringLiteral("operationResult"), bluetoothOperation.result);
+        state.insert(QStringLiteral("pairingPrompt"), bluetoothOperation.prompt);
+        state.insert(QStringLiteral("pairingValue"), bluetoothOperation.displayValue);
+        state.insert(QStringLiteral("pairingEntered"), bluetoothOperation.displayEntered);
+        state.insert(QStringLiteral("pairingToken"), bluetoothOperation.targetToken);
+        return state;
+    }
+
     void publishState(bool force = false)
     {
         const QJsonObject message{
             {QStringLiteral("type"), QStringLiteral("state")},
             {QStringLiteral("wifi"), wifiJson()},
-            {QStringLiteral("bluetooth"), adapterJson(bluetooth)},
+            {QStringLiteral("bluetooth"), bluetoothJson()},
         };
         const QByteArray serialized = QJsonDocument(message).toJson(QJsonDocument::Compact);
         if (!force && serialized == lastState) {
@@ -1861,11 +2876,16 @@ private:
     }
 
     QDBusConnection bus;
+    BluezAgent bluezAgent;
     QDBusServiceWatcher networkWatcher;
     QDBusServiceWatcher bluezWatcher;
     QString networkOwner;
     QString bluezOwner;
-    QStringList bluetoothAdapters;
+    QList<BluetoothAdapter> bluetoothAdapters;
+    QList<BluetoothDevice> bluetoothDevices;
+    QHash<QString, int> bluetoothDeviceTokens;
+    QStringList bluetoothDiscoveryAdapters;
+    QString selectedBluetoothAdapter;
     QString wifiDevicePath;
     QString currentNetworkLabel;
     QList<WifiNetwork> wifiNetworks;
@@ -1875,20 +2895,29 @@ private:
     QTimer wifiRequestTimer;
     QTimer bluetoothRequestTimer;
     QTimer wifiOperationTimer;
+    QTimer bluetoothDiscoveryTimer;
+    QTimer bluetoothExpiryTimer;
     QSocketNotifier *stdinNotifier = nullptr;
     QByteArray commandBuffer;
     QByteArray lastState;
     QString lastDiagnostic;
     QString bluetoothCallFailure;
+    QDBusMessage pendingAgentReply;
     int bluetoothPendingCalls = 0;
     WifiOperation wifiOperation;
+    BluetoothOperation bluetoothOperation;
     QElapsedTimer scanCacheAge;
     QElapsedTimer manualScanAge;
+    QElapsedTimer bluetoothClock;
     qint64 lastScanValue = -1;
     qint64 scanStartValue = -1;
     int nextNetworkToken = 1;
+    int nextBluetoothDeviceToken = 1;
     int nextOperationGeneration = 1;
     bool wifiInterest = false;
+    bool bluetoothInterest = false;
+    bool bluetoothDiscoveryActive = false;
+    bool bluetoothAgentRegistered = false;
     bool wifiNetworkingEnabled = false;
     int diagnosticCount = 0;
     bool networkRefreshScheduled = false;

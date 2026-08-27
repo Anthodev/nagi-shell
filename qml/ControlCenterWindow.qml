@@ -53,6 +53,10 @@ FloatingWindow {
                                                                  "name": "Wi-Fi"
                                                              },
                                                              {
+                                                                 "id": "bluetooth",
+                                                                 "name": "Bluetooth"
+                                                             },
+                                                             {
                                                                  "id": "displays",
                                                                  "name": "Displays"
                                                              },
@@ -88,7 +92,8 @@ FloatingWindow {
     function routeAvailable(routeId) {
         return routeId === "island" || routeId === "appearance" || routeId === "clock-date"
                 || routeId === "media" || routeId === "weather" || routeId === "notifications"
-                || routeId === "wifi" || routeId === "displays" || routeId === "about";
+                || routeId === "wifi" || routeId === "bluetooth" || routeId === "displays"
+                || routeId === "about";
     }
 
     function routeName(routeId) {
@@ -447,9 +452,12 @@ FloatingWindow {
                                                                                      === "wifi"
                                                                                      ? wifiPageComponent :
                                                                                        root.currentPageId
-                                                                                       === "displays"
-                                                                                       ? displaysPageComponent :
-                                                                                         aboutPageComponent
+                                                                                       === "bluetooth"
+                                                                                       ? bluetoothPageComponent :
+                                                                                         root.currentPageId
+                                                                                         === "displays"
+                                                                                         ? displaysPageComponent :
+                                                                                           aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
@@ -520,6 +528,15 @@ FloatingWindow {
 
         WifiPage {
             wifi: root.wifi
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: bluetoothPageComponent
+
+        BluetoothPage {
+            bluetooth: root.wifi
             reducedMotion: root.reducedMotion
         }
     }

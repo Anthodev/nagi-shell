@@ -28,6 +28,9 @@ class MockBlueZ:
         self.agents = {}
         self.default_owner = None
         self.pair_attempt = 0
+        self.pair_mode = ""
+        self.connect_calls = 0
+        self.fail_next_connect = False
         self.pending_pair = None
         self.connect_pending = False
         self.quit_event = asyncio.Event()
@@ -53,6 +56,9 @@ class MockBlueZ:
             "Paired": Variant("b", self.paired),
             "Connected": Variant("b", self.connected),
             "Trusted": Variant("b", self.trusted),
+            "Adapter": Variant("o", ADAPTER_PATH),
+            "Icon": Variant("s", "audio-headset"),
+            "RSSI": Variant("n", -42),
         }
 
     def reply(self, message, signature="", body=None):
@@ -134,10 +140,37 @@ class MockBlueZ:
             return
 
         self.pair_attempt += 1
-        member = "RequestConfirmation" if self.pair_attempt == 1 else "RequestPinCode"
-        signature = "ou" if member == "RequestConfirmation" else "o"
-        body = [DEVICE_PATH, 123456] if member == "RequestConfirmation" else [DEVICE_PATH]
-        task = asyncio.create_task(self.call_agent(owner, registration[0], member, signature, body))
+        if self.pair_mode == "pin" or (not self.pair_mode and self.pair_attempt > 1):
+            member, signature, body = "RequestPinCode", "o", [DEVICE_PATH]
+        elif self.pair_mode == "passkey":
+            member, signature, body = "RequestPasskey", "o", [DEVICE_PATH]
+        elif self.pair_mode == "authorization":
+            member, signature, body = "RequestAuthorization", "o", [DEVICE_PATH]
+        elif self.pair_mode == "display-pin":
+            await self.call_agent(
+                owner, registration[0], "DisplayPinCode", "os", [DEVICE_PATH, "4821"]
+            )
+            member, signature, body = "RequestAuthorization", "o", [DEVICE_PATH]
+            await asyncio.sleep(0.05)
+        elif self.pair_mode == "display-passkey":
+            await self.call_agent(
+                owner,
+                registration[0],
+                "DisplayPasskey",
+                "ouq",
+                [DEVICE_PATH, 654321, 3],
+            )
+            member, signature, body = "RequestAuthorization", "o", [DEVICE_PATH]
+            await asyncio.sleep(0.05)
+        else:
+            member, signature, body = (
+                "RequestConfirmation",
+                "ou",
+                [DEVICE_PATH, 123456],
+            )
+        task = asyncio.create_task(
+            self.call_agent(owner, registration[0], member, signature, body)
+        )
         self.pending_pair = (message, owner, registration[0], task)
         try:
             response = await task
@@ -166,8 +199,13 @@ class MockBlueZ:
         self.reply(message)
 
     async def connect_device(self, message):
+        self.connect_calls += 1
         await asyncio.sleep(0.08)
         self.connect_pending = False
+        if self.fail_next_connect:
+            self.fail_next_connect = False
+            self.error(message, "org.bluez.Error.Failed", "synthetic connection failure")
+            return
         self.connected = True
         self.property_changed("Connected", True)
         self.reply(message)
@@ -309,6 +347,14 @@ class MockBlueZ:
             if message.member == "SimulateIncomingConnection":
                 asyncio.create_task(self.simulate_incoming(message))
                 return True
+            if message.member == "SetPairMode":
+                self.pair_mode = message.body[0]
+                return Message.new_method_return(message)
+            if message.member == "FailNextConnect":
+                self.fail_next_connect = True
+                return Message.new_method_return(message)
+            if message.member == "ConnectCallCount":
+                return Message.new_method_return(message, "u", [self.connect_calls])
             if message.member == "Quit":
                 asyncio.create_task(self.quit_later(message))
                 return True
