@@ -20,6 +20,7 @@ ShellRoot {
     readonly property string appearanceCapturePath: Quickshell.env(
                                                         "NAGI_APPEARANCE_CAPTURE") ?? ""
     readonly property string islandCapturePath: Quickshell.env("NAGI_ISLAND_CAPTURE") ?? ""
+    readonly property string wifiCapturePath: Quickshell.env("NAGI_WIFI_CAPTURE") ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
@@ -33,6 +34,23 @@ ShellRoot {
         if (!condition) {
             fail(message);
         }
+    }
+
+    function findObject(item, objectName) {
+        if (item === null || item === undefined) {
+            return null;
+        }
+        if (item.objectName === objectName) {
+            return item;
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            const found = findObject(children[index], objectName);
+            if (found !== null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     function routeNamesExact() {
@@ -134,15 +152,16 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 8
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 9
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
                 && controlCenter.availableRoutes[2].id === "clock-date"
                 && controlCenter.availableRoutes[3].id === "media"
                 && controlCenter.availableRoutes[4].id === "weather"
                 && controlCenter.availableRoutes[5].id === "notifications"
-                && controlCenter.availableRoutes[6].id === "displays"
-                && controlCenter.availableRoutes[7].id === "about",
+                && controlCenter.availableRoutes[6].id === "wifi"
+                && controlCenter.availableRoutes[7].id === "displays"
+                && controlCenter.availableRoutes[8].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
@@ -228,9 +247,58 @@ ShellRoot {
         fakeNotifications.clearHistory();
         require(fakeNotifications.historyCount === 0,
                 "Clear history stays inside the existing service boundary");
-        require(controlCenter.open("displays", tokenB)
-                && controlCenter.currentPageId === "displays",
-                "all complete pages share the same singleton");
+        require(controlCenter.open("wifi", tokenB)
+                && controlCenter.currentPageId === "wifi",
+                "Wi-Fi joins the shared responsive page viewport");
+        stage = "wifi";
+        settle.restart();
+    }
+
+    function wifiStage() {
+        const page = controlCenter.loadedPageItem;
+        require(page !== null && fakeWifi.managerOpen && fakeWifi.wifiNetworks.length === 3,
+                "Wi-Fi receives the one shared NetworkManager projection and opens scan interest");
+
+        require(page.openNetwork(fakeWifi.wifiNetworks[2]) && page.mode === "password",
+                "protected visible network opens the dedicated password flow");
+        const passwordInput = findObject(page, "wifiPasswordInput");
+        require(passwordInput !== null && passwordInput.echoMode === TextInput.NoEcho,
+                "protected input starts hidden and is excluded from normal text projection");
+        passwordInput.text = "fixture-password";
+        page.rememberConnection = true;
+        require(page.submitVisibleNetwork() && passwordInput.text === ""
+                && fakeWifi.lastOperation === "connect" && fakeWifi.lastToken === 3
+                && fakeWifi.lastSecretLength === 16 && fakeWifi.lastRemember,
+                "visible password submits once, delegates Remember, and clears immediately");
+
+        page.clearPrivateState();
+        page.mode = "hidden";
+        const hiddenSsid = findObject(page, "wifiHiddenSsid");
+        const hiddenPassword = findObject(page, "wifiHiddenPasswordInput");
+        hiddenSsid.text = "Hidden Fixture";
+        hiddenPassword.text = "hidden-password";
+        require(page.submitHiddenNetwork() && hiddenSsid.text === "" && hiddenPassword.text === ""
+                && fakeWifi.lastOperation === "hidden-connect"
+                && fakeWifi.lastSecretLength === 15,
+                "hidden WPA Personal submits bounded arguments and clears SSID and secret");
+
+        require(page.requestForget(fakeWifi.wifiNetworks[0]) && page.confirmForget()
+                && fakeWifi.lastOperation === "forget" && fakeWifi.lastToken === 1,
+                "forget requires confirmation and dispatches only a proven personal token");
+        controlCenter.contentItem.children[0].grabToImage(function (result) {
+            require(test.wifiCapturePath !== "" && result.saveToFile(test.wifiCapturePath),
+                    "real Control Center Wi-Fi capture is saved");
+            require(controlCenter.open("displays", tokenB)
+                    && controlCenter.currentPageId === "displays",
+                    "leaving Wi-Fi loads Displays through the same singleton");
+            stage = "displays-after-wifi";
+            settle.restart();
+        });
+    }
+
+    function displaysAfterWifiStage() {
+        require(!fakeWifi.managerOpen,
+                "leaving Wi-Fi closes page interest after the lazy page is destroyed");
         controlCenter.closeWindow();
         stage = "closed";
         settle.restart();
@@ -343,6 +411,12 @@ ShellRoot {
             break;
         case "notifications":
             notificationsStage();
+            break;
+        case "wifi":
+            wifiStage();
+            break;
+        case "displays-after-wifi":
+            displaysAfterWifiStage();
             break;
         case "closed":
             closedStage();
@@ -468,6 +542,75 @@ ShellRoot {
             failure = "none";
         }
     }
+    QtObject {
+        id: fakeWifi
+        property bool backendReady: true
+        property bool wifiAvailable: true
+        property bool wifiEnabled: true
+        property bool wifiHardwareEnabled: true
+        property bool wifiBusy: false
+        property bool wifiScanning: false
+        property bool managerOpen: false
+        property int lastSecretLength: 0
+        property int lastToken: 0
+        property bool lastRemember: false
+        property string lastOperation: ""
+        property string wifiCurrentNetwork: "Fixture"
+        property var wifiNetworks: [{
+                "token": 1,
+                "ssid": "Fixture",
+                "security": "wpa-personal",
+                "strength": 80,
+                "connected": true,
+                "saved": true,
+                "forgettable": true,
+                "connectable": true,
+                "forgetReason": "none"
+            }, {
+                "token": 2,
+                "ssid": "Cafe",
+                "security": "open",
+                "strength": 50,
+                "connected": false,
+                "saved": false,
+                "forgettable": false,
+                "connectable": true,
+                "forgetReason": "none"
+            }, {
+                "token": 3,
+                "ssid": "Protected",
+                "security": "wpa-personal",
+                "strength": 70,
+                "connected": false,
+                "saved": false,
+                "forgettable": false,
+                "connectable": true,
+                "forgetReason": "none"
+            }]
+        property string wifiOperation: "idle"
+        property int wifiOperationGeneration: 0
+        property string wifiOperationFailure: "none"
+        property string wifiOperationResult: "none"
+        function setWifiManagerOpen(open) { managerOpen = open; return true; }
+        function requestWifiEnabled(enabled) { return false; }
+        function refreshWifi() { lastOperation = "scan"; return true; }
+        function connectWifi(token, secret, remember) {
+            lastOperation = "connect";
+            lastToken = token;
+            lastSecretLength = secret.length;
+            lastRemember = remember;
+            return true;
+        }
+        function connectHiddenWifi(ssid, security, secret, remember) {
+            lastOperation = "hidden-connect";
+            lastToken = 0;
+            lastSecretLength = secret.length;
+            lastRemember = remember;
+            return true;
+        }
+        function disconnectWifi() { lastOperation = "disconnect"; return true; }
+        function forgetWifi(token) { lastOperation = "forget"; lastToken = token; return true; }
+    }
 
     QtObject {
         id: fakeNotifications
@@ -487,6 +630,7 @@ ShellRoot {
         notificationService: fakeNotifications
         weather: fakeWeather
         locationSearch: fakeLocationSearch
+        wifi: fakeWifi
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,

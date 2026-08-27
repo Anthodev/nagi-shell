@@ -32,6 +32,7 @@ Scope {
     property Component dashboardNavigationContent: null
 
     signal controlCenterRequested(var initiatingSurfaceToken)
+    signal controlCenterRouteRequested(string routeId, var initiatingSurfaceToken)
     property bool reducedMotion: false
 
     readonly property int revision: displays.revision + registryRevision
@@ -387,10 +388,13 @@ Scope {
                     applicationModel: host.applicationModel
                     tray: host.trayAdapter
                     menuParentWindow: entry.liveSurface
+                    connectivity: host.connectivityAdapter
                     onExternalActionDispatched: host.completeShellMenuAction(entry.surfaceToken)
                     onShellMenuOpening: host.beginShellMenu(entry.surfaceToken)
                     onShellMenuOpenResult: result => host.finishShellMenuOpen(entry.surfaceToken,
                                                                               result)
+                    onWifiManagerRequested: host.controlCenterRouteRequested("wifi",
+                                                                             entry.surfaceToken)
                 }
             }
 

@@ -54,6 +54,7 @@ FocusScope {
     signal shellMenuOpening
     signal shellMenuOpenResult(string result)
 
+    signal wifiManagerRequested
     Connections {
         target: root.tray
         ignoreUnknownSignals: true
@@ -202,8 +203,17 @@ FocusScope {
                 Accessible.role: Accessible.Button
                 Accessible.name: "Wi-Fi"
                 Accessible.description: "Toggle Wi-Fi. Confirmed state " + root.wifiState + (
-                                            root.wifiFailureVisible ? ". Last request failed." : "")
+                                            root.wifiFailureVisible ? ". Last request failed." :
+                                                                      "") + ". Right-click or press Shift+Enter to manage networks."
                 onClicked: root.toggleWifi()
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Menu || (event.key === Qt.Key_Return && (event.modifiers
+                                                                                      & Qt.ShiftModifier)
+                                                      !== 0)) {
+                        root.wifiManagerRequested();
+                        event.accepted = true;
+                    }
+                }
 
                 background: Rectangle {
                     radius: Theme.radius.lg
@@ -225,7 +235,11 @@ FocusScope {
                 }
                 ToolTip.delay: Theme.motion.durationSlow
                 ToolTip.visible: hovered || visualFocus
-                ToolTip.text: "Wi-Fi · " + root.wifiState
+                ToolTip.text: "Wi-Fi · " + root.wifiState + " · Right-click to manage"
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: root.wifiManagerRequested()
+                }
             }
 
             AbstractButton {
