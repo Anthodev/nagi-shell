@@ -16,14 +16,23 @@ ShellRoot {
         return true;
     }
 
-    function radio(available, enabled, hardwareEnabled, pending, failure, requestId) {
+    function radio(available, enabled, hardwareEnabled, pending, failure, requestId, networks, operation,
+                   operationGeneration, operationFailure, operationResult) {
         return {
             "available": available,
             "enabled": enabled,
             "hardwareEnabled": hardwareEnabled,
+            "networkingEnabled": available,
             "pending": pending,
             "failure": failure,
-            "requestId": requestId
+            "requestId": requestId,
+            "scanning": operation === "scanning",
+            "currentNetwork": "",
+            "networks": networks ?? [],
+            "operation": operation ?? "idle",
+            "operationGeneration": operationGeneration ?? 0,
+            "operationFailure": operationFailure ?? "none",
+            "operationResult": operationResult ?? "none"
         };
     }
 
@@ -113,6 +122,62 @@ ShellRoot {
             return;
         }
 
+        const networks = [{
+                "token": 9,
+                "ssid": "Protected",
+                "security": "wpa-personal",
+                "strength": 77,
+                "connected": false,
+                "saved": false,
+                "forgettable": false,
+                "connectable": true,
+                "forgetReason": "none"
+            }];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks), radio(
+                         true, true, true, false, "none", bluetoothRequestId));
+        if (!require(adapter.wifiNetworks.length === 1 && adapter.wifiNetworks[0].ssid
+                     === "Protected" && adapter.setWifiManagerOpen(true),
+                     "shared manager exposes one bounded logical model and accepts page interest")
+                || !require(adapter.refreshWifi(), "manual refresh dispatches once")) {
+            return;
+        }
+        const scanCommand = fakeBridge.commands[fakeBridge.commands.length - 1];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "scanning",
+                           scanCommand.requestId), radio(true, true, true, false, "none",
+                                                         bluetoothRequestId));
+        if (!require(adapter.wifiScanning && adapter.connectWifi(9, "fixture-password", true),
+                     "connect explicitly replaces scan through one operation generation")) {
+            return;
+        }
+        const connectCommand = fakeBridge.commands[fakeBridge.commands.length - 1];
+        if (!require(connectCommand.operation === "connect" && connectCommand.token === 9
+                     && connectCommand.secretLength === 16 && connectCommand.remember
+                     && JSON.stringify(connectCommand).indexOf("fixture-password") === -1,
+                     "secret crosses only as a method argument and is not retained by the model")) {
+            return;
+        }
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "connecting",
+                           connectCommand.requestId), radio(true, true, true, false, "none",
+                                                            bluetoothRequestId));
+        if (!require(adapter.wifiOperation === "connecting" && adapter.wifiBusy,
+                     "one shared mutable generation disables incompatible work")) {
+            return;
+        }
+        if (!require(adapter.setWifiManagerOpen(false)
+                     && fakeBridge.commands[fakeBridge.commands.length - 1].operation === "interest"
+                     && !fakeBridge.commands[fakeBridge.commands.length - 1].interested
+                     && adapter.wifiOperation === "connecting",
+                     "closing the page ends scan interest without cancelling an explicit connection")) {
+            return;
+        }
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                           connectCommand.requestId, "none", "connected"), radio(
+                         true, true, true, false, "none", bluetoothRequestId));
+        if (!require(adapter.wifiOperationResult === "connected" && !adapter.wifiBusy,
+                     "connection completion remains process-wide after page close")) {
+            return;
+        }
+
         fakeBridge.fatalFailure();
         if (!require(!adapter.wifiAvailable && !adapter.bluetoothAvailable && adapter.wifiFailure
                      === "backend" && adapter.bluetoothFailure === "backend",
@@ -138,6 +203,63 @@ ShellRoot {
                               "adapter": adapter,
                               "requestId": requestId,
                               "enabled": enabled
+                          });
+            return true;
+        }
+
+        function setWifiInterest(requestId, interested) {
+            commands.push({
+                              "operation": "interest",
+                              "requestId": requestId,
+                              "interested": interested
+                          });
+            return true;
+        }
+
+        function scanWifi(requestId) {
+            commands.push({
+                              "operation": "scan",
+                              "requestId": requestId
+                          });
+            return true;
+        }
+
+        function connectWifi(requestId, token, secret, remember) {
+            commands.push({
+                              "operation": "connect",
+                              "requestId": requestId,
+                              "token": token,
+                              "secretLength": secret.length,
+                              "remember": remember
+                          });
+            return true;
+        }
+
+        function connectHiddenWifi(requestId, ssid, security, secret, remember) {
+            commands.push({
+                              "operation": "hidden-connect",
+                              "requestId": requestId,
+                              "ssidLength": ssid.length,
+                              "security": security,
+                              "secretLength": secret.length,
+                              "remember": remember
+                          });
+            return true;
+        }
+
+        function disconnectWifi(requestId) {
+            commands.push({
+                              "operation": "disconnect",
+                              "requestId": requestId
+                          });
+            return true;
+        }
+
+        function forgetWifi(requestId, token) {
+            commands.push({
+                              "operation": "forget",
+                              "requestId": requestId,
+                              "token": token
                           });
             return true;
         }

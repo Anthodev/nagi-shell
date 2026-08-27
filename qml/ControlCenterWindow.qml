@@ -14,6 +14,7 @@ FloatingWindow {
     required property var notificationService
     required property var weather
     required property var locationSearch
+    required property var wifi
     required property var capabilities
     property bool reducedMotion: false
     property string version: "0.1.0"
@@ -46,6 +47,10 @@ FloatingWindow {
                                                              {
                                                                  "id": "notifications",
                                                                  "name": "Notifications"
+                                                             },
+                                                             {
+                                                                 "id": "wifi",
+                                                                 "name": "Wi-Fi"
                                                              },
                                                              {
                                                                  "id": "displays",
@@ -83,7 +88,7 @@ FloatingWindow {
     function routeAvailable(routeId) {
         return routeId === "island" || routeId === "appearance" || routeId === "clock-date"
                 || routeId === "media" || routeId === "weather" || routeId === "notifications"
-                || routeId === "displays" || routeId === "about";
+                || routeId === "wifi" || routeId === "displays" || routeId === "about";
     }
 
     function routeName(routeId) {
@@ -439,9 +444,12 @@ FloatingWindow {
                                                                                    === "notifications"
                                                                                    ? notificationsPageComponent :
                                                                                      root.currentPageId
-                                                                                     === "displays"
-                                                                                     ? displaysPageComponent :
-                                                                                       aboutPageComponent
+                                                                                     === "wifi"
+                                                                                     ? wifiPageComponent :
+                                                                                       root.currentPageId
+                                                                                       === "displays"
+                                                                                       ? displaysPageComponent :
+                                                                                         aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
@@ -503,6 +511,15 @@ FloatingWindow {
         NotificationsPage {
             settingsModel: root.settingsModel
             notificationService: root.notificationService
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: wifiPageComponent
+
+        WifiPage {
+            wifi: root.wifi
             reducedMotion: root.reducedMotion
         }
     }

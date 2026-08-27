@@ -148,6 +148,7 @@ ShellRoot {
         notificationTransientSource: notificationService
         reducedMotion: Theme.motion.effectiveMode === "minimal"
         onControlCenterRequested: token => openControlCenter("control-center", token)
+        onControlCenterRouteRequested: (routeId, token) => openControlCenter(routeId, token)
     }
 
     ControlCenterWindow {
@@ -160,6 +161,7 @@ ShellRoot {
         notificationService: notificationService
         weather: weather
         locationSearch: weatherLocationSearch
+        wifi: connectivityAdapter
         reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": islandHost.liveSurfaceCount > 0,
@@ -178,7 +180,8 @@ ShellRoot {
         function activate(reason: string): bool {
             if (reason !== "control-center" && reason !== "island" && reason !== "appearance" && reason
                     !== "clock-date" && reason !== "media" && reason !== "weather" && reason
-                    !== "notifications" && reason !== "displays" && reason !== "about") {
+                    !== "notifications" && reason !== "wifi" && reason !== "displays" && reason
+                    !== "about") {
                 return false;
             }
             return openControlCenter(reason, null);
