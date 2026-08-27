@@ -14,6 +14,7 @@ ShellRoot {
     property var launchActions: []
     property var navigationActions: []
     property int wifiManagerRequests: 0
+    property int bluetoothManagerRequests: 0
     property var trayActions: []
     property var trayMenuActions: []
     property int quickExternalActionCount: 0
@@ -113,7 +114,7 @@ ShellRoot {
                     },
                     {
                         "control": findObject(quickView, "dashboardBluetooth"),
-                        "text": "Bluetooth · Off"
+                        "text": "Bluetooth · Off · Right-click to manage"
                     },
                     {
                         "control": statusButtons[0],
@@ -417,6 +418,10 @@ ShellRoot {
         require(test.wifiManagerRequests === 1
                 && wifiButton.Accessible.description.indexOf("manage networks") !== -1,
                 "Wi-Fi exposes one accessible secondary path without duplicating management UI");
+        quickView.bluetoothManagerRequested();
+        require(test.bluetoothManagerRequests === 1
+                && bluetoothButton.Accessible.description.indexOf("manage devices") !== -1,
+                "Bluetooth exposes one accessible secondary path without duplicating device UI");
         const bluetoothOffColor = bluetoothButton.restingColor.toString();
         connectivityAdapter.bluetoothFailure = "backend";
         require(quickView.bluetoothFailureVisible && bluetoothButton.restingColor.toString()
@@ -1311,6 +1316,7 @@ ShellRoot {
                 onExternalActionDispatched: test.quickExternalActionCount += 1
                 onShellMenuOpening: test.quickMenuOpeningCount += 1
                 onWifiManagerRequested: test.wifiManagerRequests += 1
+                onBluetoothManagerRequested: test.bluetoothManagerRequests += 1
             }
 
             DashboardAudio {

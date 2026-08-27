@@ -29,10 +29,43 @@ ShellRoot {
             "scanning": operation === "scanning",
             "currentNetwork": "",
             "networks": networks ?? [],
+            "controllerCount": available ? 1 : 0,
+            "selectedController": available ? 1 : 0,
+            "discovering": operation === "discovering",
+            "discoveryDeadlineMs": operation === "discovering" ? 30000 : 0,
+            "devices": [],
             "operation": operation ?? "idle",
             "operationGeneration": operationGeneration ?? 0,
             "operationFailure": operationFailure ?? "none",
-            "operationResult": operationResult ?? "none"
+            "operationResult": operationResult ?? "none",
+            "pairingPrompt": "none",
+            "pairingValue": "",
+            "pairingEntered": 0,
+            "pairingToken": 0
+        };
+    }
+
+    function bluetoothRadio(devices, operation, generation, prompt, value, result, failure) {
+        return {
+            "available": true,
+            "enabled": true,
+            "hardwareEnabled": true,
+            "pending": false,
+            "failure": "none",
+            "requestId": 0,
+            "controllerCount": 2,
+            "selectedController": 1,
+            "discovering": operation === "discovering",
+            "discoveryDeadlineMs": operation === "discovering" ? 30000 : 0,
+            "devices": devices,
+            "operation": operation,
+            "operationGeneration": generation,
+            "operationFailure": failure ?? "none",
+            "operationResult": result ?? "none",
+            "pairingPrompt": prompt ?? "none",
+            "pairingValue": value ?? "",
+            "pairingEntered": 0,
+            "pairingToken": operation === "pairing" ? devices[0].token : 0
         };
     }
 
@@ -170,6 +203,60 @@ ShellRoot {
                      "closing the page ends scan interest without cancelling an explicit connection")) {
             return;
         }
+        const bluetoothDevices = [{
+                "token": 21,
+                "name": "Fixture Headphones",
+                "type": "audio",
+                "signal": 72,
+                "paired": false,
+                "connected": false,
+                "trusted": false,
+                "pairable": true,
+                "connectable": false,
+                "disconnectable": false,
+                "unpairable": false
+            }];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId),
+                     bluetoothRadio(bluetoothDevices, "idle", 0));
+        if (!require(adapter.bluetoothDevices.length === 1
+                     && adapter.bluetoothControllerCount === 2
+                     && adapter.setBluetoothManagerOpen(true),
+                     "Bluetooth exposes bounded aggregate devices and accepts page interest")
+                || !require(adapter.scanBluetooth(), "explicit Bluetooth Scan dispatches once")) {
+            return;
+        }
+        const bluetoothScan = fakeBridge.commands[fakeBridge.commands.length - 1];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId),
+                     bluetoothRadio(bluetoothDevices, "discovering", bluetoothScan.requestId));
+        if (!require(adapter.bluetoothDiscovering && adapter.pairBluetooth(21),
+                     "pairing explicitly replaces discovery without a free queue")) {
+            return;
+        }
+        const pairCommand = fakeBridge.commands[fakeBridge.commands.length - 1];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId),
+                     bluetoothRadio(bluetoothDevices, "pairing", pairCommand.requestId,
+                                    "enter-pin"));
+        if (!require(adapter.bluetoothPairingPrompt === "enter-pin"
+                     && adapter.respondBluetoothPairing(true, "4821"),
+                     "pairing input crosses only through the current operation generation")) {
+            return;
+        }
+        const responseCommand = fakeBridge.commands[fakeBridge.commands.length - 1];
+        if (!require(responseCommand.operation === "bluetooth-agent-response"
+                     && responseCommand.responseLength === 4
+                     && JSON.stringify(responseCommand).indexOf("4821") === -1,
+                     "Bluetooth PIN is not retained by the adapter model or fake command log")) {
+            return;
+        }
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId),
+                     bluetoothRadio(bluetoothDevices, "idle", pairCommand.requestId, "none", "",
+                                    "paired-connected"));
+        if (!require(adapter.bluetoothOperationResult === "paired-connected"
+                     && adapter.setBluetoothManagerOpen(false),
+                     "pair completion remains shared while page close ends manager interest")) {
+            return;
+        }
+
         emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
                            connectCommand.requestId, "none", "connected"), radio(
                          true, true, true, false, "none", bluetoothRequestId));
@@ -251,6 +338,86 @@ ShellRoot {
             commands.push({
                               "operation": "disconnect",
                               "requestId": requestId
+                          });
+            return true;
+        }
+
+        function setBluetoothInterest(requestId, interested) {
+            commands.push({
+                              "operation": "bluetooth-interest",
+                              "requestId": requestId,
+                              "interested": interested
+                          });
+            return true;
+        }
+
+        function scanBluetooth(requestId) {
+            commands.push({
+                              "operation": "bluetooth-scan",
+                              "requestId": requestId
+                          });
+            return true;
+        }
+
+        function stopBluetoothScan(requestId) {
+            commands.push({
+                              "operation": "bluetooth-stop-scan",
+                              "requestId": requestId
+                          });
+            return true;
+        }
+
+        function pairBluetooth(requestId, token) {
+            commands.push({
+                              "operation": "bluetooth-pair",
+                              "requestId": requestId,
+                              "token": token
+                          });
+            return true;
+        }
+
+        function connectBluetooth(requestId, token) {
+            commands.push({
+                              "operation": "bluetooth-connect",
+                              "requestId": requestId,
+                              "token": token
+                          });
+            return true;
+        }
+
+        function disconnectBluetooth(requestId, token) {
+            commands.push({
+                              "operation": "bluetooth-disconnect",
+                              "requestId": requestId,
+                              "token": token
+                          });
+            return true;
+        }
+
+        function unpairBluetooth(requestId, token) {
+            commands.push({
+                              "operation": "bluetooth-unpair",
+                              "requestId": requestId,
+                              "token": token
+                          });
+            return true;
+        }
+
+        function cancelBluetoothPairing(requestId) {
+            commands.push({
+                              "operation": "bluetooth-cancel",
+                              "requestId": requestId
+                          });
+            return true;
+        }
+
+        function respondBluetoothAgent(requestId, generation, accepted, response) {
+            commands.push({
+                              "operation": "bluetooth-agent-response",
+                              "requestId": requestId,
+                              "generation": generation,
+                              "accepted": accepted,
+                              "responseLength": response.length
                           });
             return true;
         }

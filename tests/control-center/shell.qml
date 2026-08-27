@@ -21,6 +21,7 @@ ShellRoot {
                                                         "NAGI_APPEARANCE_CAPTURE") ?? ""
     readonly property string islandCapturePath: Quickshell.env("NAGI_ISLAND_CAPTURE") ?? ""
     readonly property string wifiCapturePath: Quickshell.env("NAGI_WIFI_CAPTURE") ?? ""
+    readonly property string bluetoothCapturePath: Quickshell.env("NAGI_BLUETOOTH_CAPTURE") ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
@@ -152,7 +153,7 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 9
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 10
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
                 && controlCenter.availableRoutes[2].id === "clock-date"
@@ -160,8 +161,9 @@ ShellRoot {
                 && controlCenter.availableRoutes[4].id === "weather"
                 && controlCenter.availableRoutes[5].id === "notifications"
                 && controlCenter.availableRoutes[6].id === "wifi"
-                && controlCenter.availableRoutes[7].id === "displays"
-                && controlCenter.availableRoutes[8].id === "about",
+                && controlCenter.availableRoutes[7].id === "bluetooth"
+                && controlCenter.availableRoutes[8].id === "displays"
+                && controlCenter.availableRoutes[9].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
@@ -256,7 +258,7 @@ ShellRoot {
 
     function wifiStage() {
         const page = controlCenter.loadedPageItem;
-        require(page !== null && fakeWifi.managerOpen && fakeWifi.wifiNetworks.length === 3,
+        require(page !== null && fakeWifi.wifiManagerOpen && fakeWifi.wifiNetworks.length === 3,
                 "Wi-Fi receives the one shared NetworkManager projection and opens scan interest");
 
         require(page.openNetwork(fakeWifi.wifiNetworks[2]) && page.mode === "password",
@@ -288,17 +290,56 @@ ShellRoot {
         controlCenter.contentItem.children[0].grabToImage(function (result) {
             require(test.wifiCapturePath !== "" && result.saveToFile(test.wifiCapturePath),
                     "real Control Center Wi-Fi capture is saved");
-            require(controlCenter.open("displays", tokenB)
-                    && controlCenter.currentPageId === "displays",
-                    "leaving Wi-Fi loads Displays through the same singleton");
-            stage = "displays-after-wifi";
+            require(controlCenter.open("bluetooth", tokenB)
+                    && controlCenter.currentPageId === "bluetooth",
+                    "Bluetooth joins the shared responsive page viewport");
+            stage = "bluetooth";
             settle.restart();
         });
     }
 
-    function displaysAfterWifiStage() {
-        require(!fakeWifi.managerOpen,
-                "leaving Wi-Fi closes page interest after the lazy page is destroyed");
+    function bluetoothStage() {
+        const page = controlCenter.loadedPageItem;
+        require(page !== null && !fakeWifi.wifiManagerOpen && fakeWifi.bluetoothManagerOpen
+                && fakeWifi.bluetoothDevices.length === 3,
+                "Bluetooth shares the connectivity owner and suspends Wi-Fi page interest");
+        require(fakeWifi.scanBluetooth() && fakeWifi.bluetoothDiscovering,
+                "Scan starts only from an explicit manager action");
+        require(fakeWifi.pairBluetooth(13)
+                && fakeWifi.bluetoothOperation === "pairing"
+                && fakeWifi.bluetoothPairingPrompt === "enter-pin",
+                "pairing replaces discovery and opens the owning prompt");
+        const pairingPanel = findObject(page, "bluetoothPairingPanel");
+        const pairingInput = findObject(page, "bluetoothPairingInput");
+        require(pairingPanel !== null && pairingInput !== null,
+                "Bluetooth pairing controls are mounted only for the owning flow");
+        pairingPanel.focusInput();
+        require(pairingInput.echoMode === TextInput.NoEcho && pairingInput.activeFocus
+                && !pairingInput.parent.parent.clipboardEnabled,
+                "Bluetooth PIN starts hidden, receives focus, and blocks clipboard export");
+        pairingInput.text = "1234";
+        require(pairingPanel.submitInput() && pairingInput.text === ""
+                && fakeWifi.lastSecretLength === 4
+                && fakeWifi.bluetoothOperationResult === "paired-connected",
+                "PIN submits once as an argument, clears immediately, and completes pairing");
+        require(page.requestUnpair(12, "Fixture Keyboard") && page.confirmUnpair()
+                && fakeWifi.lastOperation === "bluetooth-unpair" && fakeWifi.lastToken === 12,
+                "unpair requires an explicit confirmation and selected opaque token");
+        controlCenter.contentItem.children[0].grabToImage(function (result) {
+            require(test.bluetoothCapturePath !== ""
+                    && result.saveToFile(test.bluetoothCapturePath),
+                    "real Control Center Bluetooth capture is saved");
+            require(controlCenter.open("displays", tokenB)
+                    && controlCenter.currentPageId === "displays",
+                    "leaving Bluetooth loads Displays through the same singleton");
+            stage = "displays-after-bluetooth";
+            settle.restart();
+        });
+    }
+
+    function displaysAfterBluetoothStage() {
+        require(!fakeWifi.bluetoothManagerOpen,
+                "leaving Bluetooth stops discovery interest and clears its owning flow");
         controlCenter.closeWindow();
         stage = "closed";
         settle.restart();
@@ -415,8 +456,11 @@ ShellRoot {
         case "wifi":
             wifiStage();
             break;
-        case "displays-after-wifi":
-            displaysAfterWifiStage();
+        case "bluetooth":
+            bluetoothStage();
+            break;
+        case "displays-after-bluetooth":
+            displaysAfterBluetoothStage();
             break;
         case "closed":
             closedStage();
@@ -550,7 +594,7 @@ ShellRoot {
         property bool wifiHardwareEnabled: true
         property bool wifiBusy: false
         property bool wifiScanning: false
-        property bool managerOpen: false
+        property bool wifiManagerOpen: false
         property int lastSecretLength: 0
         property int lastToken: 0
         property bool lastRemember: false
@@ -591,7 +635,60 @@ ShellRoot {
         property int wifiOperationGeneration: 0
         property string wifiOperationFailure: "none"
         property string wifiOperationResult: "none"
-        function setWifiManagerOpen(open) { managerOpen = open; return true; }
+
+        property bool bluetoothAvailable: true
+        property bool bluetoothEnabled: true
+        property bool bluetoothBusy: false
+        property bool bluetoothDiscovering: false
+        property bool bluetoothManagerOpen: false
+        property int bluetoothControllerCount: 2
+        property var bluetoothDevices: [{
+                "token": 11,
+                "name": "Fixture Headphones",
+                "type": "audio",
+                "signal": 90,
+                "paired": true,
+                "connected": true,
+                "trusted": true,
+                "pairable": false,
+                "connectable": false,
+                "disconnectable": true,
+                "unpairable": true
+            }, {
+                "token": 12,
+                "name": "Fixture Keyboard",
+                "type": "input",
+                "signal": 65,
+                "paired": true,
+                "connected": false,
+                "trusted": true,
+                "pairable": false,
+                "connectable": true,
+                "disconnectable": false,
+                "unpairable": true
+            }, {
+                "token": 13,
+                "name": "Fixture Phone",
+                "type": "phone",
+                "signal": 45,
+                "paired": false,
+                "connected": false,
+                "trusted": false,
+                "pairable": true,
+                "connectable": false,
+                "disconnectable": false,
+                "unpairable": false
+            }]
+        property string bluetoothOperation: "idle"
+        property int bluetoothOperationGeneration: 0
+        property string bluetoothOperationFailure: "none"
+        property string bluetoothOperationResult: "none"
+        property string bluetoothPairingPrompt: "none"
+        property string bluetoothPairingValue: ""
+        property int bluetoothPairingEntered: 0
+        property int bluetoothPairingToken: 0
+
+        function setWifiManagerOpen(open) { wifiManagerOpen = open; return true; }
         function requestWifiEnabled(enabled) { return false; }
         function refreshWifi() { lastOperation = "scan"; return true; }
         function connectWifi(token, secret, remember) {
@@ -610,6 +707,75 @@ ShellRoot {
         }
         function disconnectWifi() { lastOperation = "disconnect"; return true; }
         function forgetWifi(token) { lastOperation = "forget"; lastToken = token; return true; }
+
+        function setBluetoothManagerOpen(open) {
+            bluetoothManagerOpen = open;
+            if (!open) {
+                bluetoothDiscovering = false;
+                bluetoothOperation = "idle";
+                bluetoothPairingPrompt = "none";
+                bluetoothPairingValue = "";
+                bluetoothPairingToken = 0;
+            }
+            return true;
+        }
+        function requestBluetoothEnabled(enabled) {
+            bluetoothEnabled = enabled;
+            return true;
+        }
+        function scanBluetooth() {
+            lastOperation = "bluetooth-scan";
+            bluetoothDiscovering = true;
+            bluetoothOperation = "discovering";
+            bluetoothOperationGeneration += 1;
+            return true;
+        }
+        function stopBluetoothScan() {
+            bluetoothDiscovering = false;
+            bluetoothOperation = "idle";
+            bluetoothOperationGeneration += 1;
+            return true;
+        }
+        function pairBluetooth(token) {
+            lastOperation = "bluetooth-pair";
+            lastToken = token;
+            bluetoothDiscovering = false;
+            bluetoothOperation = "pairing";
+            bluetoothOperationGeneration += 1;
+            bluetoothPairingPrompt = "enter-pin";
+            bluetoothPairingToken = token;
+            return true;
+        }
+        function respondBluetoothPairing(accepted, response) {
+            lastSecretLength = response.length;
+            bluetoothPairingPrompt = "none";
+            bluetoothPairingToken = 0;
+            bluetoothOperation = "idle";
+            bluetoothOperationResult = accepted ? "paired-connected" : "cancelled";
+            return true;
+        }
+        function cancelBluetoothPairing() {
+            bluetoothOperation = "idle";
+            bluetoothOperationResult = "cancelled";
+            bluetoothPairingPrompt = "none";
+            bluetoothPairingToken = 0;
+            return true;
+        }
+        function connectBluetooth(token) {
+            lastOperation = "bluetooth-connect";
+            lastToken = token;
+            return true;
+        }
+        function disconnectBluetooth(token) {
+            lastOperation = "bluetooth-disconnect";
+            lastToken = token;
+            return true;
+        }
+        function unpairBluetooth(token) {
+            lastOperation = "bluetooth-unpair";
+            lastToken = token;
+            return true;
+        }
     }
 
     QtObject {

@@ -7,8 +7,8 @@
 # Environment contract:
 #   - Pinned Fedora 44 container aligned with the supported local toolchain.
 #   - Quickshell installed from the stable errornointernet/quickshell COPR and
-#     PipeWire, GIO, and KF6 GlobalAccel development headers installed from
-#     Fedora; `make requirements` validates the complete toolchain before tests.
+#     PipeWire, GIO, KF6 GlobalAccel, and Python D-Bus fixture dependencies
+#     installed from Fedora; `make requirements` validates the complete toolchain.
 #   - No secret, privileged runner, GPU, real KDE session, or external service
 #     state is required.
 #

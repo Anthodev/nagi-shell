@@ -395,6 +395,8 @@ Scope {
                                                                               result)
                     onWifiManagerRequested: host.controlCenterRouteRequested("wifi",
                                                                              entry.surfaceToken)
+                    onBluetoothManagerRequested: host.controlCenterRouteRequested("bluetooth",
+                                                                                  entry.surfaceToken)
                 }
             }
 

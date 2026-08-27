@@ -55,6 +55,7 @@ FocusScope {
     signal shellMenuOpenResult(string result)
 
     signal wifiManagerRequested
+    signal bluetoothManagerRequested
     Connections {
         target: root.tray
         ignoreUnknownSignals: true
@@ -259,8 +260,16 @@ FocusScope {
                 Accessible.name: "Bluetooth"
                 Accessible.description: "Toggle Bluetooth. Confirmed state " + root.bluetoothState
                                         + (root.bluetoothFailureVisible ? ". Last request failed." :
-                                                                          "")
+                                                                          "") + ". Right-click or press Shift+Enter to manage devices."
                 onClicked: root.toggleBluetooth()
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Menu || (event.key === Qt.Key_Return && (event.modifiers
+                                                                                      & Qt.ShiftModifier)
+                                                      !== 0)) {
+                        root.bluetoothManagerRequested();
+                        event.accepted = true;
+                    }
+                }
 
                 background: Rectangle {
                     radius: Theme.radius.lg
@@ -284,7 +293,11 @@ FocusScope {
                 }
                 ToolTip.delay: Theme.motion.durationSlow
                 ToolTip.visible: hovered || visualFocus
-                ToolTip.text: "Bluetooth · " + root.bluetoothState
+                ToolTip.text: "Bluetooth · " + root.bluetoothState + " · Right-click to manage"
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: root.bluetoothManagerRequested()
+                }
             }
 
             Item {

@@ -10,7 +10,15 @@ ColumnLayout {
     property bool operationPending: false
     property bool secretVisible: false
     property string inputObjectName: "wifiPasswordInput"
-    readonly property bool acceptable: input.text.length >= 8 && input.text.length <= 64
+    property string label: "Password"
+    property string accessibleName: "Wi-Fi password"
+    property string accessibleDescription: "Enter the password for this connection"
+    property int minimumLength: 8
+    property int maximumLength: 64
+    property int additionalInputMethodHints: Qt.ImhNone
+    property bool clipboardEnabled: true
+    readonly property bool acceptable: input.text.length >= minimumLength && input.text.length
+                                       <= maximumLength
     readonly property bool empty: input.text.length === 0
 
     spacing: Theme.spacing.sm
@@ -37,7 +45,7 @@ ColumnLayout {
 
     IslandText {
         Layout.fillWidth: true
-        text: "Password"
+        text: root.label
         size: "caption"
         color: Theme.color.textSecondary
         Accessible.role: Accessible.StaticText
@@ -56,8 +64,8 @@ ColumnLayout {
         border.color: input.activeFocus ? Theme.snapshot.focusRing : Theme.color.surfaceBorder
         opacity: root.operationPending ? Theme.opacity.disabled : 1
         Accessible.role: Accessible.EditableText
-        Accessible.name: "Wi-Fi password"
-        Accessible.description: "Enter the password for this connection"
+        Accessible.name: root.accessibleName
+        Accessible.description: root.accessibleDescription
         Accessible.passwordEdit: true
         Accessible.selectableText: false
         Accessible.focusable: true
@@ -82,11 +90,12 @@ ColumnLayout {
             activeFocusOnTab: true
             echoMode: root.secretVisible ? TextInput.Normal : TextInput.NoEcho
             passwordMaskDelay: 0
-            maximumLength: 64
-            selectByMouse: root.secretVisible
+            maximumLength: root.maximumLength
+            selectByMouse: root.secretVisible && root.clipboardEnabled
             persistentSelection: false
             inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                              | (root.secretVisible ? Qt.ImhNone : Qt.ImhHiddenText)
+                              | root.additionalInputMethodHints | (root.secretVisible ? Qt.ImhNone :
+                                                                                        Qt.ImhHiddenText)
             Accessible.ignored: true
 
             onSelectedTextChanged: {
@@ -99,10 +108,14 @@ ColumnLayout {
             Keys.onPressed: event => {
                 const control = (event.modifiers & Qt.ControlModifier) !== 0;
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                if (!root.secretVisible && ((control && (event.key === Qt.Key_C || event.key
-                                                         === Qt.Key_X || event.key
-                                                         === Qt.Key_Insert)) || (shift && event.key
-                                                                                 === Qt.Key_Delete))) {
+                if ((!root.secretVisible || !root.clipboardEnabled) && ((control && (event.key
+                                                                                     === Qt.Key_C
+                                                                                     || event.key
+                                                                                     === Qt.Key_X
+                                                                                     || event.key
+                                                                                     === Qt.Key_Insert))
+                                                                        || (shift && event.key
+                                                                            === Qt.Key_Delete))) {
                     input.deselect();
                     event.accepted = true;
                 }
@@ -112,7 +125,7 @@ ColumnLayout {
 
     SettingToggleRow {
         Layout.fillWidth: true
-        label: "Show password"
+        label: "Show " + root.label.toLowerCase()
         description: "Reveal only while this form remains open."
         value: root.secretVisible
         writable: !root.operationPending

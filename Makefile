@@ -10,6 +10,7 @@ PKG_CONFIG ?= pkg-config
 QT_PATHS ?= qtpaths6
 MOC ?= $(shell $(QT_PATHS) --query QT_HOST_LIBEXECS)/moc
 DBUS_RUN_SESSION ?= dbus-run-session
+PYTHON ?= python3
 BUILD_DIR := build
 KWIN_VIRTUAL_RUNNER ?= $(abspath tests/run-kwin-virtual.sh)
 KWIN_TEST_SCALE ?= 1
@@ -150,6 +151,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-settings-writer
 .PHONY: test-networkmanager-contract
 .PHONY: test-bluez-contract
+.PHONY: test-bluetooth-manager-dbus
 .PHONY: test-gaming-power-contract
 .PHONY: test-wallpaper-write-contract
 
@@ -172,6 +174,7 @@ help:
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
+		'make test-bluetooth-manager-dbus  Test scoped Bluetooth discovery and pairing' \
 		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
 		'make test-wallpaper-dbus  Test wallpaper observation and service lifecycle' \
 		'make test-wallpaper   Test bounded analysis and the QML palette bridge' \
@@ -225,8 +228,8 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s rsms-inter-fonts pipewire-devel glib2-devel kf6-kglobalaccel-devel qt6-qtbase-devel qt6-qtdeclarative-devel cmake\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, KF6 GlobalAccel, libpipewire 0.3, and GIO Unix development files\n'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s rsms-inter-fonts pipewire-devel glib2-devel kf6-kglobalaccel-devel qt6-qtbase-devel qt6-qtdeclarative-devel python3-dbus-next cmake\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, KF6 GlobalAccel, libpipewire 0.3, and GIO Unix development files; private D-Bus fixtures use python3-dbus-next\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
 	@$(MAKE) --no-print-directory check-audio-toolchain
@@ -236,6 +239,7 @@ requirements:
 	@$(MAKE) --no-print-directory check-wallpaper-toolchain
 	@$(MAKE) --no-print-directory check-platform-toolchain
 	@$(MAKE) --no-print-directory check-tray-toolchain
+	@$(PYTHON) -c 'import dbus_next'
 
 prepare:
 	@touch .qmlls.ini
@@ -475,6 +479,11 @@ test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTIVITY_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(CONNECTIVITY_DBUS_TEST) $(abspath $(CONNECTIVITY_HELPER))
+
+test-bluetooth-manager-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER)
+	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
+	@$(PYTHON) -c 'import dbus_next'
+	$(DBUS_RUN_SESSION) -- $(PYTHON) tests/bluetooth_manager_test.py $(abspath $(CONNECTIVITY_HELPER))
 
 test-brightness-dbus: check-helper-toolchain $(BRIGHTNESS_HELPER) $(BRIGHTNESS_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
@@ -728,8 +737,8 @@ test-control-center: check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
 	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
 	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
-	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' NAGI_WIFI_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wifi.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' NAGI_WIFI_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wifi.png' NAGI_BLUETOOTH_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/bluetooth.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
 	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
 
 # Issue #70 gate: one PanelWindow per connected screen, independent
@@ -836,7 +845,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)
