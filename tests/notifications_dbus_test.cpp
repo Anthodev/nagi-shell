@@ -56,6 +56,15 @@ private:
         ExpiryAdmitted,
         Expired,
         Dismissed,
+        SoakPreload,
+        SoakAdmitted,
+        SoakReplaced,
+        SoakClosed,
+        SoakExpiryAdmitted,
+        SoakExpired,
+        SoakCleared,
+        SoakFiller,
+        SoakDrained,
         ReloadReady,
         Reloaded,
         StopForRestart,
@@ -170,6 +179,33 @@ private:
         return values;
     }
 
+    bool hasIndexedMarker(const QByteArray &line, const char *marker, int index) const
+    {
+        QByteArray expected(marker);
+        expected.append(':');
+        expected.append(QByteArray::number(index));
+        expected.append(':');
+        return line.contains(expected);
+    }
+
+    bool hasSoakMarker(const QByteArray &line, const char *marker) const
+    {
+        return hasIndexedMarker(line, marker, soakCycle);
+    }
+
+    void startSoakPreload()
+    {
+        currentId =
+            notify(0, QStringLiteral("Retained %1").arg(soakPreloadIndex), hints(), 0);
+        phase = Phase::SoakPreload;
+    }
+
+    void startSoakCycle()
+    {
+        currentId = notify(0, QStringLiteral("Soak %1 admitted").arg(soakCycle), hints(), 0);
+        phase = Phase::SoakAdmitted;
+    }
+
     void readOutput()
     {
         outputBuffer.append(process.readAllStandardOutput());
@@ -230,6 +266,57 @@ private:
             phase = Phase::Dismissed;
         } else if (phase == Phase::Dismissed
                    && line.contains("notification-harness-dismissed")) {
+            soakPreloadIndex = 0;
+            startSoakPreload();
+        } else if (phase == Phase::SoakPreload
+                   && hasIndexedMarker(line, "notification-harness-soak-preload",
+                                       soakPreloadIndex)) {
+            ++soakPreloadIndex;
+            if (soakPreloadIndex < 50) {
+                startSoakPreload();
+            } else {
+                soakCycle = 0;
+                startSoakCycle();
+            }
+        } else if (phase == Phase::SoakAdmitted
+                   && hasSoakMarker(line, "notification-harness-soak-admitted")) {
+            const uint replacement = notify(
+                currentId, QStringLiteral("Soak %1 replaced").arg(soakCycle), hints(), 0);
+            if (replacement != currentId) {
+                fail("soak-replacement-id");
+            }
+            phase = Phase::SoakReplaced;
+        } else if (phase == Phase::SoakReplaced
+                   && hasSoakMarker(line, "notification-harness-soak-replaced")) {
+            close(currentId);
+            phase = Phase::SoakClosed;
+        } else if (phase == Phase::SoakClosed
+                   && hasSoakMarker(line, "notification-harness-soak-closed")) {
+            currentId =
+                notify(0, QStringLiteral("Soak %1 expiry").arg(soakCycle), hints(), 30);
+            phase = Phase::SoakExpiryAdmitted;
+        } else if (phase == Phase::SoakExpiryAdmitted
+                   && hasSoakMarker(line,
+                                    "notification-harness-soak-expiry-admitted")) {
+            phase = Phase::SoakExpired;
+        } else if (phase == Phase::SoakExpired
+                   && hasSoakMarker(line, "notification-harness-soak-expired")) {
+            phase = Phase::SoakCleared;
+        } else if (phase == Phase::SoakCleared
+                   && hasSoakMarker(line, "notification-harness-soak-cleared")) {
+            currentId =
+                notify(0, QStringLiteral("Soak %1 retained").arg(soakCycle), hints(), 0);
+            phase = Phase::SoakFiller;
+        } else if (phase == Phase::SoakFiller
+                   && hasSoakMarker(line, "notification-harness-soak-terminal")) {
+            ++soakCycle;
+            if (soakCycle < 100) {
+                startSoakCycle();
+            } else {
+                phase = Phase::SoakDrained;
+            }
+        } else if (phase == Phase::SoakDrained
+                   && line.contains("notification-harness-soak-drained")) {
             currentId = notify(0, QStringLiteral("Reload"), hints(), 0);
             phase = Phase::ReloadReady;
         } else if (phase == Phase::ReloadReady
@@ -292,6 +379,8 @@ private:
         }
         fail("unexpected-quickshell-exit");
     }
+    int soakCycle = 0;
+    int soakPreloadIndex = 0;
 
     QString quickshell;
     QString testDirectory;

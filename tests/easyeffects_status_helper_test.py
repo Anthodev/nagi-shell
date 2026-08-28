@@ -63,6 +63,9 @@ class FakeServer:
         self.responses = responses
         self.commands: list[str] = []
         self.failure: BaseException | None = None
+        if path.exists():
+            # A previous fake server's socket node may remain after its listener closed.
+            path.unlink()
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.bind(str(path))
         self.socket.listen(8)
@@ -113,7 +116,7 @@ def assert_presets(message: dict, generation: int, pipeline: str,
         "pipeline": pipeline,
         "state": state,
         "items": items,
-    }, f"helper publishes bounded sorted {pipeline} preset names")
+    }, f"helper publishes bounded sorted {pipeline} preset names: {message}")
 
 def assert_load(message: dict, generation: int, pipeline: str, state: str) -> None:
     require(message == {
@@ -242,18 +245,95 @@ def test_invalid_and_timeout(helper: str, runtime: Path) -> None:
     server.join()
 
 
+def test_lifecycle_soak(helper: str, runtime: Path) -> None:
+    """Repeat the complete visible-interest lifecycle with fresh helpers."""
+    for cycle in range(12):
+        cycle_root = runtime / f"cycle-{cycle:02d}"
+        cycle_root.mkdir(mode=0o700)
+        prepare_presets(cycle_root, ("Cinema", "Studio"), ("Voice",))
+        server = FakeServer(
+            cycle_root / "EasyEffectsServer",
+            [b"Studio\n", b"Voice\n", b"Studio\n", b"Voice\n"],
+        )
+        process = start_helper(helper, cycle_root)
+        generation = 100 + cycle
+        send(process, {"op": "interest", "generation": generation, "active": True})
+        assert_pipeline(read_message(process), generation, "output", "lastLoaded", "Studio")
+        assert_pipeline(read_message(process), generation, "input", "lastLoaded", "Voice")
+        assert_presets(read_message(process), generation, "output", ["Cinema", "Studio"])
+        assert_presets(read_message(process), generation, "input", ["Voice"])
+        send(process, {"op": "refresh", "generation": generation})
+        assert_pipeline(read_message(process), generation, "output", "lastLoaded", "Studio")
+        assert_pipeline(read_message(process), generation, "input", "lastLoaded", "Voice")
+        assert_presets(read_message(process), generation, "output", ["Cinema", "Studio"])
+        assert_presets(read_message(process), generation, "input", ["Voice"])
+        send(process, {"op": "interest", "generation": generation, "active": False})
+        stop_helper(process)
+        server.join()
+        require(
+            server.commands
+            == [
+                "get_last_loaded_preset:output",
+                "get_last_loaded_preset:input",
+                "get_last_loaded_preset:output",
+                "get_last_loaded_preset:input",
+            ],
+            "each lifecycle performs only the two explicit bounded snapshots",
+        )
+
+
+def test_publication_caps(helper: str, runtime: Path) -> None:
+    """Preset model caps and identity filtering: only bounded valid preset
+    names discovered from the private directory ever cross the boundary."""
+    output = runtime / "data/easyeffects/output"
+    output.mkdir(parents=True, mode=0o700)
+    input_ = runtime / "data/easyeffects/input"
+    input_.mkdir(parents=True, mode=0o700)
+    (input_ / "Voice.json").write_text("{}", encoding="utf-8")
+    for index in range(150):
+        (output / f"Preset{index:03d}.json").write_text("{}", encoding="utf-8")
+    # Hostile or over-bound entries are filtered before publication.
+    (output / "bad\u0001name.json").write_text("{}", encoding="utf-8")
+    (output / "huge.json").write_text("x" * (1024 * 1024 + 1), encoding="utf-8")
+    (output / "linked.json").symlink_to(output / "Preset000.json")
+    (output / "folder.json").mkdir()
+    process = start_helper(helper, runtime)
+    try:
+        send(process, {"op": "interest", "generation": 30, "active": True})
+        # No EasyEffects socket exists in this runtime: pipeline reads refuse.
+        assert_pipeline(read_message(process), 30, "output", "unavailable")
+        assert_pipeline(read_message(process), 30, "input", "unavailable")
+        capped = read_message(process)
+        require(
+            capped.get("type") == "presets"
+            and capped.get("generation") == 30
+            and capped.get("pipeline") == "output"
+            and capped.get("state") == "truncated"
+            and len(capped.get("items", [])) == 128
+            and capped["items"] == sorted(capped["items"])
+            and all(name.startswith("Preset") for name in capped["items"]),
+            "output preset publication is a sorted 128-entry valid-name subset",
+        )
+        assert_presets(read_message(process), 30, "input", ["Voice"])
+        send(process, {"op": "interest", "generation": 30, "active": False})
+        stop_helper(process)
+    finally:
+        stop_helper(process)
+
+
 def main() -> int:
     require(len(sys.argv) == 2, "usage: easyeffects_status_helper_test.py HELPER")
     helper = os.path.abspath(sys.argv[1])
     with tempfile.TemporaryDirectory(prefix="nagi-easyeffects-status-") as temp:
         root = Path(temp)
-        os.chmod(root, 0o700)
         for name, test in (
             ("visible", test_visible_snapshot_and_refresh),
             ("unreachable", test_unreachable),
             ("invalid", test_invalid_and_timeout),
             ("load", test_confirmed_load),
             ("mismatch", test_mismatched_load),
+            ("soak", test_lifecycle_soak),
+            ("caps", test_publication_caps),
         ):
             runtime = root / name
             runtime.mkdir(mode=0o700)

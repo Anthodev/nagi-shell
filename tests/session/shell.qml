@@ -232,6 +232,124 @@ ShellRoot {
         require(service.activeTimerCount === 0,
                 "injected service leaves no production timers active");
 
+        runSoakStage();
+    }
+
+    function runSoakStage() {
+        console.warn("session: 20-cycle lifecycle soak");
+        const actions = ["lock", "suspend", "logout", "reboot", "powerOff"];
+        const outcomes = ["denied", "timeout", "busy", "unavailable", "accepted"];
+        const initialReloadCalls = reloadCalls;
+        service.clearFailure();
+        fakeBridge.commands = [];
+
+        for (let cycle = 0; cycle < 20; ++cycle) {
+            fakeBridge.ready = false;
+            require(!view.requestAction(actions[cycle % actions.length])
+                    && fakeBridge.commands.length === 0 && !service.pending,
+                    "cycle " + cycle + " rejects actions while the helper is unavailable");
+            fakeBridge.resultReceived(null);
+            fakeBridge.resultReceived({
+                                          "requestId": -1,
+                                          "action": "invalid",
+                                          "outcome": "accepted"
+                                      });
+            require(!service.pending && service.pendingAction === "none",
+                    "cycle " + cycle + " ignores malformed idle completions");
+
+            fakeBridge.ready = true;
+            require(view.requestAction("restartShell") && reloadCalls
+                    === initialReloadCalls + cycle + 1 && !reloadWasHard
+                    && fakeBridge.commands.length === 0 && !service.pending,
+                    "cycle " + cycle + " keeps shell reload outside the platform helper");
+
+            const action = actions[cycle % actions.length];
+            require(view.requestAction(action) && service.pending
+                    && service.pendingAction === action && fakeBridge.commands.length === 1,
+                    "cycle " + cycle + " starts exactly one platform operation");
+            const requestId = fakeBridge.commands[0].requestId;
+            fakeBridge.resultReceived({
+                                          "requestId": requestId + 1,
+                                          "action": action,
+                                          "outcome": "accepted"
+                                      });
+            fakeBridge.resultReceived({
+                                          "requestId": requestId,
+                                          "action": action,
+                                          "outcome": "invalid"
+                                      });
+            require(service.pending && fakeBridge.commands.length === 1
+                    && !view.requestAction(actions[(cycle + 1) % actions.length]),
+                    "cycle " + cycle + " rejects stale, malformed, and queued operations");
+
+            const outcome = outcomes[cycle % outcomes.length];
+            fakeBridge.resultReceived({
+                                          "requestId": requestId,
+                                          "action": action,
+                                          "outcome": outcome
+                                      });
+            require(!service.pending && service.pendingAction === "none"
+                    && service.failure === (outcome === "accepted" ? "none" : outcome),
+                    "cycle " + cycle + " settles the matching bounded outcome");
+            const commandsAfterOutcome = fakeBridge.commands.length;
+            view.active = false;
+            view.cancelled(view.ownerEpoch);
+            require(fakeBridge.commands.length === commandsAfterOutcome && !service.pending
+                    && service.activeTimerCount === 0,
+                    "cycle " + cycle + " denial and close do not mutate backend state or start timers");
+            view.active = true;
+            service.clearFailure();
+
+            const closeAction = actions[(cycle + 1) % actions.length];
+            require(view.requestAction(closeAction) && service.pending
+                    && fakeBridge.commands.length === 2,
+                    "cycle " + cycle + " starts one close-during-operation request");
+            const closeRequestId = fakeBridge.commands[1].requestId;
+            view.active = false;
+            view.cancelled(view.ownerEpoch);
+            require(service.pending && service.pendingAction === closeAction
+                    && fakeBridge.commands.length === 2,
+                    "cycle " + cycle + " close leaves an accepted system operation backend-owned");
+            fakeBridge.fatalFailure();
+            require(!service.pending && service.pendingAction === "none"
+                    && service.failure === "backend" && service.activeTimerCount === 0,
+                    "cycle " + cycle + " owner loss clears the generation-owned operation");
+            fakeBridge.resultReceived({
+                                          "requestId": closeRequestId,
+                                          "action": closeAction,
+                                          "outcome": "accepted"
+                                      });
+            require(!service.pending && service.failure === "backend",
+                    "cycle " + cycle + " ignores completion from the lost owner");
+
+            fakeBridge.ready = false;
+            require(!view.requestAction(action) && fakeBridge.commands.length === 2,
+                    "cycle " + cycle + " does not queue work while the owner is absent");
+            fakeBridge.ready = true;
+            view.active = true;
+            service.clearFailure();
+            require(view.requestAction(action) && fakeBridge.commands.length === 3,
+                    "cycle " + cycle + " recovers with one replacement-owner request");
+            const recoveryRequestId = fakeBridge.commands[2].requestId;
+            fakeBridge.resultReceived({
+                                          "requestId": recoveryRequestId,
+                                          "action": action,
+                                          "outcome": "accepted"
+                                      });
+            require(!service.pending && service.pendingAction === "none"
+                    && service.failure === "none" && service.activeTimerCount === 0,
+                    "cycle " + cycle + " recovery returns to the exact idle state");
+
+            fakeBridge.commands = [];
+            require(fakeBridge.commands.length === 0 && !service.pending
+                    && service.pendingAction === "none" && service.failure === "none",
+                    "cycle " + cycle + " releases every fixture record before the next cycle");
+        }
+
+        require(fakeBridge.commands.length === 0 && !service.pending
+                && service.pendingAction === "none" && service.failure === "none"
+                && service.activeTimerCount === 0 && view.active,
+                "session soak finishes at its pre-cycle helper, queue, timer, and visibility counts");
         console.warn("session service and view tests passed");
         Qt.exit(0);
     }

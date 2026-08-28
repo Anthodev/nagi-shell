@@ -7,8 +7,10 @@
 #   the launcher wrapper, desktop entry, installation directory, and the
 #   invoking user's nagi-shell configuration and state directories.
 #
-#   Idempotent: safe to re-run. The bounded weather cache under Quickshell's
-#   cache directory is left in place (it is inert once the shell is gone).
+#   Idempotent: safe to re-run. Two bounded caches are intentionally retained:
+#   the weather cache under Quickshell's cache directory and the wallpaper
+#   thumbnail cache under the cache root (~/.cache/nagi-shell/). Both are
+#   inert once the shell is gone; user cache data is never deleted here.
 # =============================================================================
 set -euo pipefail
 
@@ -93,6 +95,8 @@ echo "  desktop entry     : share/applications/io.github.Anthodev.NagiShell.desk
 echo "  installation      : $DEST removed"
 echo "  configuration     : $(real_user_config_dir) removed"
 echo "  application state : $(real_user_state_dir) removed (pins, recency, onboarding record)"
+echo "  retained caches   : weather (Quickshell's cache directory) and wallpaper"
+echo "                      thumbnail (~/.cache/nagi-shell/) caches stay on disk by design"
 echo "  session autostart : ~/.config/autostart entry removed"
 echo "  notifications     : plasmashell restart offered so Plasma reclaims org.freedesktop.Notifications"
 echo

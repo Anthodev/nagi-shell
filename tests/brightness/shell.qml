@@ -159,6 +159,99 @@ ShellRoot {
         require(adapter.requestBrightness("2:display0", 0.5, null),
                 "terminal timeout clears local dispatch state while preserving confirmation");
 
+        runSoakStage();
+    }
+
+    function runSoakStage() {
+        console.warn("brightness: 20-cycle helper lifecycle soak");
+        fakeBridge.fatalFailure();
+        require(!adapter.available && !adapter.supported && adapter.displays.length === 0
+                && adapter.activeTimerCount === 0,
+                "soak baseline clears the pre-existing pending replacement request");
+        const initialParsedSnapshots = parsedSnapshotCount;
+        const initialConfirmed = confirmedCount;
+        const initialInvalidated = invalidatedCount;
+        const initialWrites = fakeBridge.writeCount;
+
+        for (let cycle = 0; cycle < 20; ++cycle) {
+            parser.acceptLine("not json " + cycle);
+            parser.acceptLine("{\"type\":\"state\",\"generation\":" + cycle + "}");
+            require(parsedSnapshotCount === initialParsedSnapshots
+                    && parser.maximumDiagnostics === 4 && parser.activeTimerCount === 0,
+                    "cycle " + cycle + " keeps malformed helper diagnostics bounded and dormant");
+
+            fakeBridge.ready = false;
+            require(!adapter.requestBrightness((cycle + 10) + ":display0", 0.5, null)
+                    && fakeBridge.writeCount === initialWrites + cycle * 3,
+                    "cycle " + cycle + " rejects writes while the helper is unavailable");
+            fakeBridge.ready = true;
+
+            const generation = 10 + cycle * 2;
+            const key = generation + ":display0";
+            const replacementGeneration = generation + 1;
+            const replacementKey = replacementGeneration + ":display0";
+            fakeBridge.snapshotReceived(state(generation, [display(key, "Cycle Display", false,
+                                                                   0.25, false, "none")], null,
+                                                       null));
+            require(adapter.available && adapter.supported && adapter.generation === generation
+                    && adapter.displays.length === 1 && adapter.activeTimerCount === 0,
+                    "cycle " + cycle + " exposes one replacement-owned display and no timer");
+
+            require(adapter.requestBrightness(key, 0.75, null)
+                    && !adapter.requestBrightness(key, 0.5, null),
+                    "cycle " + cycle + " admits one write and rejects queueing");
+            const timeoutRequest = fakeBridge.lastRequestId;
+            fakeBridge.snapshotReceived(state(generation, [display(key, "Cycle Display", false,
+                                                                   0.25, true, "none")], null, {
+                                                   "requestId": timeoutRequest,
+                                                   "outcome": "pending"
+                                               }));
+            fakeBridge.snapshotReceived(state(generation, [display(key, "Cycle Display", false,
+                                                                   0.25, false, "timeout")], null, {
+                                                   "requestId": timeoutRequest,
+                                                   "outcome": "timeout"
+                                               }));
+            require(adapter.displayForKey(key).ratio === 0.25
+                    && adapter.requestBrightness(key, 0.5, null),
+                    "cycle " + cycle + " timeout preserves backend state and clears local dispatch");
+
+            fakeBridge.fatalFailure();
+            require(!adapter.available && !adapter.supported && adapter.displays.length === 0
+                    && adapter.resolveTransient(key, generation, 1) === null
+                    && invalidatedCount === initialInvalidated + cycle * 2 + 1,
+                    "cycle " + cycle + " owner loss clears models, pending work, and stale projection");
+
+            fakeBridge.snapshotReceived(state(replacementGeneration,
+                                               [display(replacementKey, "Replacement Display", false,
+                                                        0.55, false, "none")], null, null));
+            require(adapter.generation === replacementGeneration && adapter.displays.length === 1
+                    && !adapter.requestBrightness(key, 0.6, null)
+                    && adapter.requestBrightness(replacementKey, 0.6, null),
+                    "cycle " + cycle + " recovery accepts only the replacement generation");
+            require(adapter.displayForKey(replacementKey).ratio === 0.55,
+                    "cycle " + cycle + " recovery does not speculate backend brightness");
+
+            fakeBridge.snapshotReceived({
+                                            "available": false,
+                                            "supported": false,
+                                            "generation": 0,
+                                            "displays": [],
+                                            "change": null,
+                                            "request": null
+                                        });
+            require(!adapter.available && !adapter.supported && adapter.generation === 0
+                    && adapter.displays.length === 0 && adapter.activeTimerCount === 0
+                    && invalidatedCount === initialInvalidated + (cycle + 1) * 2
+                    && confirmedCount === initialConfirmed
+                    && fakeBridge.writeCount === initialWrites + (cycle + 1) * 3,
+                    "cycle " + cycle + " returns to exact model, timer, and request counts");
+        }
+
+        require(!adapter.available && !adapter.supported && adapter.generation === 0
+                && adapter.displays.length === 0 && adapter.activeTimerCount === 0
+                && parsedSnapshotCount === initialParsedSnapshots
+                && confirmedCount === initialConfirmed,
+                "brightness soak finishes at its pre-cycle clean state");
         console.warn("brightness adapter tests passed");
         Qt.exit(0);
     }

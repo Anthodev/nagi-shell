@@ -747,15 +747,137 @@ ShellRoot {
                     "destroyed player removal stops hidden media work");
             destroyBundle(closedBundle);
 
-            for (let i = 0; i < 3; ++i) {
-                const disposable = makeAdapter({});
-                setPlayers(disposable, [player]);
-                destroyBundle(disposable);
-            }
-
-            console.warn("media tests passed");
-            Qt.exit(0);
+            player.destroy();
+            runSoakStage();
         });
+    }
+
+    function runSoakStage() {
+        console.warn("media: 20-cycle lifecycle and hidden-work soak");
+        calls = [];
+        require(!settleTimer.running, "media soak starts without an asynchronous artwork wait");
+
+        for (let cycle = 0; cycle < 20; ++cycle) {
+            const player = makePlayer({
+                                          "dbusName": "org.mpris.cycle",
+                                          "identity": "Cycle",
+                                          "desktopEntry": "cycle",
+                                          "uniqueId": cycle * 2 + 1,
+                                          "trackTitle": "Cycle " + cycle + "\u0007",
+                                          "trackArtUrl": "data:image/png;base64,AAAA",
+                                          "playbackState": MprisPlaybackState.Playing,
+                                          "position": 5,
+                                          "positionSupported": true,
+                                          "length": 60,
+                                          "lengthSupported": true,
+                                          "canGoNext": true
+                                      });
+            const bundle = makeAdapter({
+                                           "enabled": false,
+                                           "detailsVisible": true
+                                       });
+            setPlayers(bundle, [player]);
+            require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                    && bundle.adapter.selectedGeneration === 0
+                    && !bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkRequest === "",
+                    "cycle " + cycle + " disabled media owns no watcher, timer, or artwork work");
+
+            bundle.adapter.enabled = true;
+            bundle.adapter.processPendingChanges();
+            require(bundle.adapter.available && bundle.adapter.trackedPlayerCount === 1
+                    && bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkSource === ""
+                    && bundle.adapter.artworkRequest === "",
+                    "cycle " + cycle + " enables one bounded player observer and rejects malformed artwork");
+            const firstGeneration = bundle.adapter.selectedGeneration;
+            require(firstGeneration > 0 && bundle.adapter.next() === "dispatched"
+                    && bundle.adapter.pendingAction === "next" && calls.length === 1,
+                    "cycle " + cycle + " dispatches one bounded transport operation");
+            bundle.adapter.dispatchDeadlineReached();
+            require(bundle.adapter.pendingAction === "none" && bundle.adapter.failure === "none"
+                    && bundle.adapter.next() === "dispatched" && calls.length === 2,
+                    "cycle " + cycle + " timeout clears rather than queues the next operation");
+
+            setPlayers(bundle, []);
+            require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                    && bundle.adapter.selectedGeneration === 0
+                    && bundle.adapter.pendingAction === "none"
+                    && !bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkRequest === "",
+                    "cycle " + cycle + " owner loss clears generation, queue, timer, and artwork work");
+            player.trackTitle = "Stale " + cycle;
+            player.postTrackChanged();
+            bundle.adapter.processPendingChanges();
+            require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                    && bundle.adapter.pendingAction === "none",
+                    "cycle " + cycle + " ignores callbacks from the lost owner");
+
+            const replacement = makePlayer({
+                                               "dbusName": "org.mpris.cycle",
+                                               "identity": "Replacement",
+                                               "desktopEntry": "cycle",
+                                               "uniqueId": cycle * 2 + 2,
+                                               "trackTitle": "Replacement " + cycle,
+                                               "trackArtUrl": "javascript://invalid",
+                                               "playbackState": MprisPlaybackState.Playing,
+                                               "position": 10,
+                                               "positionSupported": true,
+                                               "length": 60,
+                                               "lengthSupported": true
+                                           });
+            setPlayers(bundle, [replacement]);
+            require(bundle.adapter.available && bundle.adapter.trackedPlayerCount === 1
+                    && bundle.adapter.selectedGeneration > firstGeneration,
+                    "cycle " + cycle + " replacement receives one fresh generation");
+            const callsBeforeDenial = calls.length;
+            require(bundle.adapter.next() === "rejected"
+                    && bundle.adapter.failure === "unsupported"
+                    && calls.length === callsBeforeDenial,
+                    "cycle " + cycle + " denial leaves backend transport state unchanged");
+            bundle.adapter.dispatchDeadlineReached();
+
+            bundle.adapter.detailsVisible = false;
+            bundle.adapter.processPendingChanges();
+            require(!bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkRequest === "",
+                    "cycle " + cycle + " hidden details own no timer or artwork work");
+            replacement.canGoNext = true;
+            bundle.adapter.processPendingChanges();
+            require(bundle.adapter.next() === "dispatched"
+                    && bundle.adapter.pendingAction === "next",
+                    "cycle " + cycle + " recovery accepts one fresh-owner operation");
+            const callsBeforeClose = calls.length;
+            bundle.adapter.enabled = false;
+            bundle.adapter.processPendingChanges();
+            require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                    && bundle.adapter.selectedGeneration === 0
+                    && bundle.adapter.pendingAction === "none"
+                    && !bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkRequest === ""
+                    && calls.length === callsBeforeClose,
+                    "cycle " + cycle + " close clears work without another backend action");
+
+            setPlayers(bundle, []);
+            bundle.adapter.enabled = true;
+            bundle.adapter.processPendingChanges();
+            require(!bundle.adapter.available && bundle.adapter.trackedPlayerCount === 0
+                    && bundle.adapter.selectedGeneration === 0
+                    && bundle.adapter.pendingAction === "none"
+                    && !bundle.adapter.positionTimerRunning
+                    && bundle.adapter.artworkRequest === "",
+                    "cycle " + cycle + " returns to exact model, watcher, queue, and hidden-work counts");
+
+            destroyBundle(bundle);
+            player.destroy();
+            replacement.destroy();
+            calls = [];
+        }
+
+        require(calls.length === 0 && !settleTimer.running,
+                "media soak finishes at its pre-cycle fixture and asynchronous-work counts");
+        console.warn("media tests passed");
+        Qt.exit(0);
     }
 
     Component.onCompleted: Qt.callLater(test.runDisabledStage)

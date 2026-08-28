@@ -201,6 +201,7 @@ public:
     }
 
     bool denyBluetooth = false;
+    int activationCallCount() const { return activationCalls; }
     bool hiddenShapeWasValid() const { return hiddenShapeValid; }
 
 private:
@@ -276,6 +277,7 @@ private:
 
     bool handleActivate(const QDBusMessage &message, const QDBusConnection &connection)
     {
+        ++activationCalls;
         QString targetAccessPoint;
         if (message.member() == QStringLiteral("ActivateConnection")) {
             const QList<QVariant> arguments = message.arguments();
@@ -336,7 +338,7 @@ private:
             }));
         }
         QTimer::singleShot(
-            0,
+            20,
             this,
             [this, targetAccessPoint] { setActiveAccessPoint(targetAccessPoint, 100U); });
         return true;
@@ -496,6 +498,7 @@ private:
     bool hiddenShapeValid = false;
     bool userProfileDeleted = false;
     bool bluetoothPowered = false;
+    int activationCalls = 0;
 };
 
 class ConnectivityDbusTest final : public QObject {
@@ -528,8 +531,18 @@ public:
             fail("connectivity helper process failed");
         });
         connect(&helper, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
-            if (stage != Stage::Cleanup || exitCode != 0 || status != QProcess::NormalExit) {
-                fail("connectivity helper exited unexpectedly");
+            const QByteArray diagnostics = helper.readAllStandardError();
+            if (stage != Stage::Cleanup || exitCode != 0 || status != QProcess::NormalExit
+                || ownerReplacementCount != 5 || bridgeProcessId <= 0
+                || transcript.contains("wrong-password")
+                || transcript.contains("correct-password")
+                || transcript.contains("queued-password")
+                || transcript.contains("hidden-password")
+                || diagnostics.contains("wrong-password")
+                || diagnostics.contains("correct-password")
+                || diagnostics.contains("queued-password")
+                || diagnostics.contains("hidden-password")) {
+                fail("connectivity helper did not finish with clean bounded state");
                 return;
             }
             timeout.stop();
@@ -625,7 +638,9 @@ private:
 
     void readOutput()
     {
-        output.append(helper.readAllStandardOutput());
+        const QByteArray chunk = helper.readAllStandardOutput();
+        transcript.append(chunk);
+        output.append(chunk);
         while (true) {
             const qsizetype newline = output.indexOf('\n');
             if (newline < 0) {
@@ -648,6 +663,10 @@ private:
         const bool bluetoothAvailable = adapterValue(state, "bluetooth", "available");
         const bool bluetoothEnabled = adapterValue(state, "bluetooth", "enabled");
         const bool bluetoothPending = adapterValue(state, "bluetooth", "pending");
+
+        if (bridgeProcessId == 0) {
+            bridgeProcessId = helper.processId();
+        }
 
         if (stage == Stage::Initial && wifiAvailable && wifiEnabled && bluetoothAvailable
             && !bluetoothEnabled) {
@@ -739,16 +758,60 @@ private:
         }
         if (stage == Stage::WrongSecret
             && wifiOperationFailure(state) == QStringLiteral("wrong-secret")) {
+            if (QJsonDocument(state).toJson(QJsonDocument::Compact).contains("wrong-password")) {
+                fail("failed PSK remained in normalized state");
+                return;
+            }
+            protectedActivationBaseline = services.activationCallCount();
             stage = Stage::ProtectedConnecting;
             sendWifiConnect(secureToken, QStringLiteral("correct-password"), true, 8);
             return;
         }
+        if (stage == Stage::ProtectedConnecting && !protectedFloodSent
+            && wifiOperation(state) == QStringLiteral("connecting")) {
+            const QJsonObject secure = networkByName(state, QStringLiteral("Secure"));
+            if (secure.value(QStringLiteral("connected")).toBool()
+                || !state.value(QStringLiteral("wifi"))
+                        .toObject()
+                        .value(QStringLiteral("currentNetwork"))
+                        .toString()
+                        .isEmpty()) {
+                fail("mutable connection changed backend-owned state before confirmation");
+                return;
+            }
+            protectedFloodSent = true;
+            for (int request = 0; request < 32; ++request) {
+                sendWifiConnect(
+                    secureToken,
+                    QStringLiteral("queued-password"),
+                    false,
+                    1000 + request);
+            }
+            sendCommand(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("wifi-interest")},
+                {QStringLiteral("interested"), false},
+                {QStringLiteral("requestId"), 1100},
+            });
+            return;
+        }
         if (stage == Stage::ProtectedConnecting
             && wifiOperationResult(state) == QStringLiteral("connected")) {
+            if (!protectedFloodSent
+                || services.activationCallCount() != protectedActivationBaseline + 1
+                || QJsonDocument(state).toJson(QJsonDocument::Compact)
+                       .contains("correct-password")) {
+                fail("connection flood queued work or retained submitted PSK");
+                return;
+            }
             stage = Stage::ProtectedDisconnecting;
             sendCommand(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("wifi-interest")},
+                {QStringLiteral("interested"), true},
+                {QStringLiteral("requestId"), 1101},
+            });
+            sendCommand(QJsonObject{
                 {QStringLiteral("op"), QStringLiteral("disconnect")},
-                {QStringLiteral("requestId"), 9},
+                {QStringLiteral("requestId"), 1102},
             });
             return;
         }
@@ -781,15 +844,49 @@ private:
         if (stage == Stage::HiddenConnecting
             && wifiOperationResult(state) == QStringLiteral("connected")
             && services.hiddenShapeWasValid()) {
-            stage = Stage::BluetoothConfirmed;
-            bus.unregisterService(QString::fromLatin1(NetworkService));
-            bus.unregisterService(QString::fromLatin1(BluezService));
+            if (QJsonDocument(state).toJson(QJsonDocument::Compact).contains("hidden-password")) {
+                fail("hidden-network PSK remained in normalized state");
+                return;
+            }
+            preSoakWifiEnabled = wifiEnabled;
+            preSoakBluetoothEnabled = bluetoothEnabled;
+            sendCommand(QJsonObject{
+                {QStringLiteral("op"), QStringLiteral("wifi-interest")},
+                {QStringLiteral("interested"), false},
+                {QStringLiteral("requestId"), 12},
+            });
+            if (helper.processId() != bridgeProcessId
+                || !bus.unregisterService(QString::fromLatin1(NetworkService))
+                || !bus.unregisterService(QString::fromLatin1(BluezService))) {
+                fail("could not release fake connectivity owners");
+                return;
+            }
+            stage = Stage::Unavailable;
             return;
         }
-        if (stage == Stage::BluetoothConfirmed && !wifiAvailable && !bluetoothAvailable) {
-            stage = Stage::Unavailable;
-            services.setWifiExternally(false);
-            services.setBluetoothExternally(false);
+        if (stage == Stage::Unavailable && !wifiAvailable && !bluetoothAvailable) {
+            const QJsonObject wifiState = state.value(QStringLiteral("wifi")).toObject();
+            const QJsonObject bluetoothState =
+                state.value(QStringLiteral("bluetooth")).toObject();
+            if (wifiPending || bluetoothPending
+                || wifiState.value(QStringLiteral("operation")).toString()
+                    != QStringLiteral("idle")
+                || bluetoothState.value(QStringLiteral("operation")).toString()
+                    != QStringLiteral("idle")
+                || !wifiState.value(QStringLiteral("networks")).toArray().isEmpty()
+                || !bluetoothState.value(QStringLiteral("devices")).toArray().isEmpty()
+                || !bluetoothState.value(QStringLiteral("pairingValue")).toString().isEmpty()) {
+                fail("owner loss retained operation, model, or secret state");
+                return;
+            }
+            const bool finalReplacement = ownerReplacementCount == 4;
+            expectedWifiEnabled =
+                finalReplacement ? preSoakWifiEnabled : ownerReplacementCount % 2 != 0;
+            expectedBluetoothEnabled =
+                finalReplacement ? preSoakBluetoothEnabled : ownerReplacementCount % 2 == 0;
+            services.setWifiExternally(expectedWifiEnabled);
+            services.setBluetoothExternally(expectedBluetoothEnabled);
+            stage = Stage::Replaced;
             QTimer::singleShot(0, this, [this] {
                 if (!bus.registerService(QString::fromLatin1(NetworkService))
                     || !bus.registerService(QString::fromLatin1(BluezService))) {
@@ -798,12 +895,31 @@ private:
             });
             return;
         }
-        if (stage == Stage::Unavailable && wifiAvailable && !wifiEnabled && bluetoothAvailable
-            && !bluetoothEnabled) {
-            stage = Stage::Replaced;
-            QTimer::singleShot(0, this, [this] {
+        if (stage == Stage::Replaced && wifiAvailable && bluetoothAvailable
+            && wifiEnabled == expectedWifiEnabled
+            && bluetoothEnabled == expectedBluetoothEnabled
+            && wifiOperation(state) == QStringLiteral("idle")
+            && state.value(QStringLiteral("bluetooth"))
+                       .toObject()
+                       .value(QStringLiteral("operation"))
+                       .toString()
+                == QStringLiteral("idle")) {
+            if (helper.processId() != bridgeProcessId || wifiPending || bluetoothPending) {
+                fail("owner replacement duplicated the helper or retained pending work");
+                return;
+            }
+            ++ownerReplacementCount;
+            if (ownerReplacementCount == 5) {
                 stage = Stage::Cleanup;
                 helper.closeWriteChannel();
+                return;
+            }
+            stage = Stage::Unavailable;
+            QTimer::singleShot(0, this, [this] {
+                if (!bus.unregisterService(QString::fromLatin1(NetworkService))
+                    || !bus.unregisterService(QString::fromLatin1(BluezService))) {
+                    fail("could not repeat fake connectivity owner loss");
+                }
             });
         }
     }
@@ -855,6 +971,7 @@ private:
     QProcess helper;
     QTimer timeout;
     QByteArray output;
+    QByteArray transcript;
     Stage stage = Stage::Initial;
     bool sawWifiPending = false;
     bool sawBluetoothPending = false;
@@ -862,6 +979,14 @@ private:
     int cafeToken = 0;
     int secureToken = 0;
     bool sawScanPending = false;
+    bool protectedFloodSent = false;
+    int protectedActivationBaseline = 0;
+    int ownerReplacementCount = 0;
+    qint64 bridgeProcessId = 0;
+    bool preSoakWifiEnabled = false;
+    bool preSoakBluetoothEnabled = false;
+    bool expectedWifiEnabled = false;
+    bool expectedBluetoothEnabled = false;
 };
 
 } // namespace

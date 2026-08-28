@@ -1,4 +1,5 @@
 #include "pointer_router.h"
+#include "runtime_introspection.h"
 
 #include <QCoreApplication>
 #include <QQmlEngine>
@@ -29,6 +30,13 @@ public:
                 PointerRouter *router = pointerRouterInstance();
                 QQmlEngine::setObjectOwnership(router, QQmlEngine::CppOwnership);
                 return router;
+            });
+        qmlRegisterSingletonType<RuntimeIntrospection>(
+            uri, 1, 0, "RuntimeIntrospection",
+            [](QQmlEngine *engine, QJSEngine *) -> QObject * {
+                auto *introspection = new RuntimeIntrospection(engine, engine);
+                QQmlEngine::setObjectOwnership(introspection, QQmlEngine::CppOwnership);
+                return introspection;
             });
     }
 };

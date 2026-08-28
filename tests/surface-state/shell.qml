@@ -28,6 +28,16 @@ ShellRoot {
     property real launcherExitMappedX: 0
     property bool launcherExitTransformObserved: false
     readonly property int maximumRetryAttempts: 500
+    readonly property int soakCycleCount: 20
+    property int soakCycle: 0
+    property var soakSurfaceTokens: []
+    property var soakSurfaceGenerations: []
+    property var soakExpectedGeometry: null
+    property int soakSettingsGeneration: 0
+    property real soakDevicePixelRatio: 0
+    property real soakInteractiveEpoch: 0
+    property var soakControlCenterToken: null
+    property int soakControlCenterRehomeCount: 0
     readonly property int testRegionImplicitWidth: 120
     readonly property int testRegionImplicitHeight: 72
     readonly property int maximumGeometryDurationMs: 5000
@@ -72,6 +82,179 @@ ShellRoot {
             Qt.exit(1);
             throw new Error(message);
         }
+    }
+    function captureSoakRegistry() {
+        const tokens = [];
+        const generations = [];
+        for (let index = 0; index < host.registry.length; index += 1) {
+            tokens.push(host.registry[index].token);
+            generations.push(host.registry[index].generation);
+        }
+        soakSurfaceTokens = tokens;
+        soakSurfaceGenerations = generations;
+    }
+
+    function requireSoakRegistry(label) {
+        require(host.registry.length === host.liveSurfaceCount
+                && coordinatorCore.surfaceCount === host.liveSurfaceCount
+                && host.liveSurfaceCount === Quickshell.screens.length,
+                label + " keeps registry and coordinator counts exact");
+        require(host.registry.length === soakSurfaceTokens.length,
+                label + " keeps one surface per initial output");
+        for (let index = 0; index < host.registry.length; index += 1) {
+            const record = host.registry[index];
+            const snapshot = coordinatorCore.surfaceSnapshot(record.token);
+            require(record.token === soakSurfaceTokens[index]
+                    && record.generation === soakSurfaceGenerations[index]
+                    && snapshot.generation === record.generation
+                    && snapshot.ownerName !== "none",
+                    label + " preserves each live surface generation");
+        }
+    }
+
+    function currentSurfaceScale() {
+        const surface = host.fallbackSurface;
+        if (surface === null || surface.contentItem === null
+                || surface.contentItem.children.length === 0
+                || surface.contentItem.children[0] === null) {
+            return 0;
+        }
+        return surface.contentItem.children[0].Screen.devicePixelRatio;
+    }
+
+    function requireSoakGeometry(label) {
+        const snapshot = UserConfig.snapshot;
+        require(soakExpectedGeometry !== null && Object.isFrozen(snapshot)
+                && Object.isFrozen(snapshot.island)
+                && snapshot.generation === soakSettingsGeneration
+                && snapshot.island.compactHeight === soakExpectedGeometry.compactHeight
+                && snapshot.island.compactPadding === soakExpectedGeometry.compactPadding
+                && snapshot.island.expandedWidthPercent === soakExpectedGeometry.expandedWidthPercent
+                && snapshot.island.expandedHeightPercent
+                === soakExpectedGeometry.expandedHeightPercent
+                && Theme.size.islandIdleHeight === soakExpectedGeometry.compactHeight
+                && Theme.size.islandCompactPadding === soakExpectedGeometry.compactPadding,
+                label + " observes the validated published geometry");
+    }
+
+    function transferSoakInteractiveToLiveSurface() {
+        const token = syntheticSoakSurfaceToken;
+        const generation = 1000 + soakCycle;
+        soakSyntheticRouter.routeToken = null;
+        soakSyntheticRouter.fallbackToken = host.surfaceToken;
+        coordinatorCore.surfaceRouter = soakSyntheticRouter;
+        require(coordinatorCore.attachSurface(token, generation),
+                "surface soak attaches one temporary Interactive source");
+        require(coordinatorCore.openLauncher(token),
+                "surface soak opens Interactive on the temporary source");
+        const source = coordinatorCore.surfaceSnapshot(token);
+        require(source.ownerName === "launcher" && source.ownerEpoch > 0
+                && coordinatorCore.interactiveHostToken === token,
+                "temporary Interactive source owns one fresh epoch");
+        require(coordinatorCore.detachSurface(token, generation),
+                "surface soak removes the temporary Interactive source");
+        coordinatorCore.surfaceRouter = host;
+        soakSyntheticRouter.fallbackToken = null;
+        const targetToken = coordinatorCore.interactiveHostToken;
+        const target = coordinatorCore.surfaceSnapshot(targetToken);
+        require(targetToken !== null && host.registryRecordForToken(targetToken) !== null
+                && target.ownerName === "launcher" && target.ownerEpoch === source.ownerEpoch,
+                "Interactive owner transfers to one live surface without replay");
+        require(!coordinatorCore.detachSurface(token, generation)
+                && coordinatorCore.surfaceSnapshot(token).ownerName === "none",
+                "retired Interactive generation cannot detach or remain projected");
+        soakInteractiveEpoch = source.ownerEpoch;
+        host.fallbackSurface.refreshSurfaceState();
+    }
+
+    function rehomeSoakModalToLiveSurface() {
+        const token = syntheticSoakSurfaceToken;
+        const generation = 2000 + soakCycle;
+        fakePolkitController.available = true;
+        fakePolkitController.terminal = false;
+        fakePolkitController.responseRequired = true;
+        fakePolkitController.responseVisible = true;
+        fakePolkitController.submissionPending = false;
+        fakePolkitController.cancellationPending = false;
+        fakePolkitController.flowGeneration = generation;
+        fakePolkitController.promptGeneration = generation;
+        soakSyntheticRouter.routeToken = token;
+        soakSyntheticRouter.fallbackToken = host.surfaceToken;
+        coordinatorCore.surfaceRouter = soakSyntheticRouter;
+        require(coordinatorCore.attachSurface(token, generation),
+                "surface soak attaches one temporary Modal source");
+        require(coordinatorCore.syncPolkitModal(true, true, generation),
+                "surface soak opens Modal on the temporary source");
+        require(coordinatorCore.modalHostToken === token
+                && coordinatorCore.surfaceSnapshot(token).ownerName === "polkitModal",
+                "temporary Modal source owns the active flow");
+        require(coordinatorCore.detachSurface(token, generation),
+                "surface soak removes the temporary Modal source");
+        coordinatorCore.surfaceRouter = host;
+        soakSyntheticRouter.routeToken = null;
+        soakSyntheticRouter.fallbackToken = null;
+        const targetToken = coordinatorCore.modalHostToken;
+        require(targetToken !== null && host.registryRecordForToken(targetToken) !== null
+                && coordinatorCore.surfaceSnapshot(targetToken).ownerName === "polkitModal",
+                "Modal owner rehomes to one live surface with the same active flow");
+        require(!coordinatorCore.detachSurface(token, generation)
+                && coordinatorCore.surfaceSnapshot(token).ownerName === "none",
+                "retired Modal generation cannot detach or remain projected");
+        host.fallbackSurface.refreshSurfaceState();
+
+        soakControlCenterToken = null;
+        host.controlCenterRequested(token);
+        require(soakControlCenterToken !== null
+                && host.registryRecordForToken(soakControlCenterToken) !== null
+                && host.screenForToken(soakControlCenterToken) !== null,
+                "Control Center request from a retired token rehomes to a live output");
+    }
+
+
+    function startSurfaceSoakCycle() {
+        const previous = UserConfig.snapshot;
+        const candidate = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        const compactHeight = [44, 48, 46][soakCycle % 3];
+        const compactPadding = [16, 32, 24][soakCycle % 3];
+        const expandedWidthPercent = [0.6, 1, 0.8][soakCycle % 3];
+        const expandedHeightPercent = [0.8, 0.6, 1][soakCycle % 3];
+        require(!Object.isFrozen(candidate) && !Object.isFrozen(candidate.island),
+                "surface soak mutates only an explicit mutable settings snapshot");
+        candidate.appearance.motion = "minimal";
+        candidate.island.compactHeight = compactHeight;
+        candidate.island.compactPadding = compactPadding;
+        candidate.island.expandedWidthPercent = expandedWidthPercent;
+        candidate.island.expandedHeightPercent = expandedHeightPercent;
+        require(previous.island.compactHeight !== compactHeight
+                && previous.island.compactPadding !== compactPadding
+                && previous.island.expandedWidthPercent !== expandedWidthPercent
+                && previous.island.expandedHeightPercent !== expandedHeightPercent,
+                "every surface soak cycle changes all four geometry inputs");
+        host.reducedMotion = true;
+        const normalized = UserConfig.validateCandidate(candidate);
+        require(normalized !== null && UserConfig.publish(normalized),
+                "surface soak geometry candidate validates and publishes");
+        soakExpectedGeometry = Object.freeze({
+                                                   "compactHeight": compactHeight,
+                                                   "compactPadding": compactPadding,
+                                                   "expandedWidthPercent": expandedWidthPercent,
+                                                   "expandedHeightPercent": expandedHeightPercent
+                                               });
+        soakSettingsGeneration = UserConfig.snapshot.generation;
+        require(soakSettingsGeneration > previous.generation,
+                "surface soak publishes a fresh settings generation");
+        requireSoakGeometry("surface soak cycle " + soakCycle);
+        const measuredScale = currentSurfaceScale();
+        require(Number.isFinite(measuredScale) && measuredScale > 0,
+                "surface soak observes the live output scale");
+        if (soakDevicePixelRatio === 0) {
+            soakDevicePixelRatio = measuredScale;
+        } else {
+            require(Math.abs(soakDevicePixelRatio - measuredScale) < 0.001,
+                    "surface scale remains stable across one isolated run");
+        }
+        step = 36;
+        advance();
     }
 
     function findObject(root, name) {
@@ -925,7 +1108,154 @@ ShellRoot {
             require(host.surfaceGeneration === initialSurfaceGeneration
                     && host.backgroundRadius === Theme.radius.outer && !host.blurRequested,
                     "reset restores versioned appearance without recreating the live surface");
-            console.warn("actual island appearance, geometry, interaction, transient, and Modal matrix passed");
+            captureSoakRegistry();
+            requireSoakRegistry("surface soak baseline");
+            startSurfaceSoakCycle();
+            return;
+        } else if (step === 36) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && host.surfaceWidth === host.surfacePreferredWidth
+                            && host.surfaceHeight === host.surfacePreferredHeight,
+                            "surface soak compact geometry did not settle synchronously")) {
+                return;
+            }
+            requireSoakRegistry("surface soak compact cycle " + soakCycle);
+            requireSoakGeometry("surface soak compact cycle " + soakCycle);
+            require(host.surfacePreferredHeight >= soakExpectedGeometry.compactHeight
+                    && host.surfacePreferredHeight <= 48 && host.geometryAnimationDuration === 0
+                    && !host.geometryAnimationRunning
+                    && Math.abs(currentSurfaceScale() - soakDevicePixelRatio) < 0.001,
+                    "Minimal motion applies compact geometry at the observed output scale");
+            require(host.requestDeliberateExpansion(),
+                    "surface soak expands through the existing coordinator seam");
+        } else if (step === 37) {
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible && host.dashboardFocused
+                            && host.surfaceWidth === host.surfacePreferredWidth
+                            && host.surfaceHeight === host.surfacePreferredHeight,
+                            "surface soak expanded geometry did not settle synchronously")) {
+                return;
+            }
+            requireSoakRegistry("surface soak expanded cycle " + soakCycle);
+            requireSoakGeometry("surface soak expanded cycle " + soakCycle);
+            require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning
+                    && host.surfaceWidth <= host.surfaceScreenWidth
+                    * soakExpectedGeometry.expandedWidthPercent
+                    && host.surfaceHeight <= host.surfaceScreenHeight
+                    * soakExpectedGeometry.expandedHeightPercent,
+                    "Minimal motion applies bounded expanded geometry without recurring animation");
+            transferSoakInteractiveToLiveSurface();
+        } else if (step === 38) {
+            if (!awaitState(coordinator.ownerName === "launcher"
+                            && coordinator.presentationVisible && host.launcherLoaded,
+                            "surface soak transferred Interactive generation did not settle")) {
+                return;
+            }
+            const ownerEpoch = coordinator.ownerEpoch;
+            require(ownerEpoch === soakInteractiveEpoch
+                    && coordinator.cancelInteractive(ownerEpoch),
+                    "surface soak cancels the transferred Interactive generation");
+            require(coordinator.ownerName === "expanded"
+                    && coordinatorCore.interactiveHostToken === null
+                    && !host.interactiveExitRunning && !host.geometryAnimationRunning
+                    && !host.launcherLoaded && host.interactiveExitDuration === 0
+                    && host.geometryAnimationDuration === 0 && host.interactiveExitOffset === 0,
+                    "Minimal motion synchronously clears Interactive exit work");
+            require(host.cancelDashboard() && coordinator.ownerName === "idle"
+                    && !host.geometryAnimationRunning,
+                    "Minimal motion synchronously collapses the dashboard");
+            require(!coordinator.cancelInteractive(ownerEpoch),
+                    "completed Interactive generation cannot replay");
+            require(coordinator.requestWorkspace("surface-workspace", 3000 + soakCycle,
+                                                 soakCycle + 1, host.surfaceToken),
+                    "surface soak projects one fresh normalized transient generation");
+        } else if (step === 39) {
+            if (!awaitState(coordinator.ownerName === "workspace"
+                            && coordinator.presentationVisible && host.transientCommitted,
+                            "surface soak transient did not commit")) {
+                return;
+            }
+            require(host.geometryAnimationDuration === 0
+                    && !host.geometryAnimationRunning && !host.transientEntryAnimationRunning,
+                    "Minimal motion keeps transient projection free of recurring work");
+            require(coordinator.invalidateTransient("surface-workspace", 3000 + soakCycle)
+                    && !coordinator.invalidateTransient("surface-workspace", 3000 + soakCycle),
+                    "surface soak invalidates each transient generation exactly once");
+            rehomeSoakModalToLiveSurface();
+            requireSoakRegistry("surface soak Modal rehome cycle " + soakCycle);
+        } else if (step === 40) {
+            if (!awaitState(coordinator.ownerName === "polkitModal"
+                            && coordinator.presentationVisible && host.surfaceFocusable
+                            && host.polkitLoaded && host.polkitFocused
+                            && coordinatorCore.modalHostToken === host.surfaceToken,
+                            "surface soak rehomed Modal did not settle")) {
+                return;
+            }
+            require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning
+                    && soakControlCenterRehomeCount === soakCycle + 1
+                    && !coordinator.openLauncher(host.surfaceToken)
+                    && !coordinator.openSession(host.surfaceToken),
+                    "Modal rehome stays synchronous and rejects lower-priority work");
+            require(coordinator.syncPolkitModal(false, false, 0),
+                    "surface soak releases the rehomed Modal generation");
+        } else if (step === 41) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && coordinatorCore.pendingTransientCount === 0
+                            && coordinatorCore.interactiveHostToken === null
+                            && coordinatorCore.modalHostToken === null
+                            && !coordinatorCore.modalPresent && !host.polkitLoaded
+                            && !host.interactiveExitRunning && !host.geometryAnimationRunning,
+                            "surface soak cycle cleanup did not settle")) {
+                return;
+            }
+            requireSoakGeometry("surface soak cleanup cycle " + soakCycle);
+            requireSoakRegistry("surface soak cleanup cycle " + soakCycle);
+            require(coordinatorCore.surfaceSnapshot(syntheticSoakSurfaceToken).ownerName === "none",
+                    "surface soak cycle leaves no temporary surface record");
+            soakCycle += 1;
+            if (soakCycle < soakCycleCount) {
+                startSurfaceSoakCycle();
+                return;
+            }
+            fakePolkitController.responseVisible = false;
+            require(UserConfig.publish(UserConfig.defaultSnapshot(0)),
+                    "surface soak restores default settings");
+            host.reducedMotion = false;
+        } else if (step === 42) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && coordinatorCore.pendingTransientCount === 0
+                            && !host.interactiveExitRunning && !host.geometryAnimationRunning
+                            && host.surfaceWidth === host.surfacePreferredWidth
+                            && host.surfaceHeight === host.surfacePreferredHeight,
+                            "surface soak final cleanup did not settle")) {
+                return;
+            }
+            const defaults = UserConfig.defaultSnapshot(0);
+            requireSoakRegistry("surface soak final cleanup");
+            require(soakCycle === soakCycleCount
+                    && soakControlCenterRehomeCount === soakCycleCount
+                    && UserConfig.snapshot.island.compactHeight === defaults.island.compactHeight
+                    && UserConfig.snapshot.island.compactPadding === defaults.island.compactPadding
+                    && UserConfig.snapshot.island.expandedWidthPercent
+                    === defaults.island.expandedWidthPercent
+                    && UserConfig.snapshot.island.expandedHeightPercent
+                    === defaults.island.expandedHeightPercent
+                    && coordinatorCore.interactiveHostToken === null
+                    && coordinatorCore.modalHostToken === null
+                    && !coordinatorCore.modalPresent
+                    && coordinatorCore.surfaceSnapshot(
+                        syntheticSoakSurfaceToken).ownerName === "none"
+                    && coordinatorCore.surfaceCount === host.liveSurfaceCount
+                    && host.loadedDashboardRegionCount === 6
+                    && mountedRegionCount === host.liveSurfaceCount * 6
+                    && coordinatorCore.surfaceRouter === host
+                    && soakSyntheticRouter.routeToken === null
+                    && soakSyntheticRouter.fallbackToken === null
+                    && host.registryRecordForToken(soakControlCenterToken) !== null,
+                    "surface soak leaves default geometry and no orphan surface or owner");
+            console.warn("actual island surface soak passed " + soakCycleCount
+                         + " cycles at DPR " + soakDevicePixelRatio
+                         + " with exact final registry/coordinator counts");
             Qt.exit(0);
             return;
         }
@@ -1014,6 +1344,27 @@ ShellRoot {
                 }
             }
             return -1;
+        }
+    }
+
+    QtObject {
+        id: syntheticSoakSurfaceToken
+    }
+
+    QtObject {
+        id: soakSyntheticRouter
+
+        property var routeToken: null
+        property var fallbackToken: null
+
+        function routeSurfaceToken(excludedToken) {
+            if (routeToken !== null && routeToken !== excludedToken) {
+                return routeToken;
+            }
+            if (fallbackToken !== null && fallbackToken !== excludedToken) {
+                return fallbackToken;
+            }
+            return host.routeSurfaceToken(excludedToken);
         }
     }
 
@@ -1143,8 +1494,12 @@ ShellRoot {
                     "value": ""
                 };
             }
-            if (sourceToken === "surface-workspace" && sourceGeneration === 3 && sourceRevision
-                    === 1) {
+            const soakGeneration = sourceGeneration - 3000;
+            if (sourceToken === "surface-workspace"
+                    && ((sourceGeneration === 3 && sourceRevision === 1)
+                        || (Number.isInteger(soakGeneration) && soakGeneration >= 0
+                            && soakGeneration < test.soakCycleCount
+                            && sourceRevision === soakGeneration + 1))) {
                 return {
                     "detail": "Desktop 2 of 4",
                     "iconName": "preferences-desktop-virtual-symbolic",
@@ -1541,14 +1896,22 @@ ShellRoot {
         brightnessTransientSource: fakeTransientSource
         volumeTransientSource: fakeTransientSource
         notificationTransientSource: fakeTransientSource
+        onControlCenterRequested: function (initiatingToken) {
+            if (initiatingToken !== syntheticSoakSurfaceToken) {
+                return;
+            }
+            const initiatingScreen = host.screenForToken(initiatingToken);
+            const routedToken = initiatingScreen === null ? host.routeSurfaceToken(
+                                                                initiatingToken) : initiatingToken;
+            test.soakControlCenterToken = routedToken;
+            test.soakControlCenterRehomeCount += 1;
+        }
     }
 
     FrameAnimation {
         running: test.geometryDirection !== ""
         onTriggered: Qt.callLater(test.sampleGeometry)
     }
-
-
     Timer {
         id: retry
 

@@ -53,12 +53,17 @@ if ((status == 0)) && ! grep -qx 'route=control-center' "$record"; then
     fail "launcher dispatched an unexpected route"
 fi
 if ((status == 0)); then
-    appearance_reply="$(qs -p "$fixture" ipc call nagi activate appearance 2>/dev/null || true)"
-    island_reply="$(qs -p "$fixture" ipc call nagi activate island 2>/dev/null || true)"
-    if [[ "$appearance_reply" != "true" || "$island_reply" != "true" ]] || ! wait_for_count 4 \
-            || ! grep -qx 'route=island' "$record"; then
-        fail "complete appearance routes did not deep-link through bounded IPC"
-    fi
+    routes=(island appearance clock-date media weather notifications wifi bluetooth wallpaper displays about)
+    expected=2
+    for route in "${routes[@]}"; do
+        reply="$(qs -p "$fixture" ipc call nagi activate "$route" 2>/dev/null || true)"
+        ((expected += 1))
+        if [[ "$reply" != "true" ]] || ! wait_for_count "$expected" \
+                || ! grep -qx "route=$route" "$record"; then
+            fail "complete route '$route' did not deep-link through bounded IPC"
+            break
+        fi
+    done
 fi
 
 extra_status=0

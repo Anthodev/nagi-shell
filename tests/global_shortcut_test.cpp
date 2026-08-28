@@ -166,10 +166,8 @@ void verifyMultiActionContract()
             "live reassignment did not produce a new published state");
 }
 
-void verifyUnavailableLifecycle(const QString &helperPath)
+void verifyUnavailableState(const QJsonObject &state)
 {
-    HelperProcess helper(helperPath);
-    const QJsonObject state = helper.next();
     require(state.size() == 3 && state.value(QStringLiteral("type")) == QStringLiteral("state")
                 && !state.value(QStringLiteral("available")).toBool()
                 && state.value(QStringLiteral("actions")).isObject(),
@@ -198,17 +196,32 @@ void verifyUnavailableLifecycle(const QString &helperPath)
                             : action.value(QStringLiteral("preferredShortcut")).isNull()),
                 "unavailable shortcut action did not match the fixed schema");
     }
-
-    QProcess duplicate;
-    duplicate.start(helperPath);
-    require(duplicate.waitForFinished(3000) && duplicate.exitCode() == 3,
-            "process lock allowed a second shortcut helper");
-    helper.stop();
-
-    HelperProcess restarted(helperPath);
-    require(!restarted.next().value(QStringLiteral("available")).toBool(),
-            "helper restart did not recover after lock release");
 }
+
+void verifyUnavailableLifecycle(const QString &helperPath)
+{
+    for (int cycle = 0; cycle < 20; ++cycle) {
+        {
+            HelperProcess helper(helperPath);
+            verifyUnavailableState(helper.next());
+
+            QProcess duplicate;
+            duplicate.start(helperPath);
+            require(duplicate.waitForFinished(3000)
+                        && duplicate.exitStatus() == QProcess::NormalExit
+                        && duplicate.exitCode() == 3,
+                    "process lock allowed a second shortcut helper");
+            helper.stop();
+        }
+
+        {
+            HelperProcess replacement(helperPath);
+            verifyUnavailableState(replacement.next());
+            replacement.stop();
+        }
+    }
+}
+
 }
 
 int main(int argc, char **argv)

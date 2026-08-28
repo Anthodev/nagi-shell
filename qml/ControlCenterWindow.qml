@@ -26,6 +26,8 @@ FloatingWindow {
     property var activeTargetScreen: null
     property bool settingsRecoveryConfirmationVisible: false
     property var settingsRecoveryReturnFocus: null
+    property bool closeUnloadRequested: false
+    signal unloadRequested
 
     readonly property var availableRoutes: Object.freeze([
                                                              {
@@ -296,6 +298,7 @@ FloatingWindow {
             raiseExisting();
             return true;
         }
+        closeUnloadRequested = false;
         const targetScreen = routedScreen(initiatingSurfaceToken);
         if (targetScreen !== null) {
             screen = targetScreen;
@@ -309,11 +312,20 @@ FloatingWindow {
         return true;
     }
 
-    function closeWindow() {
+    function requestCloseUnload() {
+        if (closeUnloadRequested) {
+            return;
+        }
+        closeUnloadRequested = true;
         pendingFreshScreen = null;
-        visible = false;
         activeTargetScreen = null;
         compactNavigationVisible = false;
+        unloadRequested();
+    }
+
+    function closeWindow() {
+        visible = false;
+        requestCloseUnload();
     }
 
     function rehomeAfterDisplayLoss() {
@@ -331,7 +343,7 @@ FloatingWindow {
         }
         Qt.callLater(focusCurrentContext);
     }
-    onClosed: closeWindow()
+    onClosed: requestCloseUnload()
     onLayoutModeChanged: {
         if (layoutMode === "sidebar") {
             compactNavigationVisible = false;

@@ -402,6 +402,90 @@ ShellRoot {
         alpha.destroy();
         beta.destroy();
         failing.destroy();
+        runSoakStage();
+    }
+
+    function runSoakStage() {
+        console.warn("tray: 20-cycle lifecycle and hidden-menu soak");
+        calls = [];
+        const initialMenuActions = menuActionCount;
+        require(!tray.available && tray.itemCount === 0 && tray.trackedItemCount === 0
+                && !tray.menuTrackingActive && trayView.active,
+                "tray soak starts from the exact empty backend state");
+
+        for (let cycle = 0; cycle < 20; ++cycle) {
+            const item = makeItem({
+                                      "title": "Cycle " + cycle,
+                                      "icon": "image://icon/cycle-" + cycle,
+                                      "status": Status.Active,
+                                      "hasMenu": true
+                                  });
+            setItems([item]);
+            require(tray.available && tray.itemCount === 1 && tray.trackedItemCount === 1
+                    && tray.items.length === 1
+                    && tray.maximumMenuWatcherEntries === 256,
+                    "cycle " + cycle + " owns one bounded record and watcher set");
+            const token = tray.items[0].token;
+            require(tray.openMenu(token, test, cycle, cycle) === "dispatched"
+                    && tray.menuTrackingActive && tray.activeMenuToken === token
+                    && calls.length === 1,
+                    "cycle " + cycle + " starts one native menu observer");
+
+            const callsBeforeClose = calls.length;
+            trayView.active = false;
+            tray.cancelMenuTracking();
+            require(!tray.menuTrackingActive && tray.activeMenuToken === 0
+                    && calls.length === callsBeforeClose && !tray.notifyMenuAction(token),
+                    "cycle " + cycle + " hidden close cancels menu work without backend mutation");
+
+            item.failActivation = true;
+            require(tray.activate(token) === "rejected" && calls.length === callsBeforeClose,
+                    "cycle " + cycle + " activation denial leaves backend state unchanged");
+            item.icon = "x".repeat(tray.maximumIconSourceCharacters + 1);
+            item.tooltipDescription = "\u0001\u0002";
+            tray.processPendingChanges();
+            require(tray.items.length === 1 && tray.items[0].iconSource === ""
+                    && tray.items[0].tooltip === "Cycle " + cycle,
+                    "cycle " + cycle + " malformed artwork and text stay bounded");
+
+            setItems([]);
+            item.title = "Stale " + cycle;
+            tray.processPendingChanges();
+            require(!tray.available && tray.itemCount === 0 && tray.trackedItemCount === 0
+                    && !tray.menuTrackingActive,
+                    "cycle " + cycle + " owner loss clears records, watchers, and menu state");
+
+            const replacement = makeItem({
+                                             "title": "Cycle " + cycle,
+                                             "icon": "image://icon/replacement-" + cycle,
+                                             "status": Status.Active,
+                                             "hasMenu": true,
+                                             "failMenu": true
+                                         });
+            setItems([replacement]);
+            const replacementToken = tray.items[0].token;
+            require(replacementToken !== token && tray.itemCount === 1
+                    && tray.trackedItemCount === 1,
+                    "cycle " + cycle + " replacement receives one fresh lifecycle token");
+            require(tray.openMenu(replacementToken, test, 0, 0) === "rejected"
+                    && !tray.menuTrackingActive && calls.length === callsBeforeClose,
+                    "cycle " + cycle + " menu failure creates no watcher or backend record");
+
+            setItems([]);
+            item.destroy();
+            replacement.destroy();
+            trayView.active = true;
+            calls = [];
+            require(!tray.available && tray.itemCount === 0 && tray.trackedItemCount === 0
+                    && !tray.menuTrackingActive && tray.activeMenuToken === 0
+                    && menuActionCount === initialMenuActions && trayView.active,
+                    "cycle " + cycle + " returns to exact model, watcher, menu, and view counts");
+        }
+
+        require(calls.length === 0 && !tray.available && tray.itemCount === 0
+                && tray.trackedItemCount === 0 && !tray.menuTrackingActive
+                && tray.activeMenuToken === 0 && menuActionCount === initialMenuActions,
+                "tray soak finishes at its pre-cycle clean state");
         console.warn("tray adapter tests passed");
         Qt.exit(0);
     }

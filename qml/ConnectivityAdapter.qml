@@ -14,6 +14,8 @@ Scope {
     property var bridge: null
 
     readonly property bool backendReady: engine.currentBridge !== null && engine.currentBridge.ready
+    readonly property bool wifiManagerOpen: engine.wifiInterest
+    readonly property bool bluetoothManagerOpen: engine.bluetoothInterest
 
     readonly property bool wifiAvailable: engine.snapshot.wifi.available
     readonly property bool wifiEnabled: engine.snapshot.wifi.enabled

@@ -76,6 +76,143 @@ ShellRoot {
                                     });
     }
 
+    function commandCount(operation) {
+        let count = 0;
+        for (let index = 0; index < fakeBridge.commands.length; ++index) {
+            if (fakeBridge.commands[index].operation === operation) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+    function pairingStateIsClear() {
+        return adapter.bluetoothPairingPrompt === "none"
+                && adapter.bluetoothPairingValue === ""
+                && adapter.bluetoothPairingEntered === 0
+                && adapter.bluetoothPairingToken === 0;
+    }
+
+    function runManagerSoak(wifiRequestId, bluetoothRequestId, networks, devices) {
+        const wifiScansBefore = commandCount("scan");
+        const bluetoothScansBefore = commandCount("bluetooth-scan");
+        const bluetoothStopsBefore = commandCount("bluetooth-stop-scan");
+        if (!require(adapter.setWifiManagerOpen(true)
+                     && adapter.setBluetoothManagerOpen(true),
+                     "manager soak opens each shared page-interest seam exactly once")) {
+            return false;
+        }
+
+        for (let cycle = 0; cycle < 50; ++cycle) {
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               cycle, "none", "none"),
+                         bluetoothRadio(devices, "idle", cycle));
+            const wifiModelBefore = JSON.stringify(adapter.wifiNetworks);
+            if (!require(adapter.refreshWifi(), "Wi-Fi soak accepts one explicit scan")) {
+                return false;
+            }
+            const wifiScan = fakeBridge.commands[fakeBridge.commands.length - 1];
+            const wifiFloodStart = fakeBridge.commands.length;
+            for (let request = 0; request < 8; ++request) {
+                if (!require(!adapter.refreshWifi()
+                             && !adapter.connectWifi(9, "queued-psk", false)
+                             && !adapter.connectHiddenWifi("Queued", "wpa-personal",
+                                                           "queued-hidden-psk", false)
+                             && !adapter.disconnectWifi() && !adapter.forgetWifi(9),
+                             "Wi-Fi mutable generation rejects every flooded manager request")) {
+                    return false;
+                }
+            }
+            if (!require(fakeBridge.commands.length === wifiFloodStart
+                         && adapter.wifiOperation === "idle"
+                         && JSON.stringify(adapter.wifiNetworks) === wifiModelBefore,
+                         "rejected Wi-Fi flood neither queues work nor mutates backend-owned state")) {
+                return false;
+            }
+
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks,
+                               "scanning", wifiScan.requestId),
+                         bluetoothRadio(devices, "idle", cycle));
+            if (!require(adapter.wifiScanning && adapter.setWifiManagerOpen(false),
+                         "Wi-Fi explicit scan starts and page close stops its interest")) {
+                return false;
+            }
+            const wifiStop = fakeBridge.commands[fakeBridge.commands.length - 1];
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               wifiStop.requestId, "none", "cancelled"),
+                         bluetoothRadio(devices, "idle", cycle));
+            if (!require(!adapter.wifiManagerOpen && !adapter.wifiScanning
+                         && adapter.wifiOperationResult === "cancelled"
+                         && adapter.setWifiManagerOpen(true),
+                         "Wi-Fi scan cancellation settles before the next bounded cycle")) {
+                return false;
+            }
+
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               cycle, "none", "none"),
+                         bluetoothRadio(devices, "idle", cycle));
+            const bluetoothModelBefore = JSON.stringify(adapter.bluetoothDevices);
+            if (!require(adapter.scanBluetooth(),
+                         "Bluetooth soak accepts one explicit discovery start")) {
+                return false;
+            }
+            const bluetoothScan = fakeBridge.commands[fakeBridge.commands.length - 1];
+            const bluetoothFloodStart = fakeBridge.commands.length;
+            for (let request = 0; request < 8; ++request) {
+                if (!require(!adapter.scanBluetooth() && !adapter.stopBluetoothScan()
+                             && !adapter.pairBluetooth(21) && !adapter.connectBluetooth(21)
+                             && !adapter.disconnectBluetooth(21) && !adapter.unpairBluetooth(21)
+                             && !adapter.cancelBluetoothPairing()
+                             && !adapter.respondBluetoothPairing(true, "queued-pin"),
+                             "Bluetooth mutable generation rejects every flooded manager request")) {
+                    return false;
+                }
+            }
+            if (!require(fakeBridge.commands.length === bluetoothFloodStart
+                         && adapter.bluetoothOperation === "idle"
+                         && JSON.stringify(adapter.bluetoothDevices) === bluetoothModelBefore,
+                         "rejected Bluetooth flood neither queues work nor mutates backend-owned state")) {
+                return false;
+            }
+
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               cycle, "none", "none"),
+                         bluetoothRadio(devices, "discovering", bluetoothScan.requestId));
+            if (!require(adapter.bluetoothDiscovering && adapter.stopBluetoothScan(),
+                         "Bluetooth explicit discovery starts and accepts one explicit stop")) {
+                return false;
+            }
+            const bluetoothStop = fakeBridge.commands[fakeBridge.commands.length - 1];
+            const bluetoothStopFloodStart = fakeBridge.commands.length;
+            for (let request = 0; request < 8; ++request) {
+                if (!require(!adapter.scanBluetooth() && !adapter.stopBluetoothScan()
+                             && !adapter.pairBluetooth(21) && !adapter.connectBluetooth(21),
+                             "Bluetooth stop generation rejects every flooded request")) {
+                    return false;
+                }
+            }
+            if (!require(fakeBridge.commands.length === bluetoothStopFloodStart,
+                         "Bluetooth stop flood leaves no queued command")) {
+                return false;
+            }
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               cycle, "none", "none"),
+                         bluetoothRadio(devices, "idle", bluetoothStop.requestId, "none", "",
+                                        "stopped"));
+            if (!require(!adapter.bluetoothDiscovering && adapter.bluetoothOperation === "idle"
+                         && adapter.bluetoothOperationResult === "stopped"
+                         && pairingStateIsClear(),
+                         "Bluetooth discovery stop settles with clean operation and secret state")) {
+                return false;
+            }
+        }
+
+        return require(commandCount("scan") - wifiScansBefore === 50
+                       && commandCount("bluetooth-scan") - bluetoothScansBefore === 50
+                       && commandCount("bluetooth-stop-scan") - bluetoothStopsBefore === 50,
+                       "manager soak performs exactly 50 Wi-Fi and Bluetooth start-stop cycles");
+    }
+
     function run() {
         parser.acceptLine("not json");
         parser.acceptLine("{\"type\":\"state\",\"wifi\":{}}");
@@ -252,8 +389,8 @@ ShellRoot {
                      bluetoothRadio(bluetoothDevices, "idle", pairCommand.requestId, "none", "",
                                     "paired-connected"));
         if (!require(adapter.bluetoothOperationResult === "paired-connected"
-                     && adapter.setBluetoothManagerOpen(false),
-                     "pair completion remains shared while page close ends manager interest")) {
+                     && pairingStateIsClear() && adapter.setBluetoothManagerOpen(false),
+                     "pair completion clears PIN state while page close ends manager interest")) {
             return;
         }
 
@@ -265,10 +402,100 @@ ShellRoot {
             return;
         }
 
-        fakeBridge.fatalFailure();
-        if (!require(!adapter.wifiAvailable && !adapter.bluetoothAvailable && adapter.wifiFailure
-                     === "backend" && adapter.bluetoothFailure === "backend",
-                     "fatal backend cleanup removes writable state")) {
+        const bridgeBeforeSoak = adapter.bridge;
+        if (!runManagerSoak(wifiRequestId, bluetoothRequestId, networks, bluetoothDevices)) {
+            return;
+        }
+
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                           connectCommand.requestId, "none", "connected"),
+                     bluetoothRadio(bluetoothDevices, "pairing", 6001, "enter-pin"));
+        if (!require(adapter.respondBluetoothPairing(false, "7319"),
+                     "pairing rejection submits through the current generation")) {
+            return;
+        }
+        const rejectedResponse = fakeBridge.commands[fakeBridge.commands.length - 1];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                           connectCommand.requestId, "none", "connected"),
+                     bluetoothRadio(bluetoothDevices, "idle", 6001, "none", "", "cancelled",
+                                    "cancelled"));
+        if (!require(rejectedResponse.responseLength === 4
+                     && JSON.stringify(rejectedResponse).indexOf("7319") === -1
+                     && adapter.bluetoothOperationFailure === "cancelled"
+                     && pairingStateIsClear(),
+                     "pairing cancellation clears PIN and operation state")) {
+            return;
+        }
+
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                           connectCommand.requestId, "none", "connected"),
+                     bluetoothRadio(bluetoothDevices, "pairing", 6002, "enter-pin"));
+        if (!require(adapter.respondBluetoothPairing(true, "8642"),
+                     "pairing failure probe submits through the current generation")) {
+            return;
+        }
+        const failedResponse = fakeBridge.commands[fakeBridge.commands.length - 1];
+        emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                           connectCommand.requestId, "none", "connected"),
+                     bluetoothRadio(bluetoothDevices, "idle", 6002, "none", "", "none",
+                                    "backend"));
+        if (!require(failedResponse.responseLength === 4
+                     && JSON.stringify(failedResponse).indexOf("8642") === -1
+                     && adapter.bluetoothOperationFailure === "backend"
+                     && pairingStateIsClear(),
+                     "pairing failure clears PIN and operation state")) {
+            return;
+        }
+
+        const commandTranscript = JSON.stringify(fakeBridge.commands);
+        if (!require(commandTranscript.indexOf("fixture-password") === -1
+                     && commandTranscript.indexOf("queued-psk") === -1
+                     && commandTranscript.indexOf("queued-hidden-psk") === -1
+                     && commandTranscript.indexOf("queued-pin") === -1
+                     && commandTranscript.indexOf("4821") === -1
+                     && commandTranscript.indexOf("7319") === -1
+                     && commandTranscript.indexOf("8642") === -1,
+                     "submitted, rejected, and flooded secrets are absent from retained commands")) {
+            return;
+        }
+
+        for (let replacement = 0; replacement < 5; ++replacement) {
+            if (replacement === 0) {
+                emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks,
+                                   "connecting", 7001),
+                             bluetoothRadio(bluetoothDevices, "pairing", 7001, "display-pin",
+                                            "9753"));
+            }
+            const commandsBeforeLoss = fakeBridge.commands.length;
+            fakeBridge.fatalFailure();
+            if (!require(adapter.bridge === bridgeBeforeSoak
+                         && fakeBridge.commands.length === commandsBeforeLoss
+                         && !adapter.wifiManagerOpen && !adapter.bluetoothManagerOpen
+                         && !adapter.wifiAvailable && !adapter.bluetoothAvailable
+                         && adapter.wifiFailure === "backend"
+                         && adapter.bluetoothFailure === "backend"
+                         && adapter.wifiOperation === "idle"
+                         && adapter.bluetoothOperation === "idle" && pairingStateIsClear(),
+                         "owner loss clears operations and secrets without duplicating the bridge")) {
+                return;
+            }
+
+            emitSnapshot(radio(true, true, true, false, "none", wifiRequestId, networks, "idle",
+                               7100 + replacement, "none", "none"),
+                         bluetoothRadio(bluetoothDevices, "idle", 7100 + replacement));
+            if (!require(adapter.bridge === bridgeBeforeSoak && adapter.backendReady
+                         && adapter.wifiAvailable && adapter.bluetoothAvailable
+                         && adapter.wifiEnabled && adapter.bluetoothEnabled
+                         && adapter.wifiOperation === "idle"
+                         && adapter.bluetoothOperation === "idle" && pairingStateIsClear(),
+                         "replacement restores backend-owned state on the original bridge")) {
+                return;
+            }
+        }
+
+        if (!require(adapter.bridge === bridgeBeforeSoak && adapter.activeTimerCount === 0
+                     && parser.activeTimerCount === 0,
+                     "soak ends on the original bridge with exact zero fixture timers")) {
             return;
         }
 

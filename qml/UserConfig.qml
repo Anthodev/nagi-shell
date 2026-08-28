@@ -46,8 +46,7 @@ Singleton {
                                                        "NAGI_SKIP_DEFAULT_CONFIG_CREATION") !== "1"
 
     readonly property var snapshot: root._snapshot
-    readonly property bool writable: (!root.defaultCreationEnabled || root._writerReady) &&
-                                     !root.readOnly && (root.status === "ready" || root.status
+    readonly property bool writable: !root.readOnly && (root.status === "ready" || root.status
                                                         === "write-failed")
     readonly property bool recoveryRequired: root.status === "recovery"
     property string status: "loading"
@@ -62,11 +61,9 @@ Singleton {
     property var _inFlightCandidate: null
     property var _pendingLastGoodSnapshot: null
     property string _writePurpose: ""
-    property string _pendingOperation: ""
     property string _pendingPayload: ""
     property string _ownWriteCanonical: ""
     property bool _writeInProgress: false
-    property bool _writerReady: false
     property int _generation: 1
     property bool _initializing: true
     property bool _hasLoadedConfiguration: false
@@ -825,21 +822,15 @@ Singleton {
                                                                          parsed) : null;
     }
 
-    function sendPendingOperation() {
-        if (_writerReady && _writeInProgress) {
-            writer.write(_pendingOperation + " " + encodeURIComponent(_pendingPayload) + "\n");
-        }
-    }
-
     function beginHelper(operation, candidate, purpose) {
         if (_writeInProgress || candidate === null) {
             return false;
         }
         const payload = serializeConfiguration(candidate);
-        if (payload === "" || utf8Length(payload) > maximumConfigBytes) {
+        const payloadBytes = utf8Length(payload);
+        if (payload === "" || payloadBytes > maximumConfigBytes) {
             return false;
         }
-        _pendingOperation = operation;
         _pendingPayload = payload;
         _inFlightCandidate = candidate;
         _writePurpose = purpose;
@@ -847,7 +838,9 @@ Singleton {
         if (purpose === "persist") {
             _ownWriteCanonical = payload;
         }
-        sendPendingOperation();
+        writer.command = [root.helperPath, operation, root.configDirectoryPath, String(
+                              payloadBytes)];
+        writer.running = true;
         return true;
     }
 
@@ -857,7 +850,6 @@ Singleton {
         }
         const purpose = _writePurpose;
         const candidate = _inFlightCandidate;
-        _pendingOperation = "";
         _pendingPayload = "";
         _writePurpose = "";
         _ownWriteCanonical = "";
@@ -1189,29 +1181,16 @@ Singleton {
     Process {
         id: writer
 
-        command: [root.helperPath, "serve", root.configDirectoryPath]
         stdinEnabled: true
-        running: root.defaultCreationEnabled
-        stdout: SplitParser {
-            onRead: data => root.finishWriter(data === "OK")
-        }
         stderr: SplitParser {
             onRead: data => root.warnOnce("helper", qsTr(
                                               "The settings writer reported a bounded failure."))
         }
-        onStarted: {
-            root._writerReady = true;
-            root.sendPendingOperation();
-        }
+        onStarted: writer.write(root._pendingPayload)
         onExited: function (exitCode) {
-            root._writerReady = false;
+            writer.running = false;
             if (root._writeInProgress) {
-                root.finishWriter(false);
-            } else if (root.status === "ready") {
-                root.status = "write-failed";
-                root.recoveryKind = "write";
-                root.errorMessage = qsTr(
-                            "Settings cannot be saved because the private writer stopped.");
+                root.finishWriter(exitCode === 0);
             }
         }
     }
