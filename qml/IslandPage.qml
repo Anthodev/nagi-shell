@@ -9,6 +9,7 @@ Flickable {
 
     required property var settingsModel
     property bool reducedMotion: false
+    property bool gamingPerformanceAvailable: false
     property string failureText: ""
 
     clip: true
@@ -113,6 +114,29 @@ Flickable {
         }
 
         IslandText {
+            text: "Feedback"
+            size: "title"
+            Accessible.role: Accessible.Heading
+            Accessible.name: text
+        }
+
+        SettingToggleRow {
+            id: gamingPerformanceToggle
+            objectName: "gamingPerformanceToggle"
+
+            Layout.fillWidth: true
+            label: "Gaming performance indicator"
+            description: !value ? "Observer, feedback, and badge are disabled." :
+                                  root.gamingPerformanceAvailable
+                                  ? "Show passive system-status feedback and a static badge while GameMode clients or the performance power profile are active." :
+                                    "No supported Gaming Performance backend is currently available."
+            value: root.settingsModel.snapshot.island.gamingIndicator
+            writable: root.settingsModel.writable
+            onValueRequested: value => root.request({
+                                                        "gamingIndicator": value
+                                                    }, false)
+        }
+        IslandText {
             text: "Compact content"
             size: "title"
             Accessible.role: Accessible.Heading
@@ -121,7 +145,7 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Clock is always visible. Optional content keeps the fixed order Workspace → Clock → Weather → Media and collapses when unavailable."
+            text: "Clock is always visible. Optional content keeps the fixed order Workspace → Gaming Performance → Clock → Weather → Media and collapses when unavailable."
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap

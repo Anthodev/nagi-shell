@@ -139,6 +139,35 @@ ShellRoot {
                 "lower transient respects each surface priority");
         require(coordinator.invalidateTransient("output", 1), "volume event invalidates");
         require(coordinator.setHover(secondToken, 4, false), "second surface returns Idle");
+        require(coordinator.setHover(secondToken, 4, true),
+                "second surface expands before gaming projection");
+
+        require(coordinator.requestGamingPerformance("gaming", 1, 1, null),
+                "gaming feedback broadcasts through one global event");
+        require(snapshot(secondToken).ownerName === "expanded"
+                && snapshot(thirdToken).ownerName === "gamingPerformance"
+                && coordinator.pendingTransientCount === 1,
+                "gaming feedback projects without overlaying higher-rank Expanded");
+        const gamingRevision = snapshot(thirdToken).revision;
+        require(coordinator.requestGamingPerformance("gaming", 1, 2, null)
+                && coordinator.pendingTransientCount === 1
+                && snapshot(thirdToken).revision === gamingRevision + 1,
+                "gaming burst coalesces in its one mailbox slot");
+        require(coordinator.requestVolume("lower-volume", 2, 1, null)
+                && snapshot(thirdToken).ownerName === "gamingPerformance",
+                "volume cannot preempt gaming feedback");
+        require(coordinator.invalidateTransient("lower-volume", 2),
+                "pending lower volume invalidates");
+        require(coordinator.requestNotification("higher-notification", 2, 1, null)
+                && snapshot(thirdToken).ownerName === "notification",
+                "notification preempts gaming feedback");
+        require(coordinator.invalidateTransient("higher-notification", 2)
+                && snapshot(thirdToken).ownerName === "gamingPerformance",
+                "gaming feedback restores after notification");
+        require(coordinator.invalidateTransient("gaming", 1),
+                "gaming event invalidates globally");
+        require(coordinator.setHover(secondToken, 4, false),
+                "second surface returns Idle after gaming projection");
 
         require(coordinator.requestWorkspace("workspace", 1, 1, thirdToken),
                 "workspace event targets action surface");
@@ -210,6 +239,72 @@ ShellRoot {
         coordinator.setHover(secondToken, 4, false);
         require(snapshot(secondToken).ownerName === "idle",
                 "long workspace hold stays strictly below freshness and expires normally");
+        coordinator.feedbackDuration = "normal";
+
+        require(coordinator.requestGamingPerformance("gaming-normal", 4, 1, null),
+                "normal gaming feedback enters");
+        let gamingFirst = snapshot(firstToken);
+        let gamingSecond = snapshot(secondToken);
+        let gamingThird = snapshot(thirdToken);
+        require(coordinator.acknowledgeVisible(firstToken, gamingFirst.generation,
+                                               gamingFirst.ownerEpoch, gamingFirst.revision)
+                && coordinator.acknowledgeVisible(secondToken, gamingSecond.generation,
+                                                  gamingSecond.ownerEpoch, gamingSecond.revision)
+                && coordinator.acknowledgeVisible(thirdToken, gamingThird.generation,
+                                                  gamingThird.ownerEpoch, gamingThird.revision),
+                "normal gaming hold starts after every projection is visible");
+        nowMs += 2399;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "gamingPerformance",
+                "normal gaming hold remains before 2.4 seconds");
+        nowMs += 1;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "idle",
+                "normal gaming hold expires at 2.4 seconds");
+
+        coordinator.feedbackDuration = "short";
+        require(coordinator.requestGamingPerformance("gaming-short", 4, 1, null),
+                "short gaming feedback enters");
+        gamingFirst = snapshot(firstToken);
+        gamingSecond = snapshot(secondToken);
+        gamingThird = snapshot(thirdToken);
+        require(coordinator.acknowledgeVisible(firstToken, gamingFirst.generation,
+                                               gamingFirst.ownerEpoch, gamingFirst.revision)
+                && coordinator.acknowledgeVisible(secondToken, gamingSecond.generation,
+                                                  gamingSecond.ownerEpoch, gamingSecond.revision)
+                && coordinator.acknowledgeVisible(thirdToken, gamingThird.generation,
+                                                  gamingThird.ownerEpoch, gamingThird.revision),
+                "short gaming feedback becomes visible globally");
+        nowMs += 1559;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "gamingPerformance",
+                "short gaming hold remains before scaled boundary");
+        nowMs += 1;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "idle",
+                "short gaming hold expires at scaled boundary");
+
+        coordinator.feedbackDuration = "long";
+        require(coordinator.requestGamingPerformance("gaming-long", 4, 1, null),
+                "long gaming feedback enters");
+        gamingFirst = snapshot(firstToken);
+        gamingSecond = snapshot(secondToken);
+        gamingThird = snapshot(thirdToken);
+        require(coordinator.acknowledgeVisible(firstToken, gamingFirst.generation,
+                                               gamingFirst.ownerEpoch, gamingFirst.revision)
+                && coordinator.acknowledgeVisible(secondToken, gamingSecond.generation,
+                                                  gamingSecond.ownerEpoch, gamingSecond.revision)
+                && coordinator.acknowledgeVisible(thirdToken, gamingThird.generation,
+                                                  gamingThird.ownerEpoch, gamingThird.revision),
+                "long gaming feedback becomes visible globally");
+        nowMs += 3599;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "gamingPerformance",
+                "long gaming hold remains below fixed freshness");
+        nowMs += 1;
+        coordinator.setHover(secondToken, 4, false);
+        require(snapshot(thirdToken).ownerName === "idle",
+                "long gaming hold expires at 3.6 seconds");
         coordinator.feedbackDuration = "normal";
 
 

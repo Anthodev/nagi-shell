@@ -10,6 +10,7 @@ Scope {
     property var workspaceSource: null
     property var brightnessSource: null
     property var audioSource: null
+    property var gamingPerformanceSource: null
     property var notificationSource: null
 
     Connections {
@@ -49,6 +50,20 @@ Scope {
         }
 
         function onConfirmedOutputInvalidated(sourceToken, sourceGeneration) {
+            bridge.coordinator.invalidateTransient(sourceToken, sourceGeneration);
+        }
+    }
+
+    Connections {
+        target: bridge.gamingPerformanceSource
+        ignoreUnknownSignals: true
+
+        function onFeedbackRequested(sourceToken, sourceGeneration, revision) {
+            bridge.coordinator.requestGamingPerformance(sourceToken, sourceGeneration, revision,
+                                                        null);
+        }
+
+        function onFeedbackInvalidated(sourceToken, sourceGeneration) {
             bridge.coordinator.invalidateTransient(sourceToken, sourceGeneration);
         }
     }

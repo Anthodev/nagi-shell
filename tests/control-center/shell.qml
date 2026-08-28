@@ -195,6 +195,23 @@ ShellRoot {
     function islandStage() {
         require(controlCenter.currentPageId === "island" && controlCenter.loadedPageItem !== null,
                 "complete Island page loads in the shared page viewport");
+        const gamingToggle = findObject(controlCenter.loadedPageItem,
+                                        "gamingPerformanceToggle");
+        require(gamingToggle !== null && gamingToggle.label === "Gaming performance indicator"
+                && gamingToggle.value === true
+                && gamingToggle.description.indexOf("passive system-status feedback") >= 0,
+                "Island Feedback exposes the enabled gaming indicator toggle");
+        require(gamingToggle.requestToggle()
+                && UserConfig.snapshot.island.gamingIndicator === false
+                && gamingToggle.requestToggle()
+                && UserConfig.snapshot.island.gamingIndicator === true,
+                "gaming indicator toggle updates and restores the persisted setting");
+        controlCenter.capabilities = Object.assign({}, controlCenter.capabilities, {
+                                                       "gamingPerformance": false
+                                                   });
+        require(gamingToggle.description
+                === "No supported Gaming Performance backend is currently available.",
+                "backend absence marks the gaming setting unavailable");
         controlCenter.contentItem.children[0].grabToImage(function (result) {
             require(test.islandCapturePath !== "" && result.saveToFile(test.islandCapturePath),
                     "real Control Center Island capture is saved");
@@ -959,6 +976,7 @@ ShellRoot {
                            "displayRouting": true,
                            "audio": false,
                            "media": false,
+                           "gamingPerformance": true,
                            "wifi": false,
                            "bluetooth": false,
                            "notifications": false,

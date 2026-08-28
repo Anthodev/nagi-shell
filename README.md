@@ -35,11 +35,11 @@ Nagi Shell is a desktop island for **KDE Plasma 6 on Wayland**, built with [Quic
 
 ```text
 Idle ───────────────► Expanded ───────────────► Focused task
-workspace · clock     media · clock/date        launcher · history
-weather · media       connectivity · audio      tray · audio · session
-       ▲                       │                         │
+workspace · gaming    media · clock/date        launcher · history
+clock · weather       connectivity · audio      tray · audio · session
+media  ▲                       │                         │
        └──────── restoration ◄─┴─ transient feedback ◄─┘
-                         volume · brightness
+                      gaming · volume · brightness
                        workspace · notification
 ```
 
@@ -49,10 +49,10 @@ weather · media       connectivity · audio      tray · audio · session
 
 - **One real surface.** Idle, Expanded, focused subviews, and transients share one `PanelWindow`; a central coordinator owns priority, timeouts, preemption, and restoration.
 - **Adaptive geometry.** Content determines the island size. Compact height/padding and expanded screen fractions stay inside tested bounds; empty regions collapse, focused collections grow only as needed, and screen bounds cap the result. Horizontal and vertical overflow scroll independently and keep keyboard focus visible.
-- **Useful Idle state.** Mandatory Clock plus optional Workspace, Weather, and Media stay in one fixed order inside a metrics-derived 44 to 48 px bar. Disabled or unavailable groups and separators collapse completely.
+- **Useful Idle state.** Mandatory Clock plus optional Workspace, Gaming Performance, Weather, and Media stay in one fixed order inside a metrics-derived 44 to 48 px bar. The gaming badge is static, accessible, and identity-free. Disabled or unavailable groups and separators collapse completely.
 - **Current dashboard.** Media and a centered clock/date lead into large Wi-Fi and Bluetooth quick settings, active or attention tray applications, pinned launchers, two-column output/input audio, recent notifications, and the right navigation rail. Each connectivity tile keeps its backend-confirmed quick toggle and exposes a secondary path to its complete manager.
 - **Focused tools.** Launcher, notification history, tray, audio-device selection, detailed Weather, and six session actions replace dashboard content inside the same island. Weather shows the shared current conditions, next 12 returned hours, and five returned days in a bounded scrolling view. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling. The tray subview lists every item in a scrollable grid, while the dashboard mirrors at most four active or attention items.
-- **Native desktop integration.** KWin virtual desktops, PowerDevil brightness, PipeWire audio, MPRIS media, NetworkManager Wi-Fi management, BlueZ Bluetooth management, D-Bus session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and one Plasma wallpaper service feed normalized adapters.
+- **Native desktop integration.** KWin virtual desktops, GameMode, Power Profiles Daemon, PowerDevil brightness, PipeWire audio, MPRIS media, NetworkManager Wi-Fi management, BlueZ Bluetooth management, D-Bus session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and one Plasma wallpaper service feed normalized adapters.
 - **Local wallpaper management.** The Control Center shows common, mixed, and unsupported per-display state; indexes only approved local folders; renders lazy cached thumbnails; previews a static image without changing Theme; and applies it to every active display only after an explicit action and fresh readback.
 - **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback.
 - **Semantic icons.** Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback and adapt contrast to the current semantic surface; muted input has its own slashed-microphone shape.
@@ -62,10 +62,10 @@ weather · media       connectivity · audio      tray · audio · session
 
 | State | Observable purpose | Examples |
 |---|---|---|
-| **Idle** | Show compact, display-only status | Workspace, clock, optional weather and media |
+| **Idle** | Show compact, display-only status | Workspace, gaming activity, clock, optional weather and media |
 | **Expanded** | Expose frequent controls and recent context | Media, connectivity, audio, pinned apps, notifications |
 | **Interactive** | Complete one focused task | Launcher, History, Tray, Audio, Weather, Session |
-| **Transient** | Replace Idle with short-lived feedback | Notification, volume, brightness, workspace |
+| **Transient** | Replace Idle with short-lived feedback | Notification, Gaming Performance, volume, brightness, workspace |
 | **Modal** | Hold a normalized authentication presentation | Dormant Polkit UI seam only |
 
 The Polkit presentation is implemented and tested with synthetic controllers, but production `shell.qml` does not register or inject a Polkit backend. KDE's existing authentication agent remains responsible for real requests.
@@ -249,7 +249,7 @@ Backend-confirmed state is authoritative for audio, connectivity, brightness, an
 
 ### Feedback timing
 
-Transient feedback holds while its content is visible: notifications for 3 seconds, volume and brightness for 1.8 seconds, and workspace changes for 1.2 seconds. Feedback arriving mid-interaction waits briefly and is dropped — not replayed afterward — past 6 seconds for notifications, 3 seconds for volume and brightness, or 2 seconds for workspace changes. Repeated backend-confirmed values coalesce into one presentation. Authentication always outranks interactive views: requests raised during authentication are rejected rather than deferred, and completing it does not open a launcher or session action requested while it was locked.
+Transient feedback holds while its content is visible: notifications for 3 seconds, Gaming Performance for 2.4 seconds, volume and brightness for 1.8 seconds, and workspace changes for 1.2 seconds. Feedback arriving mid-interaction waits briefly and is dropped — not replayed afterward — past 6 seconds for notifications, 4.5 seconds for Gaming Performance, 3 seconds for volume and brightness, or 2 seconds for workspace changes. Repeated backend-confirmed values coalesce into one presentation. Authentication always outranks interactive views: requests raised during authentication are rejected rather than deferred, and completing it does not open a launcher or session action requested while it was locked.
 
 ### Session actions
 
@@ -259,9 +259,14 @@ The Session view offers exactly six actions. **Lock** locks the KDE session imme
 
 Brightness uses PowerDevil 6.7's `org.kde.ScreenBrightness` interface exclusively. Only displays PowerDevil enumerates there are controllable; Nagi requests no hardware privileges and never uses brightnessctl, ddcutil, sysfs, or another backend. Displays absent from PowerDevil cannot be adjusted from the island. External monitors may be only partially observable because PowerDevil supplies a label but no reliable screen identity — Nagi treats display entries as opaque, and their naming can change across replug or driver events. To troubleshoot, check that the PowerDevil brightness service responds and how many displays it enumerates; avoid sharing connector names, EDIDs, hardware labels, or raw D-Bus dumps, which identify your hardware without aiding diagnosis.
 
+### Gaming Performance
+
+Gaming Performance passively observes GameMode and Power Profiles Daemon. Every active GameMode client contributes one source and a manual `performance` profile contributes one source. Nagi never starts either service, changes a power profile, inhibits power management, polls, or shows client, application, executable, profile-reason, bus, or object-path identity. One generic transient projects to eligible islands, and the active Idle state uses one static badge. Disable **Gaming performance indicator** under Control Center -> Island -> Feedback to stop the observer, transient morph, and badge together. If neither backend is installed or running, Nagi reports `No supported Gaming Performance backend is currently available.` and remains fully usable.
+
+
 ## Privacy
 
-Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, wallpaper discovery, previews, and apply state stay local. Adapters bound untrusted text and keep raw D-Bus payloads, hardware identity, current wallpaper paths and digests, network payloads, coordinates, location labels, submitted searches, and backend errors out of presentation diagnostics and logs.
+Nagi has no telemetry. Desktop metadata, application history, pins, notifications, media state, audio devices, Gaming Performance state, wallpaper discovery, previews, and apply state stay local. Adapters bound untrusted text and keep raw D-Bus payloads, gaming client/application/profile identity, hardware identity, current wallpaper paths and digests, network payloads, coordinates, location labels, submitted searches, and backend errors out of presentation diagnostics and logs.
 
 Weather is opt-in and performs no automatic location lookup. The Weather page repeats the disclosure before its explicit city/postal search. Search uses the keyless [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api), based on GeoNames and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), while Nagi remains non-commercial. Service failure may use the switchable [Nominatim](https://nominatim.org/) fallback at no more than one request per second; its data is © OpenStreetMap contributors under [ODbL](https://www.openstreetmap.org/copyright). Forecasts use only [MET Norway Locationforecast](https://api.met.no/weatherapi/locationforecast/2.0/documentation), transformed into bounded Nagi condition categories and calculated feels-like values, under [NLOD 2.0 / CC BY 4.0](https://api.met.no/doc/License). MET Norway provides no delivery SLA.
 
@@ -270,7 +275,7 @@ Polkit credentials never enter the production shell because the backend is dorma
 ## Limitations
 
 - Every connected display starts with an enabled island. Visibility and fallback selection are session-only because Quickshell 0.3.x exposes no reliable persistent display identity; Nagi never guesses from connector names, labels, serials, indexes, or geometry. Global shortcuts target the pointer screen, then the enabled fallback.
-- One Interactive task or Modal flow exists across all islands. Notifications and confirmed output-volume feedback may appear on every eligible island, while workspace and brightness remain routed and sensitive flows never mirror.
+- One Interactive task or Modal flow exists across all islands. Notifications, Gaming Performance, and confirmed output-volume feedback may appear on every eligible island, while workspace and brightness remain routed and sensitive flows never mirror.
 - Wi-Fi manages Open and WPA Personal networks through NetworkManager. Captive portals, IP/DNS editing, VPN, Enterprise/EAP, certificates, hotspots, and complete profile administration remain in KDE.
 - Bluetooth uses BlueZ for explicit bounded discovery, scoped Nagi-initiated pairing, connect, disconnect, and unpair. Codecs, audio profiles, service-authorization editing, file transfer, battery history, per-adapter tuning, and advanced reconnect policy remain in KDE/PipeWire.
 - Wallpaper management accepts local static JPEG, PNG, WebP, and BMP files only. It has no downloads, remote gallery, video, animation, slideshow editor, file operations, or per-display assignment. Apply replaces every active display with the selected static image; a partial Plasma write may leave successful displays changed and is reported per display.
@@ -294,13 +299,13 @@ shell.qml
    │      └── per-surface records · global priority · mailbox · deadlines · restoration
    │
    ├── normalized QML adapters
-   │      └── media · audio · connectivity · apps · tray · notifications · wallpaper
+   │      └── media · audio · gaming · connectivity · apps · tray · notifications · wallpaper
    │
    ├── one lazy Control Center
    │      └── fixed complete routes · lazy Wallpaper picker · shared services/settings
    │
    └── native helpers and runtime plugins
-          └── pointer routing · KWin · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
+          └── pointer routing · KWin · GameMode · Power Profiles · PowerDevil · PipeWire · session · wallpaper · KGlobalAccel
 ```
 
 Presentation consumes semantic theme roles and normalized adapter state. Native protocol details remain inside helpers and bridges. Rare views load lazily; histories, queues, caches, strings, and wallpaper analysis are bounded.
@@ -315,7 +320,7 @@ make format-check
 make check
 ```
 
-`make check` runs native, adapter, coordinator, deterministic service, Control Center activation, and QML tests, then exercises the real `PanelWindow` and normal-window scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. `make test-wallpaper` covers traversal, decoder/cache bounds, QML normalization, Theme isolation, and helper restart; `make test-wallpaper-dbus` covers observation lifecycle and stale-work cancellation; `make test-wallpaper-service` covers mixed displays, file changes, partial apply/readback, external authority, and unload with two virtual outputs. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix. Read-only live probes such as `make test-audio-live` and `make test-wallpaper-live` remain separate; state-changing host probes require explicit per-run authorization.
+`make check` runs native, adapter, coordinator, deterministic service, Control Center activation, and QML tests, then exercises the real `PanelWindow` and normal-window scenarios inside disposable `kwin_wayland --virtual` sessions with private D-Bus and XDG state. `make test-gaming-performance-dbus` covers private GameMode/Power Profiles lifecycle, exact aggregation, alias handling, passivity, and privacy; `make test-gaming-performance` covers the bounded QML bridge and service generation contract. `make test-wallpaper` covers traversal, decoder/cache bounds, QML normalization, Theme isolation, and helper restart; `make test-wallpaper-dbus` covers observation lifecycle and stale-work cancellation; `make test-wallpaper-service` covers mixed displays, file changes, partial apply/readback, external authority, and unload with two virtual outputs. Override `KWIN_TEST_SCALE`, `KWIN_TEST_OUTPUTS`, `KWIN_TEST_WIDTH`, and `KWIN_TEST_HEIGHT` for one topology, or set `KWIN_TEST_MATRIX=1` for the 100/125/150/200 percent matrix.
 
 `qmllint-qt6` remains advisory because it cannot resolve the valid Quickshell `PanelWindow`. Runtime diagnostics and the focused checks are authoritative.
 

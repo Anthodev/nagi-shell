@@ -238,6 +238,8 @@ ShellRoot {
             }
             require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
             require(!host.surfaceFocusable, "Idle never takes keyboard focus");
+            require(host.gamingPerformanceBadgeVisible,
+                    "actual Idle PanelWindow renders the static Gaming Performance badge");
             require(host.menuParentWindow !== null,
                     "actual surface exposes its Quickshell proxy for native platform menus");
             require(host.backgroundRadius === Theme.radius.outer
@@ -1063,6 +1065,27 @@ ShellRoot {
             return 0;
         }
     }
+
+    QtObject {
+        id: fakeGamingPerformance
+
+        readonly property bool active: true
+        readonly property bool available: true
+
+        function resolveTransient(sourceToken, sourceGeneration, sourceRevision) {
+            if (sourceToken !== "gaming-performance") {
+                return null;
+            }
+            return {
+                "kind": "gamingPerformance",
+                "icon": "gamingPerformance",
+                "primary": "Gaming performance active",
+                "detail": "",
+                "generation": sourceGeneration,
+                "revision": sourceRevision
+            };
+        }
+    }
     QtObject {
         id: fakeTransientSource
 
@@ -1427,6 +1450,7 @@ ShellRoot {
         trayAdapter: fakeTrayAdapter
         audioAdapter: fakeAudioAdapter
         weather: fakeWeatherAdapter
+        gamingPerformance: fakeGamingPerformance
         polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel

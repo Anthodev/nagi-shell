@@ -86,6 +86,13 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-brightness")
     }
 
+    GamingPerformanceService {
+        id: gamingPerformance
+        helperPath: Quickshell.env("NAGI_GAMING_PERFORMANCE_HELPER") ?? Quickshell.shellPath(
+                        "build/nagi-gaming-performance")
+        enabled: UserConfig.snapshot.island.gamingIndicator
+    }
+
     ConnectivityAdapter {
         id: connectivityAdapter
         helperPath: Quickshell.shellPath("build/nagi-connectivity")
@@ -137,6 +144,7 @@ ShellRoot {
         clock: clockState
         weather: weather
         media: mediaAdapter
+        gamingPerformance: gamingPerformance
         connectivityAdapter: connectivityAdapter
         sessionService: session
         notificationService: notificationService
@@ -171,6 +179,7 @@ ShellRoot {
                            "media": mediaAdapter.available,
                            "wifi": connectivityAdapter.wifiAvailable,
                            "bluetooth": connectivityAdapter.bluetoothAvailable,
+                           "gamingPerformance": gamingPerformance.available,
                            "notifications": notificationService.serverOwned,
                            "weather": weather.available
                        })
@@ -195,6 +204,7 @@ ShellRoot {
         workspaceSource: virtualDesktops
         brightnessSource: brightness
         audioSource: audioAdapter
+        gamingPerformanceSource: gamingPerformance
         notificationSource: notificationService
     }
 }

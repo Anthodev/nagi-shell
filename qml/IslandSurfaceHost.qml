@@ -13,6 +13,7 @@ Scope {
     property var clock: null
     property var weather: null
     property var media: null
+    property var gamingPerformance: null
     property var sessionService: null
     property var polkitController: null
     property var notificationService: null
@@ -63,6 +64,8 @@ Scope {
                                                                         fallbackSurface.backgroundRadius
     readonly property bool blurRequested: fallbackSurface !== null && fallbackSurface.blurRequested
     readonly property bool surfaceFocusable: fallbackSurface !== null && fallbackSurface.focusable
+    readonly property bool gamingPerformanceBadgeVisible: fallbackSurface !== null
+                                                          && fallbackSurface.gamingPerformanceBadgeVisible
     readonly property bool dashboardFocused: fallbackSurface !== null
                                              && fallbackSurface.dashboardFocused
     readonly property int loadedDashboardRegionCount: fallbackSurface === null ? 0 :
@@ -452,6 +455,7 @@ Scope {
                     applicationModel: host.applicationModel
                     trayAdapter: host.trayAdapter
                     audioAdapter: host.audioAdapter
+                    gamingPerformance: host.gamingPerformance
                     workspaceTransientSource: host.workspaceTransientSource
                     brightnessTransientSource: host.brightnessTransientSource
                     volumeTransientSource: host.volumeTransientSource

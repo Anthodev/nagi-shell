@@ -46,12 +46,14 @@ Item {
                                                     && workspaceProjectedPosition === 0
                                                     && workspaceDisplayText !== "Workspace"
     readonly property string iconMeaning: notification ? "notificationApplication" : kind
-                                                         === "brightness" ? "brightness" :
-                                                                            progressValue <= 0
-                                                                            ? "volumeMuted" :
-                                                                              progressValue <= 0.33
-                                                                              ? "volumeLow" :
-                                                                                "volumeHigh"
+                                                         === "brightness" ? "brightness" : kind
+                                                                            === "gamingPerformance"
+                                                                            ? "gamingPerformance" :
+                                                                              progressValue <= 0
+                                                                              ? "volumeMuted" :
+                                                                                progressValue
+                                                                                <= 0.33 ? "volumeLow" :
+                                                                                          "volumeHigh"
     readonly property string applicationIconSource: resolveApplicationIcon(appIconName)
     readonly property bool committed: state.committed
     readonly property bool entryAnimationRunning: entryAnimation.running
