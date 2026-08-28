@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-import ctypes
 import os
-import select
 import socket
 import stat
 import tempfile
@@ -26,22 +24,6 @@ CONFIRMATION_DEADLINE_SECONDS = 0.45
 DESKTOP_ID = "com.github.wwmm.easyeffects.desktop"
 SERVER_NAME = "EasyEffectsServer"
 
-IN_CLOSE_WRITE = 0x00000008
-IN_MOVED_FROM = 0x00000040
-IN_MOVED_TO = 0x00000080
-IN_CREATE = 0x00000100
-IN_DELETE = 0x00000200
-IN_DELETE_SELF = 0x00000400
-IN_MOVE_SELF = 0x00000800
-WATCH_MASK = (
-    IN_CLOSE_WRITE
-    | IN_MOVED_FROM
-    | IN_MOVED_TO
-    | IN_CREATE
-    | IN_DELETE
-    | IN_DELETE_SELF
-    | IN_MOVE_SELF
-)
 
 
 class ContractError(RuntimeError):
@@ -64,7 +46,7 @@ def normalize_preset_name(value: object) -> str | None:
         return None
     if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
         return None
-    if value in (".", "..") or "/" in value or "\\" in value:
+    if value in (".", "..") or ":" in value or "/" in value or "\\" in value:
         return None
     return value
 
@@ -122,6 +104,7 @@ class Capability:
     can_open: bool
     can_control: bool
     can_select_presets: bool
+    can_load_named_preset: bool
 
 
 def derive_capability(
@@ -132,14 +115,14 @@ def derive_capability(
     preset_roots_supported: bool,
 ) -> Capability:
     if not desktop_present:
-        return Capability("absent", False, False, False)
+        return Capability("absent", False, False, False, False)
     if not socket_present:
-        return Capability("installed-server-unavailable", True, False, False)
+        return Capability("installed-server-unavailable", True, False, False, False)
     if not socket_compatible:
-        return Capability("installed-incompatible", True, False, False)
+        return Capability("installed-incompatible", True, False, False, False)
     if not preset_roots_supported:
-        return Capability("control-only", True, True, False)
-    return Capability("preset-capable", True, True, True)
+        return Capability("control-only", True, True, False, False)
+    return Capability("preset-capable", True, True, True, True)
 
 
 @dataclass(frozen=True)
@@ -411,27 +394,15 @@ class SocketContractClient:
             self.pending = False
 
 
-class VisiblePresetWatcher:
+class VisiblePresetCatalog:
     def __init__(self, roots: tuple[Path, Path]) -> None:
         self.roots = roots
         self.snapshots = 0
-        self.events = 0
-        self._fd = -1
-        self._libc = ctypes.CDLL(None, use_errno=True)
-
-    @property
-    def active(self) -> bool:
-        return self._fd >= 0
+        self.active = False
 
     def open(self) -> tuple[PresetSnapshot, PresetSnapshot]:
-        require(not self.active, "watcher opens once")
-        self._fd = self._libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
-        require(self._fd >= 0, "inotify initializes")
-        for root in self.roots:
-            descriptor = self._libc.inotify_add_watch(
-                self._fd, os.fsencode(root), ctypes.c_uint32(WATCH_MASK)
-            )
-            require(descriptor >= 0, "trusted preset root is watchable")
+        require(not self.active, "catalog opens once")
+        self.active = True
         return self.refresh()
 
     def refresh(self) -> tuple[PresetSnapshot, PresetSnapshot]:
@@ -439,19 +410,8 @@ class VisiblePresetWatcher:
         self.snapshots += 1
         return discover_presets(self.roots[0]), discover_presets(self.roots[1])
 
-    def wait_for_event(self) -> tuple[PresetSnapshot, PresetSnapshot]:
-        require(self.active, "hidden sessions receive no events")
-        ready, _, _ = select.select([self._fd], [], [], 0.5)
-        require(bool(ready), "filesystem change emits an event")
-        payload = os.read(self._fd, 4096)
-        require(len(payload) >= 16, "filesystem event is framed")
-        self.events += 1
-        return self.refresh()
-
     def close(self) -> None:
-        if self.active:
-            os.close(self._fd)
-            self._fd = -1
+        self.active = False
 
 
 def test_preset_discovery_and_lifecycle(base: Path) -> None:
@@ -472,28 +432,21 @@ def test_preset_discovery_and_lifecycle(base: Path) -> None:
     os.symlink(output, linked_root)
     require(discover_presets(linked_root).names == (), "symlinked preset roots are rejected")
 
-    watcher = VisiblePresetWatcher((output, input_root))
-    initial_output, initial_input = watcher.open()
+    catalog = VisiblePresetCatalog((output, input_root))
+    initial_output, initial_input = catalog.open()
     require(initial_output.names == ("Studio",), "only direct bounded regular JSON presets are listed")
     require(initial_input.names == (), "empty pipeline is represented without a placeholder")
 
     (output / "Added.json").write_text("{}", encoding="utf-8")
-    changed, _ = watcher.wait_for_event()
-    require(changed.names == ("Added", "Studio"), "create event refreshes the visible snapshot")
-    (output / "Added.json").rename(output / "Renamed.json")
-    renamed, _ = watcher.wait_for_event()
-    require(renamed.names == ("Renamed", "Studio"), "rename event refreshes the visible snapshot")
-    (output / "Renamed.json").unlink()
-    removed, _ = watcher.wait_for_event()
-    require(removed.names == ("Studio",), "remove event refreshes the visible snapshot")
-    before_manual = watcher.snapshots
-    watcher.refresh()
-    require(watcher.snapshots == before_manual + 1, "manual refresh performs one bounded snapshot")
-    watcher.close()
-    closed_snapshots = watcher.snapshots
+    before_manual = catalog.snapshots
+    changed, _ = catalog.refresh()
+    require(changed.names == ("Added", "Studio"), "manual refresh replaces the visible snapshot")
+    require(catalog.snapshots == before_manual + 1, "manual refresh performs one bounded snapshot")
+    catalog.close()
+    closed_snapshots = catalog.snapshots
     (output / "Hidden.json").write_text("{}", encoding="utf-8")
-    time.sleep(0.03)
-    require(not watcher.active and watcher.snapshots == closed_snapshots, "closed view has no watcher or scan")
+    require(not catalog.active and catalog.snapshots == closed_snapshots,
+            "closed view performs no filesystem scan")
 
     bounded_root = base / "bounded"
     bounded_root.mkdir()
@@ -535,8 +488,9 @@ def test_capabilities_and_external_state() -> None:
         preset_roots_supported=False,
     )
     require(
-        control_only.can_control and not control_only.can_select_presets,
-        "control without a list is not selectable",
+        control_only.can_control and not control_only.can_load_named_preset
+        and not control_only.can_select_presets,
+        "control without a trusted local list exposes status but no name entry or preset selection",
     )
     capable = derive_capability(
         desktop_present=True,
@@ -544,7 +498,10 @@ def test_capabilities_and_external_state() -> None:
         socket_compatible=True,
         preset_roots_supported=True,
     )
-    require(capable.can_select_presets, "selection requires both independent capabilities")
+    require(
+        capable.can_select_presets and capable.can_load_named_preset,
+        "native bounded roots enable listed preset selection",
+    )
     snapshot = PresetSnapshot(("Local",), 1, False)
     external = represent_current("External", snapshot)
     require(

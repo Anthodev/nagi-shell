@@ -16,6 +16,8 @@ Scope {
     readonly property int activeTimerCount: restartTimer.running ? 1 : 0
     readonly property int maximumLineLength: 4096
     readonly property int maximumDiagnostics: 4
+    readonly property var nodeMetadata: state.nodeMetadata
+    readonly property int knownNodeCount: Object.keys(state.nodeMetadata).length
 
     signal stateConfirmed(string role, int nodeId, int generation, int requestId, string kind,
                           real volume, bool muted)
@@ -75,6 +77,14 @@ Scope {
         return true;
     }
 
+    function internalRole(nodeId) {
+        if (!validNodeId(nodeId)) {
+            return "none";
+        }
+        const role = state.nodeMetadata[String(nodeId)];
+        return role === "output" || role === "input" ? role : "none";
+    }
+
     function acceptLine(line) {
         if (typeof line !== "string" || line.length === 0 || line.length > root.maximumLineLength) {
             warnBounded("invalid bridge line length");
@@ -101,6 +111,26 @@ Scope {
         }
         if (message.type === "fatal") {
             failBridge();
+            return;
+        }
+        if (message.type === "node-metadata") {
+            if (!validNodeId(message.nodeId) || !validInternalRole(message.easyEffectsRole)) {
+                warnBounded("invalid node metadata message");
+                return;
+            }
+            const next = Object.assign({}, state.nodeMetadata);
+            next[String(message.nodeId)] = message.easyEffectsRole;
+            state.nodeMetadata = next;
+            return;
+        }
+        if (message.type === "node-removed") {
+            if (!validNodeId(message.nodeId)) {
+                warnBounded("invalid removed node message");
+                return;
+            }
+            const next = Object.assign({}, state.nodeMetadata);
+            delete next[String(message.nodeId)];
+            state.nodeMetadata = next;
             return;
         }
         if (message.type === "unavailable") {
@@ -139,6 +169,10 @@ Scope {
 
     function validKind(kind) {
         return kind === "external" || kind === "volume" || kind === "mute";
+    }
+
+    function validInternalRole(role) {
+        return role === "none" || role === "output" || role === "input";
     }
 
     function validNodeId(value) {
@@ -195,6 +229,7 @@ Scope {
         property int restartAttempts: 0
         property int diagnosticCount: 0
         property bool destroying: false
+        property var nodeMetadata: ({})
     }
 
     Timer {
@@ -219,7 +254,10 @@ Scope {
             onRead: data => root.forwardDiagnostic(data)
         }
 
-        onStarted: state.ready = false
+        onStarted: {
+            state.ready = false;
+            state.nodeMetadata = {};
+        }
         onExited: function (exitCode, exitStatus) {
             root.failBridge();
             if (!state.destroying && root.enabled && state.restartAttempts < 3) {
@@ -240,5 +278,6 @@ Scope {
         }
         helper.running = false;
         state.ready = false;
+        state.nodeMetadata = {};
     }
 }

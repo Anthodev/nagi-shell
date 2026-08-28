@@ -21,6 +21,7 @@ Scope {
     property var applicationModel: null
     property var trayAdapter: null
     property var audioAdapter: null
+    property var easyEffectsStatusService: null
     property var workspaceTransientSource: null
     property var brightnessTransientSource: null
     property var volumeTransientSource: null
@@ -84,6 +85,8 @@ Scope {
                                                          && fallbackSurface.interactiveExitLoaderEnabled
     readonly property var interactiveExitItem: fallbackSurface === null ? null :
                                                                           fallbackSurface.interactiveExitItem
+    readonly property var interactiveContent: fallbackSurface === null ? null :
+                                                                         fallbackSurface.interactiveContent
     readonly property bool launcherLoaded: fallbackSurface !== null
                                            && fallbackSurface.launcherLoaded
     readonly property bool launcherFocused: fallbackSurface !== null
@@ -455,6 +458,7 @@ Scope {
                     applicationModel: host.applicationModel
                     trayAdapter: host.trayAdapter
                     audioAdapter: host.audioAdapter
+                    easyEffectsStatusService: host.easyEffectsStatusService
                     gamingPerformance: host.gamingPerformance
                     workspaceTransientSource: host.workspaceTransientSource
                     brightnessTransientSource: host.brightnessTransientSource

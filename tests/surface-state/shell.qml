@@ -81,7 +81,13 @@ ShellRoot {
             return root;
         }
         const children = root.children ?? [];
-        for (let index = 0; index < children.length; index += 1) {
+        let childCount = 0;
+        try {
+            childCount = children.length;
+        } catch (error) {
+            return null;
+        }
+        for (let index = 0; index < childCount; index += 1) {
             const match = findObject(children[index], name);
             if (match !== null) {
                 return match;
@@ -494,16 +500,27 @@ ShellRoot {
                         <= 1 && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth) <= 1,
                         "audio surface width equals the audio view implicit width");
                 require(coordinator.focusTarget === coordinator.focusAudio,
-                        "audio presentation receives the candidate focus target");
+                        "audio presentation receives the dropdown focus target");
+                const presetSelect = findObject(host.interactiveContent,
+                                                "audioEasyEffectsOutputPreset");
+                require(presetSelect !== null && presetSelect.control !== null
+                        && presetSelect.popup !== null,
+                        "actual Audio surface exposes its preset select list");
+                inputDriver.click(presetSelect.control);
+                require(presetSelect.popup.visible && presetSelect.popup.height > 0
+                        && presetSelect.popup.height <= Theme.size.controlHeightMd * 5
+                        + Theme.spacing.xs * 2 + 0.5,
+                        "actual preset select list opens and remains bounded to five rows");
+                presetSelect.closePopup();
                 require(coordinator.cancelInteractive(audioEpoch),
                         "audio Back accepts the current owner epoch");
                 require(host.interactiveExitRunning && host.audioLoaded && !host.surfaceFocusable,
                         "generic reverse exit retains Audio without wrapper-specific lifecycle code");
                 require(!host.interactiveExitLoaderEnabled,
                         "outgoing Audio is disabled immediately while retained for its fade");
-                const audioControl = findObject(host.interactiveExitItem,
-                                                "audioOutputCandidate");
-                require(audioControl !== null, "retained Audio exposes its representative control");
+                const audioControl = findObject(host.interactiveExitItem, "audioOutputDropdown");
+                require(audioControl !== null,
+                        "retained Audio exposes its representative dropdown");
                 inputDriver.click(audioControl);
                 require(fakeAudioAdapter.selectionCount === 0,
                         "disabled outgoing Audio cannot dispatch pointer selection");
@@ -1165,6 +1182,52 @@ ShellRoot {
         function unpin(desktopFileId) {
             return false;
         }
+        function eligible(desktopFileId) {
+            return desktopFileId === "com.github.wwmm.easyeffects.desktop";
+        }
+    }
+    QtObject {
+        id: fakeEasyEffectsStatus
+
+        property bool ready: true
+        property bool refreshing: false
+        property bool loadPending: false
+        property bool interested: ownerEpoch > 0
+        property real ownerEpoch: 0
+        property string loadPipeline: ""
+        property string loadState: "none"
+        property string outputState: "lastLoaded"
+        property string outputName: "Studio"
+        property string inputState: "lastLoaded"
+        property string inputName: "Voice"
+        property var outputPresets: ["Cinema", "Studio"]
+        property string outputPresetsState: "ready"
+        property var inputPresets: ["Voice"]
+        property string inputPresetsState: "ready"
+
+        function activate(epoch) {
+            ownerEpoch = epoch;
+            return true;
+        }
+        function deactivate(epoch) {
+            if (ownerEpoch !== epoch) {
+                return false;
+            }
+            ownerEpoch = 0;
+            return true;
+        }
+        function refresh(epoch) {
+            return ownerEpoch === epoch;
+        }
+        function validPresetName(name) {
+            return typeof name === "string" && name.length > 0 && name.length <= 100
+                    && !/[:/\\\n\r]/u.test(name);
+        }
+        function loadPreset(epoch, pipeline, name) {
+            const candidates = pipeline === "output" ? outputPresets :
+                               pipeline === "input" ? inputPresets : [];
+            return ownerEpoch === epoch && candidates.indexOf(name) !== -1;
+        }
     }
     QtObject {
         id: fakeTrayAdapter
@@ -1206,6 +1269,8 @@ ShellRoot {
         readonly property bool pendingOutputSelection: false
         readonly property bool pendingInputSelection: false
         readonly property string failure: "none"
+        readonly property bool outputEasyEffectsInternalDefault: false
+        readonly property bool inputEasyEffectsInternalDefault: false
         readonly property var outputCandidates: [{
                 "endpointKey": "output",
                 "label": "Fixture output",
@@ -1297,6 +1362,8 @@ ShellRoot {
 
             active: false
             adapter: fakeAudioAdapter
+            applicationModel: fakeApplicationModel
+            easyEffectsStatus: fakeEasyEffectsStatus
             ownerEpoch: 0
             reducedMotion: true
         }
@@ -1454,6 +1521,7 @@ ShellRoot {
         polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel
+        easyEffectsStatusService: fakeEasyEffectsStatus
         workspaceTransientSource: fakeTransientSource
         brightnessTransientSource: fakeTransientSource
         volumeTransientSource: fakeTransientSource
@@ -1464,6 +1532,7 @@ ShellRoot {
         running: test.geometryDirection !== ""
         onTriggered: Qt.callLater(test.sampleGeometry)
     }
+
 
     Timer {
         id: retry

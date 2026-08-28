@@ -227,4 +227,22 @@ QString operationName(Operation operation)
     return QStringLiteral("unknown");
 }
 
+EasyEffectsInternalRole classifyEasyEffectsNode(
+    const QByteArray &name,
+    const QByteArray &applicationId,
+    const QByteArray &virtualValue,
+    const QByteArray &mediaClass)
+{
+    if (applicationId != "com.github.wwmm.easyeffects" || virtualValue != "true") {
+        return EasyEffectsInternalRole::None;
+    }
+    if (name == "easyeffects_sink" && mediaClass == "Audio/Sink") {
+        return EasyEffectsInternalRole::Output;
+    }
+    if (name == "easyeffects_source" && mediaClass == "Audio/Source/Virtual") {
+        return EasyEffectsInternalRole::Input;
+    }
+    return EasyEffectsInternalRole::None;
+}
+
 } // namespace nagi::audio

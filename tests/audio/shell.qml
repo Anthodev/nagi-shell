@@ -202,6 +202,7 @@ ShellRoot {
             property var tracks: ({})
             property var volumeWrites: []
             property var muteWrites: []
+            property var nodeMetadata: ({})
 
             signal stateConfirmed(string role, int nodeId, int generation, int requestId, string kind,
                                   real volume, bool muted)
@@ -209,6 +210,17 @@ ShellRoot {
             signal requestFailed(string role, int generation, int requestId, string kind,
                                  string reason)
             signal fatalFailure
+
+            function internalRole(nodeId) {
+                const role = nodeMetadata[String(nodeId)];
+                return role === "output" || role === "input" ? role : "none";
+            }
+
+            function setInternalRole(nodeId, role) {
+                const next = Object.assign({}, nodeMetadata);
+                next[String(nodeId)] = role;
+                nodeMetadata = next;
+            }
 
             function track(role, nodeId, generation) {
                 const next = Object.assign({}, tracks);
@@ -284,6 +296,101 @@ ShellRoot {
         AudioAdapter {}
     }
 
+    Component {
+        id: protocolBridgeFactory
+
+        PipeWireAudioBridge {
+            helperPath: ""
+        }
+    }
+    Component {
+        id: easyEffectsStatusServiceFactory
+
+        EasyEffectsStatusService {
+            helperPath: ""
+        }
+    }
+
+    Component {
+        id: fakeEasyEffectsStatusFactory
+
+        QtObject {
+            property bool ready: true
+            property bool refreshing: false
+            property bool interested: ownerEpoch > 0
+            property real ownerEpoch: 0
+            property string outputState: "lastLoaded"
+            property string outputName: "Studio"
+            property string inputState: "none"
+            property string inputName: ""
+            property var outputPresets: ["Studio", "Cinema"]
+            property string outputPresetsState: "ready"
+            property var inputPresets: ["Voice"]
+            property string inputPresetsState: "ready"
+            property int activationCount: 0
+            property int deactivationCount: 0
+            property int refreshCount: 0
+            property bool loadPending: false
+            property string loadPipeline: ""
+            property string loadState: "none"
+            property var loadRequests: []
+
+            function activate(epoch) {
+                ownerEpoch = epoch;
+                activationCount += 1;
+                return true;
+            }
+
+            function deactivate(epoch) {
+                if (ownerEpoch !== epoch) {
+                    return false;
+                }
+                ownerEpoch = 0;
+                deactivationCount += 1;
+                return true;
+            }
+
+            function refresh(epoch) {
+                if (ownerEpoch !== epoch || refreshing) {
+                    return false;
+                }
+                refreshCount += 1;
+                return true;
+            }
+
+            function validPresetName(name) {
+                return typeof name === "string" && name.length > 0 && name.length <= 100
+                        && !/[:/\\\n\r]/u.test(name);
+            }
+
+            function loadPreset(epoch, pipeline, name) {
+                const candidates = pipeline === "output" ? outputPresets :
+                                   pipeline === "input" ? inputPresets : [];
+                if (ownerEpoch !== epoch || loadPending || candidates.indexOf(name) === -1) {
+                    return false;
+                }
+                loadPending = true;
+                loadPipeline = pipeline;
+                loadState = "pending";
+                loadRequests = loadRequests.concat([{
+                                                       "pipeline": pipeline,
+                                                       "name": name
+                                                   }]);
+                if (pipeline === "output") {
+                    outputState = "lastLoaded";
+                    outputName = name;
+                } else {
+                    inputState = "lastLoaded";
+                    inputName = name;
+                }
+                loadPending = false;
+                loadState = "confirmed";
+                return true;
+            }
+        }
+    }
+
+
     Item {
         id: selectionHost
     }
@@ -292,6 +399,37 @@ ShellRoot {
         id: selectionViewFactory
 
         AudioSelectionView {}
+    }
+
+    Component {
+        id: applicationModelFactory
+
+        QtObject {
+            property bool present: true
+            property bool available: true
+            property var applications: present ? [{
+                                                     "id":
+                                                     "com.github.wwmm.easyeffects.desktop"
+                                                 }] : []
+            property var launches: []
+            property int nextRequestId: 0
+
+            signal launchAccepted(int requestId, string desktopFileId)
+            signal launchRejected(int requestId, string category)
+
+            function eligible(desktopFileId) {
+                return present && desktopFileId === "com.github.wwmm.easyeffects.desktop";
+            }
+
+            function dispatchLaunch(desktopFileId) {
+                if (!eligible(desktopFileId)) {
+                    return 0;
+                }
+                nextRequestId += 1;
+                launches = launches.concat([desktopFileId]);
+                return nextRequestId;
+            }
+        }
     }
 
     Component {
@@ -369,9 +507,13 @@ ShellRoot {
     Component.onCompleted: Qt.callLater(run)
 
     function verifySelectionLayout(bundle) {
-        console.warn("audio: selection view layout");
+        console.warn("audio: selection dropdown layout and capability");
+        const applications = applicationModelFactory.createObject(selectionHost);
+        const easyEffectsStatus = fakeEasyEffectsStatusFactory.createObject(selectionHost);
         const view = selectionViewFactory.createObject(selectionHost, {
                                                            "adapter": bundle.adapter,
+                                                           "applicationModel": applications,
+                                                           "easyEffectsStatus": easyEffectsStatus,
                                                            "ownerEpoch": 1
                                                        });
         require(view !== null, "audio selection view is created");
@@ -384,43 +526,221 @@ ShellRoot {
                 const inputSection = findObject(view, "audioInputSection");
                 const frame = findObject(view, "audioSubviewFrame");
                 const contentRoot = findObject(view, "audioContentRoot");
-                const columnRow = findObject(view, "audioColumnRow");
-                require(frame !== null && contentRoot !== null && columnRow !== null
-                        && outputSection !== null && inputSection !== null && outputSection.visible
-                        && inputSection.visible,
-                        "audio frame and both candidate sections are visible");
-                require(inputSection.x > outputSection.x + outputSection.width,
-                        "input candidates sit beside output candidates");
-                require(Math.abs(inputSection.y - outputSection.y) < 0.5,
-                        "output and input candidate sections share a row");
-                require(Math.abs(inputSection.width - outputSection.width) <= 1,
-                        "output and input columns receive equal width");
-                const expectedContentWidth = Math.max(outputSection.naturalWidth,
-                                                      inputSection.naturalWidth) * 2
-                      + Theme.spacing.lg;
-                require(Math.abs(contentRoot.implicitWidth - expectedContentWidth) < 0.5 && Math.abs(
-                            view.implicitWidth - (expectedContentWidth + Theme.spacing.lg * 2))
-                        < 0.5, "audio width derives from natural candidate labels, column gap, and frame padding");
-                require(Math.abs(columnRow.width - contentRoot.width) <= 1 && Math.abs(
-                            outputSection.width + inputSection.width + columnRow.spacing
-                            - columnRow.width) <= 1,
-                        "candidate columns fill the content-driven width");
+                const pipelineGrid = findObject(view, "audioPipelineGrid");
+                const outputDropdown = findObject(view, "audioOutputDropdown");
+                const inputDropdown = findObject(view, "audioInputDropdown");
+                const outputPopup = findObject(view, "audioOutputPopup");
+                const integration = findObject(view, "audioEasyEffectsCapability");
+                const openButton = findObject(view, "audioOpenEasyEffects");
+                const outputWarning = findObject(view, "audioOutputInternalDefaultWarning");
+                const outputPreset = findObject(view, "audioEasyEffectsOutputPreset");
+                const inputPreset = findObject(view, "audioEasyEffectsInputPreset");
+                const refreshButton = findObject(view, "audioRefreshEasyEffectsStatus");
+                const outputPresetDropdown = findObject(view,
+                                                        "audioEasyEffectsOutputPresetDropdown");
+                const outputPresetPopup = findObject(view, "audioEasyEffectsOutputPresetPopup");
+                require(frame !== null && contentRoot !== null && pipelineGrid !== null
+                        && outputSection !== null && inputSection !== null && outputDropdown !== null
+                        && inputDropdown !== null && outputPopup !== null && outputWarning !== null
+                        && outputPreset !== null && inputPreset !== null && refreshButton !== null
+                        && outputPresetDropdown !== null && outputPresetPopup !== null,
+                        "audio frame exposes device and EasyEffects preset select lists");
+                require(inputSection.x > outputSection.x + outputSection.width
+                        && Math.abs(inputSection.y - outputSection.y) < 0.5
+                        && Math.abs(inputSection.width - outputSection.width) <= 1,
+                        "wide audio content uses equal top-aligned pipeline columns");
+                require(applications.launches.length === 0 && integration.visible && openButton.visible,
+                        "installed EasyEffects exposes one honest affordance without implicit activation");
+                require(easyEffectsStatus.activationCount === 1
+                        && easyEffectsStatus.ownerEpoch === view.ownerEpoch
+                        && outputPreset.statusValue === "Studio"
+                        && inputPreset.statusValue === "None reported",
+                        "visible exact desktop capability lists presets and labels last-loaded state");
+                require(!view.requestPresetLoad("output", "Missing"),
+                        "a name absent from the discovered list never crosses the service boundary");
+                outputPreset.openPopup(outputPreset.candidates.indexOf("Cinema"));
+                require(outputPresetPopup.visible && outputPresetPopup.height > 0,
+                        "output preset select list opens with bounded discovered options");
+                outputPreset.highlightedIndex = outputPreset.candidates.indexOf("Cinema");
+                require(outputPreset.selectHighlighted(),
+                        "choosing one listed output preset dispatches immediately");
+                require(easyEffectsStatus.loadRequests.length === 1
+                        && easyEffectsStatus.loadRequests[0].pipeline === "output"
+                        && easyEffectsStatus.loadRequests[0].name === "Cinema"
+                        && outputPreset.statusValue === "Cinema",
+                        "preset select dispatch publishes confirmed readback");
+                require(view.refreshPresetStatus() && easyEffectsStatus.refreshCount === 1,
+                        "preset status refresh is explicit and generation-owned");
 
-                require(Math.abs(outputSection.x) < 0.5 && Math.abs(inputSection.x
-                                                                    + inputSection.width
-                                                                    - columnRow.width) < 0.5,
-                        "both audio candidate columns reach the content bounds without a dead zone");
+                outputSection.openPopup(0);
+                Qt.callLater(() => {
+                    require(outputPopup.visible && outputPopup.height > 0
+                            && outputPopup.height <= Theme.size.controlHeightMd * 5
+                            + Theme.spacing.xs * 2 + 0.5,
+                            "output candidate popup is visible and bounded to five rows");
+                    const endEvent = {
+                        "accepted": false,
+                        "key": Qt.Key_End,
+                        "text": ""
+                    };
+                    outputSection.handlePopupKey(endEvent);
+                    require(endEvent.accepted && outputSection.highlightedIndex
+                            === bundle.adapter.outputCandidates.length - 1,
+                            "popup End navigation reaches the final bounded candidate");
+                    const upEvent = {
+                        "accepted": false,
+                        "key": Qt.Key_Up,
+                        "text": ""
+                    };
+                    outputSection.handlePopupKey(upEvent);
+                    require(upEvent.accepted && outputSection.highlightedIndex === 0,
+                            "popup arrow navigation moves through eligible candidates");
+                    const homeEvent = {
+                        "accepted": false,
+                        "key": Qt.Key_Home,
+                        "text": ""
+                    };
+                    outputSection.handlePopupKey(homeEvent);
+                    require(homeEvent.accepted && outputSection.highlightedIndex === 0,
+                            "popup Home navigation reaches the first candidate");
+                    const typeEvent = {
+                        "accepted": false,
+                        "key": 0,
+                        "text": "h"
+                    };
+                    outputSection.handlePopupKey(typeEvent);
+                    require(typeEvent.accepted && outputSection.highlightedIndex === 1,
+                            "popup type navigation selects the matching bounded label");
+                    const enterEvent = {
+                        "accepted": false,
+                        "key": Qt.Key_Return,
+                        "text": ""
+                    };
+                    outputSection.highlightedIndex = 0;
+                    outputSection.handlePopupKey(enterEvent);
+                    require(enterEvent.accepted && !bundle.adapter.pendingOutputSelection
+                            && !outputPopup.visible,
+                            "popup Enter activates the confirmed no-op and closes");
+                    outputSection.openPopup(0);
+                    const escapeEvent = {
+                        "accepted": false,
+                        "key": Qt.Key_Escape,
+                        "text": ""
+                    };
+                    outputSection.handlePopupKey(escapeEvent);
+                    require(escapeEvent.accepted && !outputPopup.visible && outputDropdown.focus,
+                            "popup Escape closes locally and restores dropdown focus intent");
 
-                view.destroy();
-                destroyBundle(bundle);
-                console.warn("audio tests passed");
-                Qt.exit(0);
+                    const confirmedDescription = outputDropdown.Accessible.description;
+                    require(view.requestSelection("output",
+                                                  bundle.adapter.outputCandidates[0].endpointKey)
+                            && !bundle.adapter.pendingOutputSelection,
+                            "reselecting the confirmed device is a bounded no-op");
+                    require(view.requestSelection("output",
+                                                  bundle.adapter.outputCandidates[1].endpointKey)
+                            && bundle.adapter.pendingOutputSelection && !outputDropdown.enabled
+                            && !inputDropdown.enabled
+                            && outputDropdown.Accessible.description === confirmedDescription,
+                            "one pending selection disables both dropdowns and preserves confirmed text");
+                    bundle.adapter.selectionDeadlineReached("output");
+                    require(findObject(view, "audioSelectionFailure").visible,
+                            "selection timeout remains explicit and local to the Audio subview");
+
+                    view.maximumAvailableWidth = view.twoColumnWidth + Theme.spacing.lg * 2 - 1;
+                    view.width = view.implicitWidth;
+                    Qt.callLater(() => Qt.callLater(() => {
+                        require(inputSection.y >= outputSection.y + outputSection.height,
+                                "narrow audio content stacks input below output");
+                        bundle.adapter.failureDeadlineReached();
+                        apply(bundle, () => {
+                            bundle.service.defaultAudioSink = bundle.virtualNode;
+                        });
+                        require(outputWarning.visible && !bundle.adapter.outputAvailable
+                                && bundle.adapter.outputEndpointKey === "",
+                                "an internal confirmed default shows a bounded warning without an endpoint key");
+                        const eligibleOutput = bundle.adapter.outputCandidates[0];
+                        require(view.requestSelection("output", eligibleOutput.endpointKey),
+                                "the warning state keeps an eligible explicit selection path");
+                        apply(bundle, () => {
+                            bundle.service.defaultAudioSink = bundle.physicalNode;
+                        });
+                        bundle.bridge.confirmTracked("output", bundle.outputAudio.volume,
+                                                     bundle.outputAudio.muted);
+                        require(applications.launches.length === 0 && view.openEasyEffects()
+                                && applications.launches.length === 1
+                                && applications.launches[0]
+                                === "com.github.wwmm.easyeffects.desktop",
+                                "only explicit activation launches the exact validated desktop ID");
+                        applications.launchAccepted(view.easyEffectsLaunchRequestId,
+                                                    "com.github.wwmm.easyeffects.desktop");
+                        require(view.openEasyEffects(),
+                                "a second explicit Open request is admitted after completion");
+                        applications.launchRejected(view.easyEffectsLaunchRequestId, "launch");
+                        require(view.easyEffectsLaunchFailure === "EasyEffects could not be opened.",
+                                "desktop launch failure stays explicit and local");
+                        applications.present = false;
+                        Qt.callLater(() => {
+                            require(!integration.visible,
+                                    "absent EasyEffects desktop metadata removes the affordance");
+                            require(easyEffectsStatus.deactivationCount === 1
+                                    && easyEffectsStatus.ownerEpoch === 0,
+                                    "removing the capability clears visible preset status interest");
+                            view.destroy();
+                            applications.destroy();
+                            easyEffectsStatus.destroy();
+                            destroyBundle(bundle);
+                            console.warn("audio tests passed");
+                            Qt.exit(0);
+                        });
+                    }));
+                });
             });
         });
     }
 
     function run() {
         console.warn("audio: synchronization and discovery");
+        const statusService = easyEffectsStatusServiceFactory.createObject(test);
+        require(statusService.activate(9), "status service admits one visible owner");
+        statusService.acceptLine(
+                    "{\"type\":\"pipeline\",\"generation\":1,\"pipeline\":\"output\",\"state\":\"lastLoaded\",\"name\":\"Studio\"}");
+        statusService.acceptLine(
+                    "{\"type\":\"pipeline\",\"generation\":1,\"pipeline\":\"input\",\"state\":\"none\"}");
+        statusService.acceptLine(
+                    "{\"type\":\"presets\",\"generation\":1,\"pipeline\":\"output\",\"state\":\"ready\",\"items\":[\"Cinema\",\"Studio\"]}");
+        statusService.acceptLine(
+                    "{\"type\":\"presets\",\"generation\":1,\"pipeline\":\"input\",\"state\":\"ready\",\"items\":[\"Voice\"]}");
+        require(statusService.outputState === "lastLoaded" && statusService.outputName === "Studio"
+                && statusService.inputState === "none" && statusService.inputName === ""
+                && statusService.outputPresets.join(",") === "Cinema,Studio"
+                && statusService.inputPresets.join(",") === "Voice" && !statusService.refreshing,
+                "status service publishes normalized pipeline state and bounded preset models");
+        statusService.acceptLine(
+                    "{\"type\":\"pipeline\",\"generation\":1,\"pipeline\":\"output\",\"state\":\"lastLoaded\",\"name\":\"private/path\"}");
+        require(statusService.outputName === "Studio",
+                "status service rejects path-like untrusted preset text");
+        statusService.acceptLine(
+                    "{\"type\":\"presets\",\"generation\":1,\"pipeline\":\"output\",\"state\":\"ready\",\"items\":[\"Cinema\",\"private/path\"]}");
+        require(statusService.outputPresets.join(",") === "Cinema,Studio",
+                "status service rejects a malformed preset list atomically");
+        statusService.acceptLine(
+                    "{\"type\":\"pipeline\",\"generation\":2,\"pipeline\":\"output\",\"state\":\"lastLoaded\",\"name\":\"stale\"}");
+        require(statusService.outputName === "Studio",
+                "status service rejects a stale helper generation");
+        require(statusService.deactivate(9) && !statusService.interested
+                && statusService.outputState === "unknown" && statusService.outputName === ""
+                && statusService.outputPresets.length === 0 && statusService.inputPresets.length === 0,
+                "status service clears names, preset models, and work on close");
+        statusService.destroy();
+        const protocolBridge = protocolBridgeFactory.createObject(test);
+        protocolBridge.acceptLine(
+                    "{\"type\":\"node-metadata\",\"nodeId\":20,\"easyEffectsRole\":\"output\"}");
+        require(protocolBridge.internalRole(20) === "output" && protocolBridge.knownNodeCount === 1,
+                "bridge accepts one normalized internal-node metadata record");
+        protocolBridge.acceptLine("{\"type\":\"node-removed\",\"nodeId\":20}");
+        require(protocolBridge.internalRole(20) === "none" && protocolBridge.knownNodeCount === 0,
+                "bridge removes stale metadata when the PipeWire node disappears");
+        protocolBridge.destroy();
         const bundle = makeBundle();
         const outputAudio = own(bundle, makeAudio(1.25, false, [0.5, 1.0]));
         const inputAudio = own(bundle, makeAudio(0.4, false, [0.4]));
@@ -478,6 +798,14 @@ ShellRoot {
                                                      "isSink": false,
                                                      "audio": otherInputAudio
                                                  }));
+        const easyEffectsSource = own(bundle, makeNode({
+                                                            "pipewireId": 43,
+                                                            "name": "easyeffects_source",
+                                                            "description": "EasyEffects Source",
+                                                            "ready": true,
+                                                            "isSink": false,
+                                                            "audio": virtualAudio
+                                                        }));
         const stream = own(bundle, makeNode({
                                                 "pipewireId": 50,
                                                 "name": "application.stream",
@@ -487,13 +815,17 @@ ShellRoot {
                                                 "isSink": true,
                                                 "audio": streamAudio
                                             }));
+        bundle.bridge.setInternalRole(easyEffectsSource.pipewireId, "input");
+        bundle.virtualNode = virtual;
+        bundle.physicalNode = physical;
+        bundle.outputAudio = outputAudio;
 
         require(!bundle.adapter.available && bundle.adapter.syncState === "unavailable"
                 && bundle.adapter.failure === "unavailable",
                 "cold unavailable PipeWire publishes no writable state");
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other,
-                                   physical];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource,
+                                   easyEffectsSource, other, physical];
             bundle.service.defaultAudioSink = physical;
             bundle.service.defaultAudioSource = source;
             bundle.service.ready = true;
@@ -671,6 +1003,11 @@ ShellRoot {
                 && bundle.adapter.pendingOutputSelection && bundle.capture.preferredWrites.length
                 === 1 && bundle.capture.preferredWrites[0].node === virtual,
                 "selection writes the live candidate as the preferred sink");
+        const concurrentInputCandidate = candidate(bundle, "USB Microphone", "input");
+        require(concurrentInputCandidate !== null
+                && !bundle.adapter.requestInputSelection(concurrentInputCandidate.endpointKey)
+                && bundle.capture.preferredSourceWrites.length === 0,
+                "one global mutable slot rejects a concurrent input selection");
         require(bundle.adapter.outputLabel === "Main Output",
                 "preferred output never replaces the confirmed displayed truth");
         apply(bundle, () => {
@@ -701,7 +1038,8 @@ ShellRoot {
         require(bundle.adapter.requestOutputSelection(physicalCandidate.endpointKey),
                 "removal scenario starts pending");
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource,
+                                   easyEffectsSource, other];
         });
         require(!bundle.adapter.pendingOutputSelection && bundle.adapter.failure === "removed",
                 "removed target clears pending state");
@@ -757,13 +1095,15 @@ ShellRoot {
         require(bundle.adapter.requestInputSelection(sourceCandidate.endpointKey),
                 "input removal scenario starts pending");
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, alternateSource, otherSource, other];
+            bundle.model.values = [stream, virtual, alternateSource, otherSource, easyEffectsSource,
+                                   other];
         });
         require(!bundle.adapter.pendingInputSelection && bundle.adapter.failure === "removed",
                 "removed input target clears pending state");
         bundle.adapter.failureDeadlineReached();
         apply(bundle, () => {
-            bundle.model.values = [stream, virtual, source, alternateSource, otherSource, other];
+            bundle.model.values = [stream, virtual, source, alternateSource, otherSource,
+                                   easyEffectsSource, other];
         });
         require(bundle.adapter.requestInputSelection(alternateSourceCandidate.endpointKey),
                 "input timeout scenario starts pending");
@@ -805,7 +1145,7 @@ ShellRoot {
                                                  }));
         apply(bundle, () => {
             bundle.model.values = [stream, virtual, source, alternateSource, otherSource,
-                                   replacement];
+                                   easyEffectsSource, replacement];
             bundle.service.defaultAudioSink = replacement;
         });
         bundle.bridge.confirmTracked("output", replacementAudio.volume, replacementAudio.muted);
@@ -834,6 +1174,40 @@ ShellRoot {
         require(bundle.adapter.outputAvailable && bundle.adapter.outputGeneration > oldGeneration
                 && bundle.capture.outputChanges.length === changesBeforeFatal,
                 "fatal recovery reacquires defaults without replaying initial confirmed state");
+
+        console.warn("audio: exact EasyEffects node exclusion");
+        require(candidate(bundle, "EasyEffects Source", "input") === null
+                && candidate(bundle, "USB Microphone", "input") !== null,
+                "exact internal input is filtered while unrelated inputs remain");
+        apply(bundle, () => {
+            bundle.model.values = [stream, virtual, physical, source, alternateSource, otherSource,
+                                   easyEffectsSource, replacement];
+        });
+        const preferredWritesBeforeFilter = bundle.capture.preferredWrites.length;
+        bundle.bridge.setInternalRole(virtual.pipewireId, "output");
+        bundle.adapter.processPendingChanges();
+        require(candidate(bundle, "EasyEffects Sink") === null
+                && candidate(bundle, "Main Output") !== null,
+                "exact internal output is filtered while physical devices remain");
+        apply(bundle, () => {
+            bundle.service.defaultAudioSink = virtual;
+        });
+        require(bundle.adapter.outputEasyEffectsInternalDefault && !bundle.adapter.outputAvailable
+                && bundle.adapter.outputEndpointKey === ""
+                && bundle.capture.preferredWrites.length === preferredWritesBeforeFilter,
+                "an already-default internal node publishes a warning seam and never auto-routes");
+        const physicalAfterFilter = candidate(bundle, "Main Output");
+        require(physicalAfterFilter !== null
+                && bundle.adapter.requestOutputSelection(physicalAfterFilter.endpointKey)
+                && bundle.adapter.pendingOutputSelection,
+                "an eligible device remains explicitly selectable from the internal default");
+        apply(bundle, () => {
+            bundle.service.defaultAudioSink = physical;
+        });
+        bundle.bridge.confirmTracked("output", outputAudio.volume, outputAudio.muted);
+        require(!bundle.adapter.outputEasyEffectsInternalDefault && bundle.adapter.outputAvailable
+                && bundle.adapter.outputLabel === "Main Output",
+                "a confirmed explicit selection clears the internal-default warning");
 
         verifyEmptySelectionLayouts(bundle);
     }

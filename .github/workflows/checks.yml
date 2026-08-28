@@ -116,7 +116,8 @@ jobs:
 
           set +e
           make test-surface-state >"$logdir/quickshell.log" 2>&1 \
-            && make test-ui-primitives >>"$logdir/quickshell.log" 2>&1
+            && make test-ui-primitives >>"$logdir/quickshell.log" 2>&1 \
+            && make test-typography >>"$logdir/quickshell.log" 2>&1
           test_status=$?
           set -e
 

@@ -20,6 +20,12 @@ enum class Role {
     Input,
 };
 
+enum class EasyEffectsInternalRole {
+    None,
+    Output,
+    Input,
+};
+
 struct Command {
     Operation operation = Operation::Shutdown;
     Role role = Role::Output;
@@ -36,5 +42,10 @@ constexpr qsizetype MaximumCommandBytes = 4096;
 std::optional<Command> parseCommand(const QByteArray &line, QString *error = nullptr);
 QString roleName(Role role);
 QString operationName(Operation operation);
+EasyEffectsInternalRole classifyEasyEffectsNode(
+    const QByteArray &name,
+    const QByteArray &applicationId,
+    const QByteArray &virtualValue,
+    const QByteArray &mediaClass);
 
 } // namespace nagi::audio
