@@ -108,7 +108,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -214,13 +215,10 @@ Flickable {
             }
         }
 
-        IslandText {
+        ControlCenterSectionHeading {
+            objectName: "weatherLocationSection"
             Layout.fillWidth: true
-            text: root.configured ? "Search to replace the confirmed location" :
-                                    "Search for one location"
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+            text: root.configured ? "Replace location" : "Choose a location"
         }
 
         RowLayout {
@@ -256,8 +254,8 @@ Flickable {
                     color: Theme.color.textPrimary
                     selectionColor: Theme.snapshot.accent
                     selectedTextColor: Theme.snapshot.accentForeground
-                    font.pixelSize: Theme.type.body
-                    font.family: Theme.type.family
+                    font.pixelSize: Theme.type.sizeForItem(this, "body")
+                    font.family: Theme.type.familyForItem(this)
                     verticalAlignment: TextInput.AlignVCenter
                     clip: true
                     activeFocusOnTab: true
@@ -323,9 +321,14 @@ Flickable {
             Layout.fillWidth: true
             text: root.locationSearch.attribution
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
             Accessible.name: text
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "weatherForecastPreferencesSection"
+            text: "Forecast preferences"
         }
 
         SettingChoiceRow {
@@ -451,7 +454,7 @@ Flickable {
             Layout.fillWidth: true
             text: "Forecasts: MET Norway (NLOD 2.0 / CC BY 4.0). Search: GeoNames/Open-Meteo (CC BY 4.0), or OpenStreetMap contributors (ODbL) when the Nominatim fallback is active."
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
             Accessible.name: text
         }

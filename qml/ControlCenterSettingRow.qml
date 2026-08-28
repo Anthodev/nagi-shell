@@ -1,16 +1,17 @@
 import QtQuick
 import QtQuick.Layouts
 
-IslandPanel {
+Item {
     id: root
 
     property string label: ""
     property string description: ""
     property string errorText: ""
     default property alias controlData: controlSlot.data
+    readonly property bool stacked: width > 0 && width < Theme.size.controlCenterRowStackBreakpoint
 
-    implicitWidth: rowLayout.implicitWidth + Theme.spacing.lg * 2
-    implicitHeight: contentLayout.implicitHeight + Theme.spacing.md * 2
+    implicitWidth: contentLayout.implicitWidth
+    implicitHeight: contentLayout.implicitHeight + Theme.spacing.sm * 2
     Accessible.role: Accessible.Grouping
     Accessible.name: label
     Accessible.description: errorText !== "" ? description + ". Error: " + errorText : description
@@ -18,15 +19,19 @@ IslandPanel {
     ColumnLayout {
         id: contentLayout
 
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.md
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.topMargin: Theme.spacing.sm
         spacing: Theme.spacing.sm
 
-        RowLayout {
+        GridLayout {
             id: rowLayout
 
             Layout.fillWidth: true
-            spacing: Theme.spacing.lg
+            columns: root.stacked ? 1 : 2
+            columnSpacing: Theme.spacing.lg
+            rowSpacing: Theme.spacing.sm
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -36,7 +41,7 @@ IslandPanel {
                     Layout.fillWidth: true
                     text: root.label
                     size: "body"
-                    font.weight: Theme.type.weightMedium
+                    font.weight: Theme.type.weightSemibold
                     wrapMode: Text.Wrap
                 }
 
@@ -45,7 +50,7 @@ IslandPanel {
                     visible: root.description !== ""
                     text: root.description
                     size: "caption"
-                    color: Theme.color.textSecondary
+                    tone: "muted"
                     wrapMode: Text.Wrap
                 }
             }
@@ -53,7 +58,8 @@ IslandPanel {
             Item {
                 id: controlSlot
 
-                Layout.alignment: Qt.AlignVCenter
+                Layout.fillWidth: root.stacked
+                Layout.alignment: root.stacked ? Qt.AlignLeft : Qt.AlignRight | Qt.AlignVCenter
                 implicitWidth: childrenRect.width
                 implicitHeight: childrenRect.height
             }
@@ -69,5 +75,14 @@ IslandPanel {
             Accessible.role: Accessible.AlertMessage
             Accessible.name: text
         }
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Theme.size.hairlineWidth
+        color: Theme.color.surfaceBorder
+        opacity: 0.72
     }
 }

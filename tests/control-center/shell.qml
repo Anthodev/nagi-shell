@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "qml"
 
@@ -16,16 +17,13 @@ ShellRoot {
     property int pageResetRequests: 0
     property int resetAllRequests: 0
     property var controls: []
-    readonly property string capturePath: Quickshell.env("NAGI_CONTROL_CENTER_CAPTURE") ?? ""
-    readonly property string appearanceCapturePath: Quickshell.env(
-                                                        "NAGI_APPEARANCE_CAPTURE") ?? ""
-    readonly property string islandCapturePath: Quickshell.env("NAGI_ISLAND_CAPTURE") ?? ""
-    readonly property string wifiCapturePath: Quickshell.env("NAGI_WIFI_CAPTURE") ?? ""
-    readonly property string bluetoothCapturePath: Quickshell.env("NAGI_BLUETOOTH_CAPTURE") ?? ""
-    readonly property string wallpaperCapturePath: Quickshell.env("NAGI_WALLPAPER_CAPTURE") ?? ""
+    readonly property string captureDirectory: Quickshell.env("NAGI_CONTROL_CENTER_CAPTURE_DIR")
+                                               ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
+    property real requestedTallHeight: 0
+    property real requestedTiledWidth: 0
     function fail(message) {
         console.error("FAIL: " + message + " (stage=" + stage + ")");
         Qt.exit(1);
@@ -36,6 +34,21 @@ ShellRoot {
         if (!condition) {
             fail(message);
         }
+    }
+
+    function captureCurrent(name, continuation) {
+        if (captureDirectory === "") {
+            continuation();
+            return;
+        }
+        const windowContent = controlCenter.contentItem.children[0];
+        require(windowContent !== null && windowContent !== undefined,
+                "Control Center capture target is available");
+        windowContent.grabToImage(function (result) {
+            const path = test.captureDirectory + "/" + name + ".png";
+            require(result.saveToFile(path), "real Control Center " + name + " capture is saved");
+            continuation();
+        });
     }
 
     function findObject(item, objectName) {
@@ -55,64 +68,78 @@ ShellRoot {
         return null;
     }
 
+    function requireSectionHierarchy(page, sections, context) {
+        let previousY = -1;
+        for (let index = 0; index < sections.length; index += 1) {
+            const specification = sections[index];
+            const section = findObject(page, specification.name);
+            require(section !== null && section.text !== "" && section.width > 0
+                    && section.implicitHeight > 0, context + " exposes " + specification.name);
+            require(section.separated === specification.separated
+                    && section.topSeparation === (specification.separated ? Theme.spacing.lg : 0),
+                    context + " uses the shared subsection spacing contract");
+            const position = section.mapToItem(page.contentItem, 0, 0);
+            require(position.y > previousY, context + " keeps subsection headings in document order");
+            previousY = position.y;
+        }
+    }
+
     function routeNamesExact() {
-        return controlCenter.routeName("island") === "Island"
-                && controlCenter.routeName("appearance") === "Appearance"
-                && controlCenter.routeName("clock-date") === "Clock & Date"
-                && controlCenter.routeName("media") === "Media"
-                && controlCenter.routeName("weather") === "Weather"
-                && controlCenter.routeName("notifications") === "Notifications"
-                && controlCenter.routeName("wifi") === "Wi-Fi"
-                && controlCenter.routeName("bluetooth") === "Bluetooth"
-                && controlCenter.routeName("wallpaper") === "Wallpaper"
-                && controlCenter.routeName("displays") === "Displays"
-                && controlCenter.routeName("about") === "About";
+        return controlCenter.routeName("island") === "Island" && controlCenter.routeName(
+                    "appearance") === "Appearance" && controlCenter.routeName("clock-date")
+                === "Clock & Date" && controlCenter.routeName("media") === "Media"
+                && controlCenter.routeName("weather") === "Weather" && controlCenter.routeName(
+                    "notifications") === "Notifications" && controlCenter.routeName("wifi")
+                === "Wi-Fi" && controlCenter.routeName("bluetooth") === "Bluetooth"
+                && controlCenter.routeName("wallpaper") === "Wallpaper" && controlCenter.routeName(
+                    "displays") === "Displays" && controlCenter.routeName("about") === "About";
     }
 
     function createControls() {
         const parent = controlCenter.contentItem;
         const toggle = toggleFactory.createObject(parent, {
-                                                       "label": "Toggle test",
-                                                       "value": false,
-                                                       "visible": false
-                                                   });
+                                                      "label": "Toggle test",
+                                                      "value": false,
+                                                      "visible": false
+                                                  });
         const slider = sliderFactory.createObject(parent, {
-                                                       "label": "Slider test",
-                                                       "value": 0,
-                                                       "from": 0,
-                                                       "to": 10,
-                                                       "stepSize": 1,
-                                                       "visible": false
-                                                   });
+                                                      "label": "Slider test",
+                                                      "value": 0,
+                                                      "from": 0,
+                                                      "to": 10,
+                                                      "stepSize": 1,
+                                                      "visible": false
+                                                  });
         const choice = choiceFactory.createObject(parent, {
-                                                       "label": "Choice test",
-                                                       "value": "one",
-                                                       "choices": ["one", "two"],
-                                                       "visible": false
-                                                   });
+                                                      "label": "Choice test",
+                                                      "value": "one",
+                                                      "choices": ["one", "two"],
+                                                      "visible": false
+                                                  });
         const color = colorFactory.createObject(parent, {
-                                                     "label": "Color test",
-                                                     "value": "#080D16",
-                                                     "visible": false
-                                                 });
+                                                    "label": "Color test",
+                                                    "value": "#080D16",
+                                                    "visible": false
+                                                });
         const action = actionFactory.createObject(parent, {
-                                                       "label": "Action test",
-                                                       "actionLabel": "Run",
-                                                       "visible": false
-                                                   });
+                                                      "label": "Action test",
+                                                      "actionLabel": "Run",
+                                                      "visible": false
+                                                  });
         const reset = resetFactory.createObject(parent, {
-                                                     "pageId": "appearance",
-                                                     "visible": false
-                                                 });
-        require(toggle !== null && slider !== null && choice !== null && color !== null
-                && action !== null && reset !== null, "all reusable setting controls instantiate");
+                                                    "pageId": "appearance",
+                                                    "visible": false
+                                                });
+        require(toggle !== null && slider !== null && choice !== null && color !== null && action
+                !== null && reset !== null, "all reusable setting controls instantiate");
         toggle.valueRequested.connect(value => toggleRequests += value ? 1 : 100);
-        slider.valueRequested.connect((value, continuous) => sliderRequests += value === 5
-                                      && continuous ? 1 : 100);
+        slider.valueRequested.connect((value, continuous) => sliderRequests += value === 5 && continuous
+                                                             ? 1 : 100);
         choice.valueRequested.connect(value => choiceRequests += value === "two" ? 1 : 100);
         color.valueRequested.connect(value => colorRequests += value === "#AABBCC" ? 1 : 100);
         action.actionRequested.connect(() => actionRequests += 1);
-        reset.resetPageRequested.connect(page => pageResetRequests += page === "appearance" ? 1 : 100);
+        reset.resetPageRequested.connect(page => pageResetRequests += page === "appearance" ? 1 :
+                                                                                              100);
         reset.resetAllRequested.connect(() => resetAllRequests += 1);
         controls = [toggle, slider, choice, color, action, reset];
     }
@@ -128,9 +155,8 @@ ShellRoot {
                 "toggle row dispatches one bounded setting request");
         require(slider.requestAt(0.5, true) && sliderRequests === 1,
                 "slider row clamps and marks continuous requests");
-        require(choice.request("two") && !choice.request("one") && !choice.request("missing")
-                && choiceRequests === 1,
-                "choice row ignores the current value and accepts only another registered value");
+        require(choice.request("two") && !choice.request("one") && !choice.request("missing") && choiceRequests
+                === 1, "choice row ignores the current value and accepts only another registered value");
         require(!color.submit("/home/private") && color.submit("#aabbcc") && colorRequests === 1,
                 "color row validates before dispatch");
         require(action.requestAction() && actionRequests === 1,
@@ -138,12 +164,23 @@ ShellRoot {
         require(reset.requestPageReset() && pageResetRequests === 1,
                 "page reset carries the fixed page identifier");
         require(!reset.confirmResetAll() && reset.beginResetAll()
-                && reset.resetAllConfirmationVisible && reset.confirmResetAll()
-                && resetAllRequests === 1 && !reset.resetAllConfirmationVisible,
+                && reset.resetAllConfirmationVisible && reset.confirmResetAll() && resetAllRequests
+                === 1 && !reset.resetAllConfirmationVisible,
                 "reset all requires explicit confirmation");
+        const secondChoice = findObject(choice, "settingChoice-two");
+        require(secondChoice !== null && secondChoice.label === "two"
+                && secondChoice.contentItem.text === "two",
+                "choice controls render their visible labels");
         toggle.writable = false;
         require(!toggle.requestToggle() && toggleRequests === 1,
                 "disabled setting rows reject writes");
+        slider.writable = false;
+        choice.value = "two";
+        choice.writable = false;
+        require(!slider.requestAt(0.75, true) && sliderRequests === 1 && secondChoice.opacity
+                === Theme.opacity.disabled && secondChoice.contentItem.color
+                === Theme.color.textPrimary && Theme.opacity.disabled >= 0.6,
+                "disabled controls reject writes while their labels remain readable");
     }
 
     function initialStage() {
@@ -151,9 +188,8 @@ ShellRoot {
                 "closed singleton retains no loaded page");
         require(controlCenter.minimumSize.width === Theme.size.controlCenterMinimumWidth
                 && controlCenter.minimumSize.height === Theme.size.controlCenterMinimumHeight
-                && controlCenter.title === "Nagi Control Center"
-                && controlCenter.parentWindow === null,
-                "normal independent window exposes tested semantic minimum bounds");
+                && controlCenter.title === "Nagi Control Center" && controlCenter.parentWindow
+                === null, "normal independent window exposes tested semantic minimum bounds");
         require(routeNamesExact() && controlCenter.availableRoutes.length === 11
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
@@ -179,31 +215,132 @@ ShellRoot {
                 && controlCenter.loadedPageCount === 1 && controlCenter.loadedPageItem !== null
                 && controlCenter.screen === Quickshell.screens[0],
                 "fresh deep link places the complete Appearance page on the initiating screen");
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.appearanceCapturePath !== ""
-                    && result.saveToFile(test.appearanceCapturePath),
-                    "real Control Center Appearance capture is saved");
-            const originalScreen = controlCenter.screen;
-            require(controlCenter.open("island", tokenB) && controlCenter.screen === originalScreen
-                    && controlCenter.currentPageId === "island",
-                    "repeated activation deep-links to Island without moving the open singleton");
-            test.stage = "island";
-            settle.restart();
+        const appearancePage = controlCenter.loadedPageItem;
+        const familySelectors = [findObject(appearancePage, "appearanceIdleFontFamily"), findObject(
+                                     appearancePage, "appearanceExpandedFontFamily"), findObject(
+                                     appearancePage, "appearanceControlCenterFontFamily")];
+        const sizeSelectors = [findObject(appearancePage, "appearanceIdleBaseFontSize"), findObject(
+                                   appearancePage, "appearanceExpandedBaseFontSize"), findObject(
+                                   appearancePage, "appearanceControlCenterBaseFontSize")];
+        const validInstalledFamilies = Qt.fontFamilies().filter(family => UserConfig.boundedString(
+                                                                              family, UserConfig.maximumFontFamilyBytes,
+                                                                              false)).sort((first,
+                                                                                            second)
+                                                                                           => first.localeCompare(
+                                                                                                  second));
+        require(familySelectors.every(selector => selector !== null && selector.count
+                                                  === validInstalledFamilies.length
+                                                  && selector.count > 1) && sizeSelectors.every(
+                    selector => selector !== null),
+                "Appearance exposes three complete family and base-size selectors");
+        for (let selectorIndex = 0; selectorIndex < familySelectors.length; selectorIndex += 1) {
+            const selector = familySelectors[selectorIndex];
+            for (let index = 0; index < selector.count; index += 1) {
+                require(validInstalledFamilies.indexOf(selector.model[index]) >= 0,
+                        "each scoped selector contains only installed bounded families");
+            }
+        }
+        const originalFamilies = [UserConfig.snapshot.appearance.idleFontFamily,
+                                  UserConfig.snapshot.appearance.expandedFontFamily,
+                                  UserConfig.snapshot.appearance.controlCenterFontFamily];
+        const targetFamilies = familySelectors.map((selector, index) => selector.model.find(family
+                                                                                            => family
+                                                                                               !== originalFamilies[index]));
+        require(targetFamilies.every(family => family !== undefined),
+                "each typography scope has an alternate installed family");
+        const fontFocusRing = findObject(familySelectors[0], "islandFocusRing");
+        familySelectors[0].forceActiveFocus(Qt.TabFocusReason);
+        require(familySelectors[0].activeFocus && familySelectors[0].visualFocus && fontFocusRing
+                !== null && fontFocusRing.visible,
+                "the scoped font selector exposes its shared keyboard focus shape");
+        for (let index = 0; index < familySelectors.length; index += 1) {
+            familySelectors[index].activated(familySelectors[index].model.indexOf(
+                                                 targetFamilies[index]));
+        }
+        const targetSizes = [11, 16, 18];
+        for (let index = 0; index < sizeSelectors.length; index += 1) {
+            sizeSelectors[index].requestAt((targetSizes[index] - UserConfig.minimumBaseFontSize) / (
+                                               UserConfig.maximumBaseFontSize
+                                               - UserConfig.minimumBaseFontSize), false);
+        }
+        require(UserConfig.snapshot.appearance.idleFontFamily === targetFamilies[0]
+                && UserConfig.snapshot.appearance.expandedFontFamily === targetFamilies[1]
+                && UserConfig.snapshot.appearance.controlCenterFontFamily === targetFamilies[2]
+                && UserConfig.snapshot.appearance.idleBaseFontSize === targetSizes[0]
+                && UserConfig.snapshot.appearance.expandedBaseFontSize === targetSizes[1]
+                && UserConfig.snapshot.appearance.controlCenterBaseFontSize === targetSizes[2],
+                "the three typography selectors update only their scoped settings");
+        require(Theme.type.familyFor("idle") === targetFamilies[0] && Theme.type.familyFor(
+                    "expanded") === targetFamilies[1] && Theme.type.familyFor("controlCenter")
+                === targetFamilies[2] && Theme.type.sizeFor("idle", "body") === targetSizes[0]
+                && Theme.type.sizeFor("expanded", "body") === targetSizes[1] && Theme.type.sizeFor("controlCenter",
+                                                                                                   "body")
+                === targetSizes[2] && Theme.type.sizeFor("controlCenter", "caption") === Math.round(
+                    targetSizes[2] * 11 / 13) && Theme.type.sizeFor("controlCenter", "title")
+                === Math.round(targetSizes[2] * 15 / 13),
+                "Theme publishes independent scoped families and proportional semantic roles");
+        const appearanceTitle = findObject(appearancePage, "appearancePageTitle");
+        require(appearanceTitle !== null && appearanceTitle.typographyScope === "controlCenter"
+                && appearanceTitle.font.family === targetFamilies[2]
+                && appearanceTitle.font.pixelSize === Theme.type.sizeFor("controlCenter", "title"),
+                "loaded Control Center text resolves the Control Center typography scope");
+        requireSectionHierarchy(appearancePage, [{
+                                                     "name": "appearanceIdleFontFamilySection",
+                                                     "separated": false
+                                                 }, {
+                                                     "name": "appearanceExpandedFontFamilySection",
+                                                     "separated": true
+                                                 }, {
+                                                     "name": "appearanceControlCenterFontFamilySection",
+                                                     "separated": true
+                                                 }, {
+                                                     "name": "appearanceColorSection",
+                                                     "separated": true
+                                                 }, {
+                                                     "name": "appearanceSurfaceMotionSection",
+                                                     "separated": true
+                                                 }], "Appearance");
+        captureCurrent("sidebar-appearance", function () {
+            const controlCenterSelectorPosition = familySelectors[2].mapToItem(
+                      appearancePage.contentItem, 0, 0);
+            appearancePage.contentY = Math.max(0, Math.min(appearancePage.contentHeight
+                                                           - appearancePage.height,
+                                                           controlCenterSelectorPosition.y
+                                                           - Theme.spacing.xxl * 4));
+            Qt.callLater(function () {
+                captureCurrent("sidebar-appearance-control-center", function () {
+                    appearancePage.contentY = 0;
+                    const originalScreen = controlCenter.screen;
+                    require(controlCenter.open("island", tokenB) && controlCenter.screen
+                            === originalScreen && controlCenter.currentPageId === "island",
+                            "repeated activation deep-links to Island without moving the open singleton");
+                    test.stage = "island";
+                    settle.restart();
+                });
+            });
         });
     }
 
     function islandStage() {
         require(controlCenter.currentPageId === "island" && controlCenter.loadedPageItem !== null,
                 "complete Island page loads in the shared page viewport");
-        const gamingToggle = findObject(controlCenter.loadedPageItem,
-                                        "gamingPerformanceToggle");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [{
+                                                                  "name": "islandGeometrySection",
+                                                                  "separated": false
+                                                              }, {
+                                                                  "name": "islandFeedbackSection",
+                                                                  "separated": true
+                                                              }, {
+                                                                  "name": "islandCompactContentSection",
+                                                                  "separated": true
+                                                              }], "Island");
+        const gamingToggle = findObject(controlCenter.loadedPageItem, "gamingPerformanceToggle");
         require(gamingToggle !== null && gamingToggle.label === "Gaming performance indicator"
-                && gamingToggle.value === true
-                && gamingToggle.description.indexOf("passive system-status feedback") >= 0,
+                && gamingToggle.value === true && gamingToggle.description.indexOf(
+                    "passive system-status feedback") >= 0,
                 "Island Feedback exposes the enabled gaming indicator toggle");
-        require(gamingToggle.requestToggle()
-                && UserConfig.snapshot.island.gamingIndicator === false
-                && gamingToggle.requestToggle()
+        require(gamingToggle.requestToggle() && UserConfig.snapshot.island.gamingIndicator
+                === false && gamingToggle.requestToggle()
                 && UserConfig.snapshot.island.gamingIndicator === true,
                 "gaming indicator toggle updates and restores the persisted setting");
         controlCenter.capabilities = Object.assign({}, controlCenter.capabilities, {
@@ -212,34 +349,44 @@ ShellRoot {
         require(gamingToggle.description
                 === "No supported Gaming Performance backend is currently available.",
                 "backend absence marks the gaming setting unavailable");
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.islandCapturePath !== "" && result.saveToFile(test.islandCapturePath),
-                    "real Control Center Island capture is saved");
-            require(controlCenter.open("clock-date", tokenB)
-                    && controlCenter.currentPageId === "clock-date",
-                    "Clock & Date joins the shared responsive page viewport");
+        captureCurrent("sidebar-island", function () {
+            require(controlCenter.open("clock-date", tokenB) && controlCenter.currentPageId
+                    === "clock-date", "Clock & Date joins the shared responsive page viewport");
             test.stage = "clock";
             settle.restart();
         });
     }
     function clockStage() {
         require(controlCenter.loadedPageItem !== null && fakeClock.text !== ""
-                && fakeClock.dateText !== "",
-                "Clock & Date uses the shared clock preview");
-        require(controlCenter.open("media", tokenB) && controlCenter.currentPageId === "media",
-                "Media joins the shared responsive page viewport");
-        stage = "media";
-        settle.restart();
+                && fakeClock.dateText !== "", "Clock & Date uses the shared clock preview");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [{
+                                                                  "name": "clockPresentationSection",
+                                                                  "separated": true
+                                                              }], "Clock & Date");
+        captureCurrent("sidebar-clock-date", function () {
+            require(controlCenter.open("media", tokenB) && controlCenter.currentPageId === "media",
+                    "Media joins the shared responsive page viewport");
+            test.stage = "media";
+            settle.restart();
+        });
     }
 
     function mediaStage() {
-        require(controlCenter.loadedPageItem !== null && fakeMedia.availableApplications.length === 1,
-                "Media receives the normalized shared application policy source");
-        require(controlCenter.open("weather", tokenB)
-                && controlCenter.currentPageId === "weather",
-                "Weather joins the shared responsive page viewport");
-        stage = "weather";
-        settle.restart();
+        require(controlCenter.loadedPageItem !== null && fakeMedia.availableApplications.length
+                === 1, "Media receives the normalized shared application policy source");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [{
+                                                                  "name": "mediaVisibilitySection",
+                                                                  "separated": false
+                                                              }, {
+                                                                  "name": "mediaPlayerSelectionSection",
+                                                                  "separated": true
+                                                              }], "Media");
+        captureCurrent("sidebar-media", function () {
+            require(controlCenter.open("weather", tokenB) && controlCenter.currentPageId
+                    === "weather", "Weather joins the shared responsive page viewport");
+            test.stage = "weather";
+            settle.restart();
+        });
     }
 
     function weatherStage() {
@@ -249,17 +396,24 @@ ShellRoot {
         page.privacyAccepted = true;
         require(controlCenter.weatherLookupAllowed && fakeLocationSearch.search("Paris"),
                 "privacy acceptance gates explicit location search");
-        require(page.confirm(fakeLocationSearch.results[0])
-                && UserConfig.snapshot.weather.enabled
+        require(page.confirm(fakeLocationSearch.results[0]) && UserConfig.snapshot.weather.enabled
                 && UserConfig.snapshot.weather.locationLabel === "Paris, France",
                 "confirmed normalized location atomically enables Weather");
         require(fakeLocationSearch.results.length === 0,
                 "confirmation clears page-owned lookup models and query state");
-        require(controlCenter.open("notifications", tokenB)
-                && controlCenter.currentPageId === "notifications",
-                "Notifications joins the shared responsive page viewport");
-        stage = "notifications";
-        settle.restart();
+        requireSectionHierarchy(page, [{
+                                           "name": "weatherLocationSection",
+                                           "separated": true
+                                       }, {
+                                           "name": "weatherForecastPreferencesSection",
+                                           "separated": true
+                                       }], "Weather");
+        captureCurrent("sidebar-weather", function () {
+            require(controlCenter.open("notifications", tokenB) && controlCenter.currentPageId
+                    === "notifications", "Notifications joins the shared responsive page viewport");
+            test.stage = "notifications";
+            settle.restart();
+        });
     }
 
     function notificationsStage() {
@@ -268,11 +422,25 @@ ShellRoot {
         fakeNotifications.clearHistory();
         require(fakeNotifications.historyCount === 0,
                 "Clear history stays inside the existing service boundary");
-        require(controlCenter.open("wifi", tokenB)
-                && controlCenter.currentPageId === "wifi",
-                "Wi-Fi joins the shared responsive page viewport");
-        stage = "wifi";
-        settle.restart();
+        requireSectionHierarchy(controlCenter.loadedPageItem, [{
+                                                                  "name": "notificationsPopupPolicySection",
+                                                                  "separated": false
+                                                              }, {
+                                                                  "name": "notificationsFeedbackSection",
+                                                                  "separated": true
+                                                              }, {
+                                                                  "name": "notificationsIslandContentSection",
+                                                                  "separated": true
+                                                              }, {
+                                                                  "name": "notificationsHistorySection",
+                                                                  "separated": true
+                                                              }], "Notifications");
+        captureCurrent("sidebar-notifications", function () {
+            require(controlCenter.open("wifi", tokenB) && controlCenter.currentPageId === "wifi",
+                    "Wi-Fi joins the shared responsive page viewport");
+            test.stage = "wifi";
+            settle.restart();
+        });
     }
 
     function wifiStage() {
@@ -287,9 +455,9 @@ ShellRoot {
                 "protected input starts hidden and is excluded from normal text projection");
         passwordInput.text = "fixture-password";
         page.rememberConnection = true;
-        require(page.submitVisibleNetwork() && passwordInput.text === ""
-                && fakeWifi.lastOperation === "connect" && fakeWifi.lastToken === 3
-                && fakeWifi.lastSecretLength === 16 && fakeWifi.lastRemember,
+        require(page.submitVisibleNetwork() && passwordInput.text === "" && fakeWifi.lastOperation
+                === "connect" && fakeWifi.lastToken === 3 && fakeWifi.lastSecretLength === 16
+                && fakeWifi.lastRemember,
                 "visible password submits once, delegates Remember, and clears immediately");
 
         page.clearPrivateState();
@@ -299,20 +467,16 @@ ShellRoot {
         hiddenSsid.text = "Hidden Fixture";
         hiddenPassword.text = "hidden-password";
         require(page.submitHiddenNetwork() && hiddenSsid.text === "" && hiddenPassword.text === ""
-                && fakeWifi.lastOperation === "hidden-connect"
-                && fakeWifi.lastSecretLength === 15,
+                && fakeWifi.lastOperation === "hidden-connect" && fakeWifi.lastSecretLength === 15,
                 "hidden WPA Personal submits bounded arguments and clears SSID and secret");
 
         require(page.requestForget(fakeWifi.wifiNetworks[0]) && page.confirmForget()
                 && fakeWifi.lastOperation === "forget" && fakeWifi.lastToken === 1,
                 "forget requires confirmation and dispatches only a proven personal token");
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.wifiCapturePath !== "" && result.saveToFile(test.wifiCapturePath),
-                    "real Control Center Wi-Fi capture is saved");
-            require(controlCenter.open("bluetooth", tokenB)
-                    && controlCenter.currentPageId === "bluetooth",
-                    "Bluetooth joins the shared responsive page viewport");
-            stage = "bluetooth";
+        captureCurrent("sidebar-wifi", function () {
+            require(controlCenter.open("bluetooth", tokenB) && controlCenter.currentPageId
+                    === "bluetooth", "Bluetooth joins the shared responsive page viewport");
+            test.stage = "bluetooth";
             settle.restart();
         });
     }
@@ -324,8 +488,7 @@ ShellRoot {
                 "Bluetooth shares the connectivity owner and suspends Wi-Fi page interest");
         require(fakeWifi.scanBluetooth() && fakeWifi.bluetoothDiscovering,
                 "Scan starts only from an explicit manager action");
-        require(fakeWifi.pairBluetooth(13)
-                && fakeWifi.bluetoothOperation === "pairing"
+        require(fakeWifi.pairBluetooth(13) && fakeWifi.bluetoothOperation === "pairing"
                 && fakeWifi.bluetoothPairingPrompt === "enter-pin",
                 "pairing replaces discovery and opens the owning prompt");
         const pairingPanel = findObject(page, "bluetoothPairingPanel");
@@ -333,34 +496,29 @@ ShellRoot {
         require(pairingPanel !== null && pairingInput !== null,
                 "Bluetooth pairing controls are mounted only for the owning flow");
         pairingPanel.focusInput();
-        require(pairingInput.echoMode === TextInput.NoEcho && pairingInput.activeFocus
-                && !pairingInput.parent.parent.clipboardEnabled,
+        require(pairingInput.echoMode === TextInput.NoEcho && pairingInput.activeFocus &&
+                !pairingInput.parent.parent.clipboardEnabled,
                 "Bluetooth PIN starts hidden, receives focus, and blocks clipboard export");
         pairingInput.text = "1234";
-        require(pairingPanel.submitInput() && pairingInput.text === ""
-                && fakeWifi.lastSecretLength === 4
-                && fakeWifi.bluetoothOperationResult === "paired-connected",
+        require(pairingPanel.submitInput() && pairingInput.text === "" && fakeWifi.lastSecretLength
+                === 4 && fakeWifi.bluetoothOperationResult === "paired-connected",
                 "PIN submits once as an argument, clears immediately, and completes pairing");
         require(page.requestUnpair(12, "Fixture Keyboard") && page.confirmUnpair()
                 && fakeWifi.lastOperation === "bluetooth-unpair" && fakeWifi.lastToken === 12,
                 "unpair requires an explicit confirmation and selected opaque token");
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.bluetoothCapturePath !== ""
-                    && result.saveToFile(test.bluetoothCapturePath),
-                    "real Control Center Bluetooth capture is saved");
-            require(controlCenter.open("wallpaper", tokenB)
-                    && controlCenter.currentPageId === "wallpaper",
-                    "Wallpaper joins the shared responsive page viewport");
-            stage = "wallpaper";
+        captureCurrent("sidebar-bluetooth", function () {
+            require(controlCenter.open("wallpaper", tokenB) && controlCenter.currentPageId
+                    === "wallpaper", "Wallpaper joins the shared responsive page viewport");
+            test.stage = "wallpaper";
             settle.restart();
         });
     }
 
     function wallpaperStage() {
         const page = controlCenter.loadedPageItem;
-        require(page !== null && fakeWallpaper.pageOpen
-                && page.currentDirectory().breadcrumb === "Wallpapers"
-                && page.childDirectories().length === 1 && page.filteredImages().length === 1,
+        require(page !== null && fakeWallpaper.pageOpen && page.currentDirectory().breadcrumb
+                === "Wallpapers" && page.childDirectories().length === 1 && page.filteredImages(
+                    ).length === 1,
                 "Wallpaper opens lazy interest with bounded breadcrumb navigation and filtering");
         const filter = findObject(page, "wallpaperFilterInput");
         require(filter !== null, "Wallpaper exposes a keyboard-focusable image filter");
@@ -374,8 +532,8 @@ ShellRoot {
                 && page.filteredImages().length === 1,
                 "directory navigation updates breadcrumb and local image scope");
         page.currentDirectoryId = fakeWallpaper.directories[0].id;
-        require(page.selectImage(fakeWallpaper.images[0])
-                && fakeWallpaper.preview !== null && fakeWallpaper.preview.status === "ready",
+        require(page.selectImage(fakeWallpaper.images[0]) && fakeWallpaper.preview !== null
+                && fakeWallpaper.preview.status === "ready",
                 "wallpaper selection previews one opaque library image");
         const applyButton = findObject(page, "wallpaperApplyButton");
         require(applyButton !== null && applyButton.enabled,
@@ -384,14 +542,10 @@ ShellRoot {
                 "unsupported current plugins require a warned Apply");
         require(page.requestApply() && fakeWallpaper.applySuccess,
                 "confirmed Apply targets every active display through the shared service");
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.wallpaperCapturePath !== ""
-                    && result.saveToFile(test.wallpaperCapturePath),
-                    "real Control Center Wallpaper capture is saved");
-            require(controlCenter.open("displays", tokenB)
-                    && controlCenter.currentPageId === "displays",
-                    "leaving Wallpaper loads Displays through the same singleton");
-            stage = "displays-after-wallpaper";
+        captureCurrent("sidebar-wallpaper", function () {
+            require(controlCenter.open("displays", tokenB) && controlCenter.currentPageId
+                    === "displays", "leaving Wallpaper loads Displays through the same singleton");
+            test.stage = "displays-after-wallpaper";
             settle.restart();
         });
     }
@@ -399,11 +553,41 @@ ShellRoot {
     function displaysAfterWallpaperStage() {
         require(!fakeWifi.bluetoothManagerOpen && !fakeWallpaper.pageOpen,
                 "leaving managed pages stops Bluetooth and wallpaper page interest");
-        controlCenter.closeWindow();
-        stage = "closed";
-        settle.restart();
+        const displaysPage = controlCenter.loadedPageItem;
+        require(displaysPage !== null && displaysPage.contentHeight < displaysPage.height,
+                "tall tiled windows keep display rows packed at the top");
+        requireSectionHierarchy(displaysPage, [{
+                                                  "name": "displaysActiveSection",
+                                                  "separated": false
+                                              }, {
+                                                  "name": "displaysRememberedSection",
+                                                  "separated": true
+                                              }], "Displays");
+        captureCurrent("sidebar-displays", function () {
+            test.requestedTallHeight = Math.min(1200, controlCenter.maximumSize.height);
+            test.requestedTiledWidth = Math.min(1200, controlCenter.maximumSize.width);
+            controlCenter.backingWindow.width = test.requestedTiledWidth;
+            controlCenter.backingWindow.height = test.requestedTallHeight;
+            test.stage = "displays-tall";
+            settle.restart();
+        });
     }
 
+    function displaysTallStage() {
+        const displaysPage = controlCenter.loadedPageItem;
+        require(Math.abs(controlCenter.backingWindow.width - test.requestedTiledWidth) < 1 && Math.abs(
+                    controlCenter.backingWindow.height - test.requestedTallHeight) < 1,
+                "the harness exercises compositor-sized Control Center geometry");
+        require(displaysPage !== null && displaysPage.contentHeight < displaysPage.height,
+                "tiled height adds empty space below one intrinsic top-aligned display list");
+        captureCurrent("sidebar-displays-tall", function () {
+            controlCenter.closeWindow();
+            controlCenter.backingWindow.height = Theme.size.controlCenterPreferredHeight;
+            controlCenter.backingWindow.width = Theme.size.controlCenterPreferredWidth;
+            test.stage = "closed";
+            settle.restart();
+        });
+    }
 
     function closedStage() {
         require(!controlCenter.visible && controlCenter.loadedPageCount === 0
@@ -415,8 +599,8 @@ ShellRoot {
     }
 
     function reopenedStage() {
-        require(controlCenter.currentPageId === "displays"
-                && controlCenter.activeTargetScreen === Quickshell.screens[1],
+        require(controlCenter.currentPageId === "displays" && controlCenter.activeTargetScreen
+                === Quickshell.screens[1],
                 "reopen restores the valid page and routes the fresh open to its new initiator");
         const displaysPage = controlCenter.pageLoaded ? controlCenter.contentItem : null;
         require(displaysPage !== null, "delivered Displays page loads inside the singleton");
@@ -428,25 +612,21 @@ ShellRoot {
     }
 
     function aboutStage() {
-        require(controlCenter.pageLoaded,
-                "About page remains available with unavailable services");
+        require(controlCenter.pageLoaded, "About page remains available with unavailable services");
         const diagnostic = controlCenter.diagnosticText;
-        require(diagnostic.indexOf("Nagi Shell 0.1.0") === 0
-                && diagnostic.indexOf("Settings schema: 2") !== -1
-                && diagnostic.indexOf("Wi-Fi: unavailable") !== -1,
+        require(diagnostic.indexOf("Nagi Shell 0.1.0") === 0 && diagnostic.indexOf(
+                    "Settings schema: 3") !== -1 && diagnostic.indexOf("Wi-Fi: unavailable") !== -1,
                 "About diagnostic exposes exact allowlisted component states");
         const forbidden = ["SensitiveSSID", "/home/test", "secret-value", "12345", "executable"];
         for (let index = 0; index < forbidden.length; index += 1) {
             require(diagnostic.indexOf(forbidden[index]) === -1,
                     "diagnostic excludes forbidden identity and content data");
         }
-        controlCenter.contentItem.children[0].grabToImage(function (result) {
-            require(test.capturePath !== "" && result.saveToFile(test.capturePath),
-                    "real Control Center About capture is saved");
+        captureCurrent("sidebar-about", function () {
             controlCenter.closeWindow();
             controlCenter.implicitWidth = Theme.size.controlCenterMinimumWidth;
             controlCenter.open("about", tokenA);
-            stage = "compact";
+            test.stage = "compact";
             settle.restart();
         });
     }
@@ -457,16 +637,74 @@ ShellRoot {
         controlCenter.compactNavigationVisible = true;
         require(controlCenter.loadedPageCount === 0,
                 "compact navigation replaces and unloads page content");
-        controlCenter.closeWindow();
-        controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
-        controlCenter.open("about", tokenA);
-        stage = "wide";
-        settle.restart();
+        captureCurrent("compact-navigation", function () {
+            controlCenter.closeWindow();
+            controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
+            controlCenter.open("about", tokenA);
+            test.stage = "wide";
+            settle.restart();
+        });
     }
 
     function wideStage() {
         require(controlCenter.layoutMode === "sidebar" && controlCenter.loadedPageCount === 1,
                 "above the breakpoint uses persistent sidebar plus content");
+        captureCurrent("sidebar-responsive", function () {
+            require(UserConfig.snapshot.weather.enabled && controlCenter.currentPageId === "about",
+                    "recovery starts from non-default settings on an unrelated page");
+            test.stage = "settings-invalid";
+            settingsFixtureWriter.setText("[broken\npartial=true\n");
+        });
+    }
+
+    function settingsInvalidStage() {
+        if (!UserConfig.recoveryRequired) {
+            settle.restart();
+            return;
+        }
+        const statusPanel = findObject(controlCenter.contentItem, "controlCenterSettingsStatus");
+        const resetButton = findObject(controlCenter.contentItem, "controlCenterResetDefaults");
+        const cancelButton = findObject(controlCenter.contentItem,
+                                        "controlCenterCancelResetDefaults");
+        const confirmButton = findObject(controlCenter.contentItem,
+                                         "controlCenterConfirmResetDefaults");
+        require(UserConfig.recoveryKind === "invalid" && controlCenter.settingsUnavailable
+                && controlCenter.canResetInvalidSettings && statusPanel !== null
+                && statusPanel.visible && resetButton !== null && resetButton.visible
+                && resetButton.label === "Reset to defaults" && cancelButton !== null
+                && confirmButton !== null,
+                "invalid settings expose one contextual default recovery action");
+        captureCurrent("sidebar-settings-recovery", function () {
+            resetButton.clicked();
+            require(UserConfig.recoveryRequired
+                    && controlCenter.settingsRecoveryConfirmationVisible && !resetButton.visible
+                    && cancelButton.visible && confirmButton.visible,
+                    "default recovery requires explicit confirmation before writing");
+            cancelButton.clicked();
+            require(UserConfig.recoveryRequired &&
+                    !controlCenter.settingsRecoveryConfirmationVisible && resetButton.visible,
+                    "recovery confirmation can be cancelled without changing settings");
+            resetButton.clicked();
+            captureCurrent("sidebar-settings-recovery-confirmation", function () {
+                confirmButton.clicked();
+                test.stage = "settings-recovered";
+                settle.restart();
+            });
+        });
+    }
+
+    function settingsRecoveredStage() {
+        if (UserConfig.status !== "ready") {
+            settle.restart();
+            return;
+        }
+        const defaults = UserConfig.defaultSnapshot(0);
+        const statusPanel = findObject(controlCenter.contentItem, "controlCenterSettingsStatus");
+        require(UserConfig.snapshotKey(UserConfig.snapshot) === UserConfig.snapshotKey(defaults) &&
+                !controlCenter.settingsUnavailable &&
+                !controlCenter.settingsRecoveryConfirmationVisible && statusPanel !== null &&
+                !statusPanel.visible,
+                "confirmed recovery atomically publishes defaults and clears the error state");
         controlCenter.screen = null;
         controlCenter.rehomeAfterDisplayLoss();
         require(controlCenter.screen === Quickshell.screens[0],
@@ -478,8 +716,8 @@ ShellRoot {
     }
 
     function fallbackStage() {
-        require(controlCenter.currentPageId === "displays"
-                && controlCenter.screen === Quickshell.screens[0],
+        require(controlCenter.currentPageId === "displays" && controlCenter.screen
+                === Quickshell.screens[0],
                 "missing routes fall back deterministically through pointer routing");
         controlCenter.closeWindow();
         for (let index = 0; index < controls.length; index += 1) {
@@ -524,6 +762,9 @@ ShellRoot {
         case "displays-after-wallpaper":
             displaysAfterWallpaperStage();
             break;
+        case "displays-tall":
+            displaysTallStage();
+            break;
         case "closed":
             closedStage();
             break;
@@ -539,6 +780,12 @@ ShellRoot {
         case "wide":
             wideStage();
             break;
+        case "settings-invalid":
+            settingsInvalidStage();
+            break;
+        case "settings-recovered":
+            settingsRecoveredStage();
+            break;
         case "fallback":
             fallbackStage();
             break;
@@ -546,8 +793,6 @@ ShellRoot {
             fail("unexpected stage");
         }
     }
-
-
 
     QtObject {
         id: fakeHost
@@ -616,7 +861,12 @@ ShellRoot {
 
     QtObject {
         id: fakeMedia
-        property var availableApplications: [{"label": "Fixture Player", "value": "fixture"}]
+        property var availableApplications: [
+            {
+                "label": "Fixture Player",
+                "value": "fixture"
+            }
+        ]
     }
 
     QtObject {
@@ -636,11 +886,13 @@ ShellRoot {
         function search(query) {
             if (query !== "Paris")
                 return false;
-            results = [{
-                           "label": "Paris, France",
-                           "latitude": 48.8534,
-                           "longitude": 2.3488
-                       }];
+            results = [
+                        {
+                            "label": "Paris, France",
+                            "latitude": 48.8534,
+                            "longitude": 2.3488
+                        }
+                    ];
             return true;
         }
         function clear() {
@@ -662,7 +914,8 @@ ShellRoot {
         property bool lastRemember: false
         property string lastOperation: ""
         property string wifiCurrentNetwork: "Fixture"
-        property var wifiNetworks: [{
+        property var wifiNetworks: [
+            {
                 "token": 1,
                 "ssid": "Fixture",
                 "security": "wpa-personal",
@@ -672,7 +925,8 @@ ShellRoot {
                 "forgettable": true,
                 "connectable": true,
                 "forgetReason": "none"
-            }, {
+            },
+            {
                 "token": 2,
                 "ssid": "Cafe",
                 "security": "open",
@@ -682,7 +936,8 @@ ShellRoot {
                 "forgettable": false,
                 "connectable": true,
                 "forgetReason": "none"
-            }, {
+            },
+            {
                 "token": 3,
                 "ssid": "Protected",
                 "security": "wpa-personal",
@@ -692,7 +947,8 @@ ShellRoot {
                 "forgettable": false,
                 "connectable": true,
                 "forgetReason": "none"
-            }]
+            }
+        ]
         property string wifiOperation: "idle"
         property int wifiOperationGeneration: 0
         property string wifiOperationFailure: "none"
@@ -704,7 +960,8 @@ ShellRoot {
         property bool bluetoothDiscovering: false
         property bool bluetoothManagerOpen: false
         property int bluetoothControllerCount: 2
-        property var bluetoothDevices: [{
+        property var bluetoothDevices: [
+            {
                 "token": 11,
                 "name": "Fixture Headphones",
                 "type": "audio",
@@ -716,7 +973,8 @@ ShellRoot {
                 "connectable": false,
                 "disconnectable": true,
                 "unpairable": true
-            }, {
+            },
+            {
                 "token": 12,
                 "name": "Fixture Keyboard",
                 "type": "input",
@@ -728,7 +986,8 @@ ShellRoot {
                 "connectable": true,
                 "disconnectable": false,
                 "unpairable": true
-            }, {
+            },
+            {
                 "token": 13,
                 "name": "Fixture Phone",
                 "type": "phone",
@@ -740,7 +999,8 @@ ShellRoot {
                 "connectable": false,
                 "disconnectable": false,
                 "unpairable": false
-            }]
+            }
+        ]
         property string bluetoothOperation: "idle"
         property int bluetoothOperationGeneration: 0
         property string bluetoothOperationFailure: "none"
@@ -750,9 +1010,17 @@ ShellRoot {
         property int bluetoothPairingEntered: 0
         property int bluetoothPairingToken: 0
 
-        function setWifiManagerOpen(open) { wifiManagerOpen = open; return true; }
-        function requestWifiEnabled(enabled) { return false; }
-        function refreshWifi() { lastOperation = "scan"; return true; }
+        function setWifiManagerOpen(open) {
+            wifiManagerOpen = open;
+            return true;
+        }
+        function requestWifiEnabled(enabled) {
+            return false;
+        }
+        function refreshWifi() {
+            lastOperation = "scan";
+            return true;
+        }
         function connectWifi(token, secret, remember) {
             lastOperation = "connect";
             lastToken = token;
@@ -767,8 +1035,15 @@ ShellRoot {
             lastRemember = remember;
             return true;
         }
-        function disconnectWifi() { lastOperation = "disconnect"; return true; }
-        function forgetWifi(token) { lastOperation = "forget"; lastToken = token; return true; }
+        function disconnectWifi() {
+            lastOperation = "disconnect";
+            return true;
+        }
+        function forgetWifi(token) {
+            lastOperation = "forget";
+            lastToken = token;
+            return true;
+        }
 
         function setBluetoothManagerOpen(open) {
             bluetoothManagerOpen = open;
@@ -848,34 +1123,41 @@ ShellRoot {
         property bool available: false
         property bool multiple: true
         property bool unsupported: true
-        property var screens: [{
+        property var screens: [
+            {
                 "label": "Display 1",
                 "status": "Ready",
                 "supported": true
-            }, {
+            },
+            {
                 "label": "Display 2",
                 "status": "UnsupportedPlugin",
                 "supported": false
-            }]
+            }
+        ]
         property int libraryGeneration: 1
         property string libraryStatus: "ready"
         property bool libraryScanning: false
         property bool libraryTruncated: false
         property int libraryVisited: 3
-        property var directories: [{
+        property var directories: [
+            {
                 "id": "d000000000000000000000000",
                 "parentId": "",
                 "rootId": "d000000000000000000000000",
                 "name": "Wallpapers",
                 "breadcrumb": "Wallpapers"
-            }, {
+            },
+            {
                 "id": "d111111111111111111111111",
                 "parentId": "d000000000000000000000000",
                 "rootId": "d000000000000000000000000",
                 "name": "Landscapes",
                 "breadcrumb": "Wallpapers / Landscapes"
-            }]
-        property var images: [{
+            }
+        ]
+        property var images: [
+            {
                 "id": "i000000000000000000000000",
                 "directoryId": "d000000000000000000000000",
                 "name": "calm-water.png",
@@ -883,7 +1165,8 @@ ShellRoot {
                 "modifiedMs": 1,
                 "width": 1920,
                 "height": 1080
-            }, {
+            },
+            {
                 "id": "i111111111111111111111111",
                 "directoryId": "d111111111111111111111111",
                 "name": "mountains.png",
@@ -891,7 +1174,8 @@ ShellRoot {
                 "modifiedMs": 2,
                 "width": 2560,
                 "height": 1440
-            }]
+            }
+        ]
         property int thumbnailRevision: 1
         property var preview: null
         property int previewGeneration: 0
@@ -935,13 +1219,16 @@ ShellRoot {
         function applyPreview() {
             applySuccess = true;
             applyPartial = false;
-            applyResults = [{
-                "label": "Display 1",
-                "status": "success"
-            }, {
-                "label": "Display 2",
-                "status": "success"
-            }];
+            applyResults = [
+                        {
+                            "label": "Display 1",
+                            "status": "success"
+                        },
+                        {
+                            "label": "Display 2",
+                            "status": "success"
+                        }
+                    ];
             applyStatus = "success";
             return true;
         }
@@ -1012,6 +1299,17 @@ ShellRoot {
     Component {
         id: resetFactory
         SettingsResetActions {}
+    }
+
+    FileView {
+        id: settingsFixtureWriter
+
+        path: UserConfig.configPath
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+        onSaved: settle.restart()
+        onSaveFailed: test.fail("invalid settings fixture write failed")
     }
 
     Timer {

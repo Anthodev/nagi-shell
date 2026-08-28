@@ -9,9 +9,12 @@ import QtQuick
 Singleton {
     id: root
 
-    readonly property int schemaVersion: 2
+    readonly property int schemaVersion: 3
+    readonly property int previousSchemaVersion: 2
     readonly property int maximumConfigBytes: 32768
     readonly property int maximumFontFamilyBytes: 128
+    readonly property int minimumBaseFontSize: 11
+    readonly property int maximumBaseFontSize: 18
     readonly property int maximumDateFormatBytes: 64
     readonly property int maximumPreferredApplicationBytes: 256
     readonly property var allowedDateFormats: Object.freeze(["dddd, d MMMM", "ddd, d MMM",
@@ -34,6 +37,7 @@ Singleton {
     readonly property string lastGoodPath: configDirectoryPath + "/settings.conf.last-good"
     readonly property string legacyPath: configDirectoryPath + "/theme.conf"
     readonly property string migrationBackupPath: configDirectoryPath + "/settings.conf.bak"
+    readonly property string version2BackupPath: configDirectoryPath + "/settings.conf.v2.bak"
     readonly property string invalidBackupPath: configDirectoryPath + "/settings.conf.invalid"
     readonly property string helperPath: Quickshell.env("NAGI_SETTINGS_HELPER")
                                          ?? Quickshell.shellPath("build/nagi-settings")
@@ -42,9 +46,9 @@ Singleton {
                                                        "NAGI_SKIP_DEFAULT_CONFIG_CREATION") !== "1"
 
     readonly property var snapshot: root._snapshot
-    readonly property bool writable: root._writerReady && !root.readOnly && (root.status === "ready"
-                                                                             || root.status
-                                                                             === "write-failed")
+    readonly property bool writable: (!root.defaultCreationEnabled || root._writerReady) &&
+                                     !root.readOnly && (root.status === "ready" || root.status
+                                                        === "write-failed")
     readonly property bool recoveryRequired: root.status === "recovery"
     property string status: "loading"
     property string recoveryKind: ""
@@ -85,7 +89,12 @@ Singleton {
                                       "borderIntensity": 0,
                                       "blurEnabled": false,
                                       "motion": "full",
-                                      "fontFamily": "Inter",
+                                      "idleFontFamily": "Inter",
+                                      "idleBaseFontSize": 13,
+                                      "expandedFontFamily": "Inter",
+                                      "expandedBaseFontSize": 13,
+                                      "controlCenterFontFamily": "Inter",
+                                      "controlCenterBaseFontSize": 13,
                                       "outerRadius": 16
                                   },
                                   "island": {
@@ -286,7 +295,17 @@ Singleton {
                     appearance.borderIntensity) || appearance.borderIntensity < 0
                 || appearance.borderIntensity > 1 || typeof appearance.blurEnabled !== "boolean" ||
                 !oneOf(appearance.motion, ["full", "reduced", "minimal"]) || !boundedString(
-                    appearance.fontFamily, maximumFontFamilyBytes, false) || !Number.isInteger(
+                    appearance.idleFontFamily, maximumFontFamilyBytes, false) || !Number.isInteger(
+                    appearance.idleBaseFontSize) || appearance.idleBaseFontSize
+                < minimumBaseFontSize || appearance.idleBaseFontSize > maximumBaseFontSize ||
+                !boundedString(appearance.expandedFontFamily, maximumFontFamilyBytes, false) ||
+                !Number.isInteger(appearance.expandedBaseFontSize)
+                || appearance.expandedBaseFontSize < minimumBaseFontSize
+                || appearance.expandedBaseFontSize > maximumBaseFontSize || !boundedString(
+                    appearance.controlCenterFontFamily, maximumFontFamilyBytes, false) ||
+                !Number.isInteger(appearance.controlCenterBaseFontSize)
+                || appearance.controlCenterBaseFontSize < minimumBaseFontSize
+                || appearance.controlCenterBaseFontSize > maximumBaseFontSize || !Number.isInteger(
                     appearance.outerRadius) || appearance.outerRadius < minimumOuterRadius
                 || appearance.outerRadius > maximumOuterRadius) {
             return null;
@@ -368,23 +387,6 @@ Singleton {
                 > maximumConfigBytes || content.indexOf("\0") !== -1) {
             return null;
         }
-        const allowed = {
-            "settings": ["schema_version"],
-            "appearance": ["scheme", "accent_mode", "custom_surface", "custom_text", "custom_accent",
-                "surface_opacity", "border_intensity", "blur_enabled", "motion", "font_family",
-                "outer_radius"],
-            "island": ["compact_height", "compact_padding", "expanded_width_percent",
-                "expanded_height_percent", "show_workspace", "show_weather", "show_media",
-                "feedback_duration", "gaming_indicator"],
-            "clock": ["format", "show_seconds", "date_format", "show_idle_date"],
-            "media": ["enabled", "compact_visible", "dashboard_visible", "player_policy",
-                "preferred_application"],
-            "notifications": ["popups_enabled", "do_not_disturb", "critical_mode",
-                "dashboard_visible", "history_visible"],
-            "weather": ["enabled", "consent", "location_label", "latitude", "longitude",
-                "temperature_unit", "wind_unit", "refresh_preset"],
-            "wallpaper": ["roots"]
-        };
         const sections = {};
         let currentSection = "";
         const lines = content.split(/\r?\n/);
@@ -427,9 +429,43 @@ Singleton {
                                      "futureVersion": version
                                  });
         }
-        if (version !== schemaVersion) {
+        if (version !== schemaVersion && version !== previousSchemaVersion) {
             return null;
         }
+        const allowed = {
+            "settings": ["schema_version"],
+            "appearance": version === previousSchemaVersion ? ["scheme", "accent_mode",
+                                                               "custom_surface", "custom_text",
+                                                               "custom_accent", "surface_opacity",
+                                                               "border_intensity", "blur_enabled",
+                                                               "motion", "font_family",
+                                                               "outer_radius"] : ["scheme",
+                                                                                  "accent_mode",
+                                                                                  "custom_surface",
+                                                                                  "custom_text",
+                                                                                  "custom_accent",
+                                                                                  "surface_opacity",
+                                                                                  "border_intensity",
+                                                                                  "blur_enabled",
+                                                                                  "motion", "idle_font_family",
+                                                                                  "idle_base_font_size",
+                                                                                  "expanded_font_family",
+                                                                                  "expanded_base_font_size",
+                                                                                  "control_center_font_family",
+                                                                                  "control_center_base_font_size",
+                                                                                  "outer_radius"],
+            "island": ["compact_height", "compact_padding", "expanded_width_percent",
+                "expanded_height_percent", "show_workspace", "show_weather", "show_media",
+                "feedback_duration", "gaming_indicator"],
+            "clock": ["format", "show_seconds", "date_format", "show_idle_date"],
+            "media": ["enabled", "compact_visible", "dashboard_visible", "player_policy",
+                "preferred_application"],
+            "notifications": ["popups_enabled", "do_not_disturb", "critical_mode",
+                "dashboard_visible", "history_visible"],
+            "weather": ["enabled", "consent", "location_label", "latitude", "longitude",
+                "temperature_unit", "wind_unit", "refresh_preset"],
+            "wallpaper": ["roots"]
+        };
         const sectionNames = Object.keys(sections);
         for (let index = 0; index < sectionNames.length; index += 1) {
             const section = sectionNames[index];
@@ -457,6 +493,11 @@ Singleton {
         return sections;
     }
 
+    function configurationSchemaVersion(content, byteLength) {
+        const sections = parseIni(content, byteLength, true);
+        return sections === null || sections.futureVersion !== undefined ? null : Number(
+                                                                               sections.settings.schema_version);
+    }
     function parseConfiguration(content, byteLength) {
         const sections = parseIni(content, byteLength, true);
         if (sections === null || sections.futureVersion !== undefined) {
@@ -492,7 +533,27 @@ Singleton {
         candidate.appearance.blurEnabled = booleanValue(appearance, "blur_enabled",
                                                         candidate.appearance.blurEnabled);
         candidate.appearance.motion = appearance.motion ?? candidate.appearance.motion;
-        candidate.appearance.fontFamily = appearance.font_family ?? candidate.appearance.fontFamily;
+        if (Number(sections.settings.schema_version) === previousSchemaVersion) {
+            const family = appearance.font_family ?? candidate.appearance.expandedFontFamily;
+            candidate.appearance.idleFontFamily = family;
+            candidate.appearance.expandedFontFamily = family;
+            candidate.appearance.controlCenterFontFamily = family;
+        } else {
+            candidate.appearance.idleFontFamily = appearance.idle_font_family
+                    ?? candidate.appearance.idleFontFamily;
+            candidate.appearance.idleBaseFontSize = numberValue(appearance, "idle_base_font_size",
+                                                                candidate.appearance.idleBaseFontSize);
+            candidate.appearance.expandedFontFamily = appearance.expanded_font_family
+                    ?? candidate.appearance.expandedFontFamily;
+            candidate.appearance.expandedBaseFontSize = numberValue(appearance,
+                                                                    "expanded_base_font_size",
+                                                                    candidate.appearance.expandedBaseFontSize);
+            candidate.appearance.controlCenterFontFamily = appearance.control_center_font_family
+                    ?? candidate.appearance.controlCenterFontFamily;
+            candidate.appearance.controlCenterBaseFontSize = numberValue(appearance,
+                                                                         "control_center_base_font_size",
+                                                                         candidate.appearance.controlCenterBaseFontSize);
+        }
         candidate.appearance.outerRadius = numberValue(appearance, "outer_radius",
                                                        candidate.appearance.outerRadius);
 
@@ -627,7 +688,10 @@ Singleton {
         candidate.appearance.surfaceOpacity = theme.surface_opacity === undefined ? 0.96 :
                                                                                     strictNumber(
                                                                                         theme.surface_opacity);
-        candidate.appearance.fontFamily = theme.font_family ?? "Inter";
+        const family = theme.font_family ?? "Inter";
+        candidate.appearance.idleFontFamily = family;
+        candidate.appearance.expandedFontFamily = family;
+        candidate.appearance.controlCenterFontFamily = family;
         candidate.appearance.outerRadius = theme.outer_radius === undefined ? 16 : strictNumber(
                                                                                   theme.outer_radius);
         const media = sections.media ?? {};
@@ -670,9 +734,14 @@ Singleton {
                 + a.customSurface + "\ncustom_text=" + a.customText + "\ncustom_accent="
                 + a.customAccent + "\nsurface_opacity=" + a.surfaceOpacity + "\nborder_intensity="
                 + a.borderIntensity + "\nblur_enabled=" + booleanText(a.blurEnabled) + "\nmotion="
-                + a.motion + "\nfont_family=" + a.fontFamily + "\nouter_radius=" + a.outerRadius
-                + "\n\n[island]\ncompact_height=" + i.compactHeight + "\ncompact_padding="
-                + i.compactPadding + "\nexpanded_width_percent=" + i.expandedWidthPercent
+                + a.motion + "\nidle_font_family=" + a.idleFontFamily + "\nidle_base_font_size="
+                + a.idleBaseFontSize + "\nexpanded_font_family=" + a.expandedFontFamily
+                + "\nexpanded_base_font_size=" + a.expandedBaseFontSize
+                + "\ncontrol_center_font_family=" + a.controlCenterFontFamily
+                + "\ncontrol_center_base_font_size=" + a.controlCenterBaseFontSize
+                + "\nouter_radius=" + a.outerRadius + "\n\n[island]\ncompact_height="
+                + i.compactHeight + "\ncompact_padding=" + i.compactPadding
+                + "\nexpanded_width_percent=" + i.expandedWidthPercent
                 + "\nexpanded_height_percent=" + i.expandedHeightPercent + "\nshow_workspace="
                 + booleanText(i.showWorkspace) + "\nshow_weather=" + booleanText(i.showWeather)
                 + "\nshow_media=" + booleanText(i.showMedia) + "\nfeedback_duration="
@@ -798,8 +867,9 @@ Singleton {
             if (purpose === "persist") {
                 publish(_persistedSnapshot);
             }
-            status = purpose === "migration" ? "recovery" : "write-failed";
-            recoveryKind = purpose === "migration" ? "migration" : "write";
+            const migrationFailed = purpose === "migration";
+            status = migrationFailed ? "recovery" : "write-failed";
+            recoveryKind = migrationFailed ? purpose : "write";
             errorMessage
                     = "Settings could not be saved. Check the configuration directory and try again.";
             warnOnce("write", errorMessage);
@@ -835,6 +905,14 @@ Singleton {
     }
 
     function schedulePersistence(candidate, continuous) {
+        if (!defaultCreationEnabled) {
+            _writeCandidate = null;
+            _persistedSnapshot = candidate;
+            _lastGoodSnapshot = candidate;
+            _hasLoadedConfiguration = true;
+            status = "ready";
+            return;
+        }
         _writeCandidate = candidate;
         if (continuous) {
             persistenceDebounce.restart();
@@ -931,6 +1009,12 @@ Singleton {
         if (_initializing) {
             return;
         }
+        const data = settingsFile.data();
+        const bytes = data !== null && typeof data.byteLength === "number" ? data.byteLength :
+                                                                             utf8Length(
+                                                                                 settingsFile.text(
+                                                                                     ));
+        const sourceVersion = configurationSchemaVersion(settingsFile.text(), bytes);
         const candidate = loadCandidate(settingsFile, true);
         if (candidate !== null && candidate.futureVersion !== undefined) {
             status = "future";
@@ -947,8 +1031,9 @@ Singleton {
                           false);
             return;
         }
-        if (snapshotKey(candidate) === snapshotKey(_persistedSnapshot) && _lastGoodSnapshot
-                !== null && snapshotKey(candidate) === snapshotKey(_lastGoodSnapshot)) {
+        if (sourceVersion === schemaVersion && snapshotKey(candidate) === snapshotKey(
+                    _persistedSnapshot) && _lastGoodSnapshot !== null && snapshotKey(candidate)
+                === snapshotKey(_lastGoodSnapshot)) {
             status = "ready";
             recoveryKind = "";
             errorMessage = "";
@@ -966,7 +1051,9 @@ Singleton {
         errorMessage = "";
         readOnly = false;
         publish(candidate);
-        if (!beginHelper("last-good", candidate, "last-good")) {
+        if (sourceVersion === previousSchemaVersion) {
+            beginHelper("upgrade", candidate, "upgrade");
+        } else if (!beginHelper("last-good", candidate, "last-good")) {
             _pendingLastGoodSnapshot = candidate;
         }
     }
@@ -981,7 +1068,8 @@ Singleton {
             return;
         }
         if (paths.settings === "unsafe" || paths.lastGood === "unsafe" || paths.legacy === "unsafe"
-                || paths.backup === "unsafe" || paths.invalid === "unsafe") {
+                || paths.backup === "unsafe" || paths.version2Backup === "unsafe" || paths.invalid
+                === "unsafe") {
             enterRecovery("path",
                           "A settings path is a symlink or non-regular file and was rejected.",
                           true);
@@ -997,6 +1085,12 @@ Singleton {
         if (paths.settings === "regular") {
             settingsFile.path = configPath;
             settingsFile.waitForJob();
+            const data = settingsFile.data();
+            const bytes = data !== null && typeof data.byteLength === "number" ? data.byteLength :
+                                                                                 utf8Length(
+                                                                                     settingsFile.text(
+                                                                                         ));
+            const sourceVersion = configurationSchemaVersion(settingsFile.text(), bytes);
             const candidate = loadCandidate(settingsFile, true);
             _initializing = false;
             if (candidate !== null && candidate.futureVersion !== undefined) {
@@ -1020,8 +1114,10 @@ Singleton {
             status = "ready";
             publish(candidate);
             const canonical = serializeConfiguration(candidate);
-            if (_lastGoodSnapshot === null || snapshotKey(_lastGoodSnapshot) !== snapshotKey(
-                        candidate) || settingsFile.text() !== canonical) {
+            if (sourceVersion === previousSchemaVersion) {
+                beginHelper("upgrade", candidate, "upgrade");
+            } else if (_lastGoodSnapshot === null || snapshotKey(_lastGoodSnapshot) !== snapshotKey(
+                           candidate) || settingsFile.text() !== canonical) {
                 beginHelper("write", candidate, "canonicalize");
             }
             return;
@@ -1057,7 +1153,19 @@ Singleton {
         }
     }
 
-    Component.onCompleted: inspection.running = true
+    Component.onCompleted: {
+        if (!defaultCreationEnabled) {
+            const defaults = defaultSnapshot(0);
+            _initializing = false;
+            _persistedSnapshot = defaults;
+            _lastGoodSnapshot = defaults;
+            _hasLoadedConfiguration = true;
+            status = "ready";
+            publish(defaults);
+        } else {
+            inspection.running = true;
+        }
+    }
 
     Process {
         id: inspection
@@ -1082,7 +1190,7 @@ Singleton {
 
         command: [root.helperPath, "serve", root.configDirectoryPath]
         stdinEnabled: true
-        running: true
+        running: root.defaultCreationEnabled
         stdout: SplitParser {
             onRead: data => root.finishWriter(data === "OK")
         }

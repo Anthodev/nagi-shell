@@ -410,7 +410,10 @@ Scope {
                 "wasPlaying": false,
                 "watcher": null
             };
-            record.watcher = playerWatcher.createObject(player, {
+            // Keep the watcher outside the MprisPlayer. Quickshell destroys the
+            // player before ObjectModel emits its post-removal update; parenting
+            // here leaves a valid watcher for disposeRecord() to release.
+            record.watcher = playerWatcher.createObject(engine, {
                                                             "target": player
                                                         });
             return record;

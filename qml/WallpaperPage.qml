@@ -314,7 +314,7 @@ Item {
                         root.roots.length + (root.roots.length === 1 ? " approved folder" :
                                                                        " approved folders")
                 size: "caption"
-                color: Theme.color.textMuted
+                tone: "muted"
                 wrapMode: Text.Wrap
             }
 
@@ -416,8 +416,8 @@ Item {
                             rightPadding: Theme.spacing.md
                             verticalAlignment: TextInput.AlignVCenter
                             color: Theme.color.textPrimary
-                            font.family: Theme.type.family
-                            font.pixelSize: Theme.type.body
+                            font.family: Theme.type.familyForItem(this)
+                            font.pixelSize: Theme.type.sizeForItem(this, "body")
                             activeFocusOnTab: true
                             clip: true
                             maximumLength: 128
@@ -433,7 +433,7 @@ Item {
                             verticalAlignment: Text.AlignVCenter
                             text: "Filter images"
                             size: "caption"
-                            color: Theme.color.textMuted
+                            tone: "muted"
                             visible: filterInput.text === "" && !filterInput.activeFocus
                             Accessible.ignored: true
                         }
@@ -566,7 +566,7 @@ Item {
                                                         === "" ? "No static images in this folder." :
                                                                  "No images match this filter."
                         size: "body"
-                        color: Theme.color.textMuted
+                        tone: "muted"
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                     }
@@ -588,7 +588,8 @@ Item {
                     IslandText {
                         Layout.fillWidth: true
                         text: "Preview"
-                        size: "title"
+                        size: "body"
+                        font.weight: Theme.type.weightSemibold
                         Accessible.role: Accessible.Heading
                         Accessible.name: text
                     }
@@ -619,7 +620,7 @@ Item {
                                   === "loading" ? "Analyzing image…" :
                                                   "Select or browse a static image."
                             size: "body"
-                            color: Theme.color.textMuted
+                            tone: "muted"
                             wrapMode: Text.Wrap
                             horizontalAlignment: Text.AlignHCenter
                         }
@@ -643,7 +644,7 @@ Item {
                         visible: root.previewReady && root.wallpaper.preview.outsideLibrary
                         text: "Previewed outside approved folders. Its directory will not be added or copied."
                         size: "caption"
-                        color: Theme.color.textMuted
+                        tone: "muted"
                         wrapMode: Text.Wrap
                     }
 

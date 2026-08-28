@@ -12,7 +12,7 @@ inspect=$($helper inspect "$config")
 [[ $inspect == *'"settings":"missing"'* ]]
 [[ $(stat -c %a "$config") == 700 ]]
 
-content=$'[settings]\nschema_version=2\n'
+content=$'[settings]\nschema_version=3\n'
 printf %s "$content" | "$helper" create "$config" "${#content}"
 [[ $(stat -c %a "$config/settings.conf") == 600 ]]
 [[ $(stat -c %a "$config/settings.conf.last-good") == 600 ]]
@@ -32,7 +32,7 @@ printf %s "$content" | "$helper" create "$config" "${#content}"
 
 rm "$config/settings.conf.last-good"
 ln -s "$outside" "$config/settings.conf.last-good"
-next=$'[settings]\nschema_version=2\n\n[clock]\nformat=12h\n'
+next=$'[settings]\nschema_version=3\n\n[clock]\nformat=12h\n'
 if printf %s "$next" | "$helper" write "$config" "${#next}" 2>/dev/null; then
     echo 'symlinked last-good target was accepted' >&2
     exit 1
@@ -42,9 +42,18 @@ cmp -s "$config/settings.conf" <(printf %s "$content")
 rm -f "$config/settings.conf.last-good"
 printf %s "$content" | "$helper" last-good "$config" "${#content}"
 
+v2=$'[settings]\nschema_version=2\n\n[appearance]\nfont_family=Inter\n'
+upgraded=$'[settings]\nschema_version=3\n\n[appearance]\nidle_font_family=Inter\n'
+printf %s "$v2" > "$config/settings.conf"
+printf %s "$upgraded" | "$helper" upgrade "$config" "${#upgraded}"
+cmp -s "$config/settings.conf.v2.bak" <(printf %s "$v2")
+cmp -s "$config/settings.conf" <(printf %s "$upgraded")
+cmp -s "$config/settings.conf.last-good" <(printf %s "$upgraded")
+[[ $(stat -c %a "$config/settings.conf.v2.bak") == 600 ]]
+
 rm "$config/settings.conf"
 printf '[theme]\nmode=accent\naccent=#123456\n' > "$config/theme.conf"
-migrated=$'[settings]\nschema_version=2\n\n[appearance]\naccent_mode=custom\ncustom_accent=#123456\n'
+migrated=$'[settings]\nschema_version=3\n\n[appearance]\naccent_mode=custom\ncustom_accent=#123456\n'
 printf %s "$migrated" | "$helper" migrate "$config" "${#migrated}"
 [[ ! -e "$config/theme.conf" ]]
 cmp -s "$config/settings.conf.bak" <(printf '[theme]\nmode=accent\naccent=#123456\n')
@@ -54,10 +63,13 @@ printf '[broken\n' > "$config/settings.conf"
 printf %s "$content" | "$helper" recover "$config" "${#content}"
 cmp -s "$config/settings.conf.invalid" <(printf '[broken\n')
 cmp -s "$config/settings.conf" <(printf %s "$content")
-chmod 0644 "$config/settings.conf" "$config/settings.conf.last-good"
-"$helper" inspect "$config" >/dev/null
+chmod 0644 "$config/settings.conf" "$config/settings.conf.last-good" \
+    "$config/settings.conf.v2.bak"
+inspect=$("$helper" inspect "$config")
+[[ $inspect == *'"version2Backup":"regular"'* ]]
 [[ $(stat -c %a "$config/settings.conf") == 600 ]]
 [[ $(stat -c %a "$config/settings.conf.last-good") == 600 ]]
+[[ $(stat -c %a "$config/settings.conf.v2.bak") == 600 ]]
 unsafe_dir="$root/unsafe-directory/nagi-shell"
 mkdir -p "$(dirname "$unsafe_dir")"
 "$helper" inspect "$unsafe_dir" >/dev/null

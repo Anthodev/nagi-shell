@@ -138,9 +138,14 @@ ShellRoot {
                 "normalized operating-system meaning resolves through the current icon theme");
         const settings = IconResolver.resolve("settings", "normal", "", "");
         require(settings.kind === "system" && settings.accessibleName === "Nagi Control Center"
-                && String(settings.source) === String(Quickshell.iconPath("preferences-system"))
-                && !settings.tintable,
-                "Settings preserves the current KDE theme icon without destructive colorization");
+                && String(settings.source) === String(Quickshell.iconPath("settings-configure"))
+                && settings.tintable,
+                "Control Center uses the tintable KDE configure action");
+        const systemSettings = IconResolver.resolve("systemSettings", "normal", "", "");
+        require(systemSettings.kind === "system" && systemSettings.accessibleName
+                === "KDE Plasma System Settings" && String(systemSettings.source)
+                === String(Quickshell.iconPath("preferences-system")) && !systemSettings.tintable,
+                "KDE Settings preserves its full-color application icon");
 
 
         const application = IconResolver.resolve("application", "active", applicationSource,

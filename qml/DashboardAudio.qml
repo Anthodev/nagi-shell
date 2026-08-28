@@ -206,6 +206,8 @@ FocusScope {
         required property bool pending
 
         implicitHeight: Theme.size.controlHeightMd
+        leftPadding: Theme.spacing.md
+        rightPadding: Theme.spacing.md
         focusPolicy: Qt.StrongFocus
         hoverEnabled: true
         enabled: root.audio !== null && root.audio.available

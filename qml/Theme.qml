@@ -40,10 +40,15 @@ Singleton {
                                  "accentMode": appearance.accentMode,
                                  "borderIntensity": appearance.borderIntensity,
                                  "blurEnabled": appearance.blurEnabled,
+                                 "controlCenterBaseFontSize": appearance.controlCenterBaseFontSize,
+                                 "controlCenterFontFamily": appearance.controlCenterFontFamily,
                                  "customAccent": appearance.customAccent,
                                  "customSurface": appearance.customSurface,
                                  "customText": appearance.customText,
-                                 "fontFamily": appearance.fontFamily,
+                                 "expandedBaseFontSize": appearance.expandedBaseFontSize,
+                                 "expandedFontFamily": appearance.expandedFontFamily,
+                                 "idleBaseFontSize": appearance.idleBaseFontSize,
+                                 "idleFontFamily": appearance.idleFontFamily,
                                  "motion": appearance.motion,
                                  "outerRadius": appearance.outerRadius,
                                  "scheme": appearance.scheme,
@@ -493,15 +498,59 @@ Singleton {
         readonly property int xl: 16
     }
 
-    // Locked from the live issue-63 matrix. QML sets the primary family; the
-    // deployment fallback chain is "Inter" -> "Noto Sans" -> "DejaVu Sans" -> sans-serif.
-    // Fontconfig resolves unavailable faces and scripts.
+    // Each surface resolves one typography scope. Semantic roles keep their
+    // established ratios to the user-selected body size instead of collapsing
+    // to that base value.
     readonly property QtObject type: QtObject {
-        readonly property string family: UserConfig.snapshot.appearance.fontFamily
-        readonly property int caption: 11
-        readonly property int display: 48
-        readonly property int body: 13
-        readonly property int title: 15
+        function scopeFor(item) {
+            let current = item;
+            while (current !== null && current !== undefined) {
+                if (current.nagiTypographyScope === "idle" || current.nagiTypographyScope
+                        === "expanded" || current.nagiTypographyScope === "controlCenter") {
+                    return current.nagiTypographyScope;
+                }
+                current = current.parent;
+            }
+            return "expanded";
+        }
+        function familyFor(scope) {
+            return scope === "idle" ? UserConfig.snapshot.appearance.idleFontFamily : scope
+                                      === "controlCenter"
+                                      ? UserConfig.snapshot.appearance.controlCenterFontFamily :
+                                        UserConfig.snapshot.appearance.expandedFontFamily;
+        }
+        function baseSizeFor(scope) {
+            return scope === "idle" ? UserConfig.snapshot.appearance.idleBaseFontSize : scope
+                                      === "controlCenter"
+                                      ? UserConfig.snapshot.appearance.controlCenterBaseFontSize :
+                                        UserConfig.snapshot.appearance.expandedBaseFontSize;
+        }
+        function sizeFor(scope, role) {
+            const base = baseSizeFor(scope);
+            if (role === "caption" || role === "muted") {
+                return Math.max(1, Math.round(base * 11 / 13));
+            }
+            if (role === "title" || role === "heading") {
+                return Math.max(1, Math.round(base * 15 / 13));
+            }
+            if (role === "display") {
+                return Math.max(1, Math.round(base * 48 / 13));
+            }
+            return base;
+        }
+
+        function familyForItem(item) {
+            return familyFor(scopeFor(item));
+        }
+        function sizeForItem(item, role) {
+            return sizeFor(scopeFor(item), role);
+        }
+
+        readonly property string family: familyFor("expanded")
+        readonly property int caption: sizeFor("expanded", "caption")
+        readonly property int display: sizeFor("expanded", "display")
+        readonly property int body: sizeFor("expanded", "body")
+        readonly property int title: sizeFor("expanded", "title")
         readonly property int weightRegular: Font.Normal
         readonly property int weightMedium: Font.Medium
         readonly property int weightSemibold: Font.DemiBold
@@ -511,6 +560,9 @@ Singleton {
         readonly property int islandIdleWidth: 120
         readonly property int islandIdleHeight: UserConfig.snapshot.island.compactHeight
         readonly property int islandCompactPadding: UserConfig.snapshot.island.compactPadding
+        // A 288 px floor keeps every focused subview under the pointer while
+        // the outer surface morphs, without replacing content-driven sizing.
+        readonly property int islandSubviewMinimumWidth: 288
         readonly property int islandWorkspaceIndicatorWidth: 28
         readonly property int islandWorkspaceIndicatorHeight: 22
         readonly property int islandSeparatorHeight: 18
@@ -532,7 +584,9 @@ Singleton {
         readonly property int controlCenterPreferredWidth: 920
         readonly property int controlCenterPreferredHeight: 660
         readonly property int controlCenterResponsiveBreakpoint: 760
-        readonly property int controlCenterSidebarWidth: 220
+        readonly property int controlCenterSidebarWidth: 196
+        readonly property int controlCenterContentMaximumWidth: 880
+        readonly property int controlCenterRowStackBreakpoint: 720
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38
@@ -548,7 +602,7 @@ Singleton {
 
     readonly property QtObject opacity: QtObject {
         readonly property real surface: UserConfig.snapshot.appearance.surfaceOpacity
-        readonly property real disabled: 0.45
+        readonly property real disabled: 0.62
         readonly property real shadow: 0.28
         readonly property real border: UserConfig.snapshot.appearance.borderIntensity
     }

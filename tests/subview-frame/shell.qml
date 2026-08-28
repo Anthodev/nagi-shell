@@ -56,11 +56,16 @@ ShellRoot {
                     === 120, "internal subview motion uses the short 120 ms duration");
             require(frame.titleControl.text === "Applications" && frame.titleControl.visible,
                     "the single-line semantic title renders");
-            require(frame.titleControl.maximumLineCount === 1 && frame.titleControl.font.pixelSize
-                    === Theme.type.title, "the title uses Theme.type.title semantics");
+            require(frame.titleControl.typographyScope === "expanded"
+                    && frame.titleControl.font.family === Theme.type.familyFor("expanded")
+                    && frame.titleControl.maximumLineCount === 1
+                    && frame.titleControl.font.pixelSize === Theme.type.sizeFor("expanded", "title"),
+                    "the title uses the expanded semantic typography scope");
             require(frame.backControl.Accessible.name === "Back" && frame.backControl.ToolTip.text
                     === "Back" && backIcon.Accessible.name === "Back",
                     "Back exposes stable control, tooltip, and icon accessibility names");
+            require(frame.implicitWidth === Theme.size.islandSubviewMinimumWidth,
+                    "compact subviews retain the shared pointer-safe minimum width");
 
             require(!frame.scrolling && !frame.contentOverflow,
                     "sparse content does not enable scrolling");
@@ -166,7 +171,7 @@ ShellRoot {
             Item {
                 id: sparseContent
 
-                implicitWidth: 360
+                implicitWidth: test.tallContent ? 360 : 180
                 implicitHeight: test.tallContent ? 240 : 40
                 width: implicitWidth
                 height: implicitHeight

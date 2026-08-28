@@ -13,6 +13,7 @@ ShellRoot {
     property var connectivityActions: []
     property var launchActions: []
     property var navigationActions: []
+    property int systemSettingsOpenCount: 0
     property int wifiManagerRequests: 0
     property int bluetoothManagerRequests: 0
     property var trayActions: []
@@ -147,6 +148,10 @@ ShellRoot {
                     {
                         "control": findObject(dashboard, "dashboardSettings"),
                         "text": "Nagi Control Center"
+                    },
+                    {
+                        "control": findObject(dashboard, "dashboardSystemSettings"),
+                        "text": "KDE Plasma System Settings"
                     },
                     {
                         "control": findObject(dashboard, "dashboardSession"),
@@ -494,8 +499,12 @@ ShellRoot {
         const inputDeviceButton = test.findObject(audioView, "dashboardInputDeviceName");
         require(outputDeviceButton !== null && inputDeviceButton !== null
                 && outputDeviceButton.Accessible.name.indexOf("Built-in Audio") > 0
-                && inputDeviceButton.Accessible.name.indexOf("Desk Microphone") > 0,
-                "confirmed device names are accessible navigation buttons");
+                && inputDeviceButton.Accessible.name.indexOf("Desk Microphone") > 0
+                && outputDeviceButton.leftPadding === Theme.spacing.md
+                && outputDeviceButton.rightPadding === Theme.spacing.md
+                && inputDeviceButton.leftPadding === Theme.spacing.md
+                && inputDeviceButton.rightPadding === Theme.spacing.md,
+                "confirmed device navigation has accessible names and compact optical insets");
         const outputChannelRow = test.findObject(audioView, "dashboardOutputChannelRow");
         const inputChannelRow = test.findObject(audioView, "dashboardInputChannelRow");
         const outputMuteIcon = test.findObject(audioView, "dashboardOutputMuteIcon");
@@ -614,39 +623,59 @@ ShellRoot {
         const launcherButton = test.findObject(dashboard, "dashboardLauncher");
         const historyButton = test.findObject(dashboard, "dashboardHistory");
         const settingsButton = test.findObject(dashboard, "dashboardSettings");
+        const systemSettingsButton = test.findObject(dashboard, "dashboardSystemSettings");
         const sessionButton = test.findObject(dashboard, "dashboardSession");
         require(trayButton !== null && launcherButton !== null && historyButton !== null
-                && settingsButton !== null && sessionButton !== null && navigationRegion !== null,
-                "rail exposes all five actions and its containing region");
+                && settingsButton !== null && systemSettingsButton !== null
+                && sessionButton !== null && navigationRegion !== null,
+                "rail exposes all six actions and its containing region");
         const trayPosition = trayButton.mapToItem(dashboard, 0, 0);
         const launcherPosition = launcherButton.mapToItem(dashboard, 0, 0);
         const historyPosition = historyButton.mapToItem(dashboard, 0, 0);
         const settingsPosition = settingsButton.mapToItem(dashboard, 0, 0);
+        const systemSettingsPosition = systemSettingsButton.mapToItem(dashboard, 0, 0);
         const sessionPosition = sessionButton.mapToItem(dashboard, 0, 0);
         const navigationPosition = navigationRegion.mapToItem(dashboard, 0, 0);
         require(trayPosition.y < launcherPosition.y && launcherPosition.y < historyPosition.y
                 && settingsPosition.y >= historyPosition.y + historyButton.height + Theme.spacing.xl
-                && settingsPosition.y < sessionPosition.y
+                && settingsPosition.y < systemSettingsPosition.y
+                && systemSettingsPosition.y < sessionPosition.y
                 && Math.abs(sessionPosition.y + sessionButton.height - navigationPosition.y
                             - navigationRegion.height) < 1,
-                "rail keeps its top cluster together and Settings immediately above final Session");
+                "rail keeps Control Center, KDE Settings, and Session in the requested bottom order");
         require(trayButton.Accessible.name === "System tray" && launcherButton.Accessible.name
                 === "Launcher" && historyButton.Accessible.name === "Notification history"
                 && settingsButton.Accessible.name === "Nagi Control Center"
                 && settingsButton.Accessible.description === ""
+                && systemSettingsButton.Accessible.name === "KDE Plasma System Settings"
+                && systemSettingsButton.Accessible.description === ""
                 && sessionButton.Accessible.name === "Session" && trayButton.implicitHeight
                 >= Theme.size.controlHeightMd,
                 "rail actions expose stable accessible names and adequate hit targets");
         require(IconResolver.resolve("settings", "normal", "", "").source.indexOf(
+                    "settings-configure") !== -1 && IconResolver.resolve("systemSettings", "normal",
+                                                                         "", "").source.indexOf(
                     "preferences-system") !== -1,
-                "Settings uses the active KDE preferences-system semantic icon");
+                "Control Center and KDE Settings use distinct semantic icons");
+        const navigationView = navigationRegion.item;
+        navigationApplicationModel.dispatchAvailable = false;
+        systemSettingsButton.clicked();
+        require(systemSettingsButton.Accessible.description
+                === "KDE Plasma System Settings could not be opened.",
+                "KDE Settings launch failure remains bounded on its rail action");
+        navigationApplicationModel.dispatchAvailable = true;
         trayButton.clicked();
         launcherButton.clicked();
         historyButton.clicked();
         settingsButton.clicked();
+        systemSettingsButton.clicked();
+        navigationApplicationModel.acceptLast();
         sessionButton.clicked();
-        require(navigationActions.join(",") === "tray,launcher,history,settings,session",
-                "rail preserves each normalized open-request route");
+        require(navigationActions.join(",")
+                === "tray,launcher,history,control-center,system-settings,session"
+                && navigationView.systemSettingsRequestId === 0 && systemSettingsOpenCount === 1
+                && systemSettingsButton.Accessible.description === "",
+                "rail preserves every route and confirms the exact KDE desktop launch");
 
         dashboard.focusInitialControl();
         require(dashboardWindow.activeFocusItem !== null
@@ -657,12 +686,14 @@ ShellRoot {
                           "dashboardBluetooth", "dashboardPinnedApplication",
                           "dashboardOutputVolume", "dashboardOutputMute", "dashboardInputVolume",
                           "dashboardInputMute", "dashboardTray", "dashboardLauncher",
-                          "dashboardHistory", "dashboardSettings", "dashboardSession"];
+                          "dashboardHistory", "dashboardSettings", "dashboardSystemSettings",
+                          "dashboardSession"];
         require(names.indexOf("dashboardTray") < names.indexOf("dashboardLauncher") && names.indexOf(
                     "dashboardLauncher") < names.indexOf("dashboardHistory") && names.indexOf(
                     "dashboardHistory") < names.indexOf("dashboardSettings") && names.indexOf(
-                    "dashboardSettings") < names.indexOf("dashboardSession"),
-                "rail focus order remains Tray, Launcher, History, Settings, Session");
+                    "dashboardSettings") < names.indexOf("dashboardSystemSettings")
+                && names.indexOf("dashboardSystemSettings") < names.indexOf("dashboardSession"),
+                "rail focus order remains Tray, Launcher, History, Control Center, KDE Settings, Session");
         for (let index = 0; index < expected.length; ++index) {
             require(names.indexOf(expected[index]) !== -1, "focus traversal reaches "
                     + expected[index]);
@@ -1106,12 +1137,41 @@ ShellRoot {
         }
     }
 
+    QtObject {
+        id: navigationApplicationModel
+
+        property bool dispatchAvailable: true
+        property int nextRequestId: 0
+        property int lastRequestId: 0
+        property string lastDesktopFileId: ""
+
+        signal launchAccepted(int requestId, string desktopFileId)
+        signal launchRejected(int requestId, string category)
+
+        function dispatchLaunch(desktopFileId) {
+            if (!dispatchAvailable) {
+                return 0;
+            }
+            nextRequestId += 1;
+            lastRequestId = nextRequestId;
+            lastDesktopFileId = desktopFileId;
+            test.navigationActions.push("system-settings");
+            return lastRequestId;
+        }
+
+        function acceptLast() {
+            launchAccepted(lastRequestId, lastDesktopFileId);
+        }
+    }
+
     Component {
         id: navigationContent
 
         DashboardNavigation {
             coordinator: navigationCoordinator
-            onControlCenterRequested: test.navigationActions.push("settings")
+            applicationModel: navigationApplicationModel
+            onControlCenterRequested: test.navigationActions.push("control-center")
+            onSystemSettingsOpened: test.systemSettingsOpenCount += 1
         }
     }
 

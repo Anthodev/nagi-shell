@@ -72,39 +72,53 @@ ShellRoot {
         require(islandFull.contentPadding === Theme.size.islandCompactPadding
                 && islandFull.contentGap === Theme.size.islandCompactPadding
                 && islandFull.boundaryWidth === Theme.size.islandCompactPadding * 2
-                + Theme.size.hairlineWidth && islandFull.boundaryWidth
-                === islandFull.contentGap * 2 + Theme.size.hairlineWidth
-                && islandFull.boundaryHeight === Theme.size.islandSeparatorHeight
-                && islandFull.workspaceIndicatorWidth === Theme.size.islandWorkspaceIndicatorWidth
-                && islandFull.workspaceIndicatorHeight === Theme.size.islandWorkspaceIndicatorHeight
-                && islandFull.weatherGap === Theme.spacing.sm
-                && islandFull.weatherLabelGap === Theme.spacing.xs,
+                + Theme.size.hairlineWidth && islandFull.boundaryWidth === islandFull.contentGap
+                * 2 + Theme.size.hairlineWidth && islandFull.boundaryHeight
+                === Theme.size.islandSeparatorHeight && islandFull.workspaceIndicatorWidth
+                === Theme.size.islandWorkspaceIndicatorWidth && islandFull.workspaceIndicatorHeight
+                === Theme.size.islandWorkspaceIndicatorHeight && islandFull.weatherGap
+                === Theme.spacing.sm && islandFull.weatherLabelGap === Theme.spacing.xs,
                 "Idle groups use shared workspace and separator geometry tokens");
-        require(islandFull.workspaceLabelItem.font.pixelSize === Theme.type.body
+        require(islandFull.workspaceLabelItem.typographyScope === "idle"
+                && islandFull.workspaceLabelItem.font.family === Theme.type.familyFor("idle")
+                && islandFull.workspaceLabelItem.font.pixelSize === Theme.type.sizeFor("idle",
+                                                                                       "body")
                 && islandFull.workspaceLabelItem.font.weight === Theme.type.weightMedium
-                && islandFull.clockBlock.font.pixelSize === Theme.type.body
+                && islandFull.clockBlock.font.pixelSize === Theme.type.sizeFor("idle", "body")
                 && islandFull.clockBlock.font.weight === Theme.type.weightMedium
-                && islandFull.temperatureBlock.font.pixelSize === Theme.type.body
+                && islandFull.temperatureBlock.font.pixelSize === Theme.type.sizeFor("idle",
+                                                                                     "body")
                 && islandFull.temperatureBlock.font.weight === Theme.type.weightMedium,
-                "primary Idle values use the body/medium typography hierarchy");
-        require(islandFull.weatherConditionBlock.font.pixelSize === Theme.type.caption
+                "primary Idle values use the scoped body/medium typography hierarchy");
+        require(islandFull.weatherConditionBlock.typographyScope === "idle"
+                && islandFull.weatherConditionBlock.font.pixelSize === Theme.type.sizeFor("idle",
+                                                                                          "caption")
                 && islandFull.weatherConditionBlock.font.weight === Theme.type.weightRegular,
-                "secondary weather context uses caption/regular typography");
+                "secondary weather context uses scoped caption/regular typography");
+        require(islandFull.weatherConditionBlock.x === islandFull.temperatureBlock.implicitWidth
+                + islandFull.weatherLabelGap && Math.abs(islandFull.temperatureBlock.y
+                                                         + islandFull.temperatureBlock.height / 2
+                                                         - islandFull.weatherConditionBlock.y
+                                                         - islandFull.weatherConditionBlock.height
+                                                         / 2) <= 0.5
+                && islandFull.weatherBlock.implicitHeight === Math.max(
+                    islandFull.weatherIcon.implicitHeight,
+                    islandFull.temperatureBlock.implicitHeight,
+                    islandFull.weatherConditionBlock.implicitHeight),
+                "Idle Weather keeps icon, temperature, and context in one centered row");
         require(islandFull.weatherIcon.Accessible.ignored,
                 "the restrained weather glyph stays decorative");
         requireDisplayOnly(islandFull);
-        require(islandGaming.gamingPerformanceBlock.visible
-                && islandGaming.gamingBadgeIcon.meaning === "gamingPerformance"
-                && islandGaming.gamingPerformanceBlock.Accessible.name
-                === "Gaming performance indicator active"
-                && islandGaming.gamingPerformanceTooltip === "Gaming performance active"
-                && !islandGaming.gamingPerformanceBlock.focus
-                && !("clicked" in islandGaming.gamingPerformanceBlock),
+        require(islandGaming.gamingPerformanceBlock.visible && islandGaming.gamingBadgeIcon.meaning
+                === "gamingPerformance" && islandGaming.gamingPerformanceBlock.Accessible.name
+                === "Gaming performance indicator active" && islandGaming.gamingPerformanceTooltip
+                === "Gaming performance active" && !islandGaming.gamingPerformanceBlock.focus && !(
+                    "clicked" in islandGaming.gamingPerformanceBlock),
                 "active gaming state renders one static accessible badge without an action");
-        require(!islandNoGaming.gamingPerformanceBlock.visible
-                && !islandNoGaming.gamingPerformanceBoundary.visible
-                && islandGaming.implicitWidth - islandNoGaming.implicitWidth
-                === islandGaming.gamingPerformanceBlock.width + islandGaming.boundaryWidth,
+        require(!islandNoGaming.gamingPerformanceBlock.visible &&
+                !islandNoGaming.gamingPerformanceBoundary.visible && islandGaming.implicitWidth
+                - islandNoGaming.implicitWidth === islandGaming.gamingPerformanceBlock.width
+                + islandGaming.boundaryWidth,
                 "inactive gaming state removes its badge and one separator exactly");
         require(islandFull.workspaceBlock.visible, "workspace renders when available");
         require(islandFull.workspaceText === "02" && islandFull.workspaceLabelItem.text === "02"
@@ -161,9 +175,8 @@ ShellRoot {
                 "idle width follows groups, boundaries, and symmetric edge padding exactly");
         require(islandFull.implicitHeight === Theme.size.islandIdleHeight,
                 "current font metrics preserve the published Idle height token");
-        require(!islandFull.mediaBlock.overflowing
-                && islandFull.mediaBlock.labelItem.elide === Text.ElideRight,
-                "fitting media stays settled on the static text path");
+        require(!islandFull.mediaBlock.overflowing && islandFull.mediaBlock.labelItem.elide
+                === Text.ElideRight, "fitting media stays settled on the static text path");
 
         require(!islandNoWeather.weatherBlock.visible, "unavailable weather collapses");
         require(islandFull.implicitWidth - islandNoWeather.implicitWidth
@@ -211,10 +224,9 @@ ShellRoot {
                 "required groups preserve order without optional-content residue");
         requireEdgeSymmetry(islandNoWeatherNoMedia, islandNoWeatherNoMedia.workspaceBoundary,
                             islandNoWeatherNoMedia.clockGroupBlock, "required-only Idle");
-        require(!islandHiddenOptional.workspaceBlock.visible
-                && !islandHiddenOptional.weatherBlock.visible
-                && !islandHiddenOptional.mediaBlock.visible
-                && islandHiddenOptional.clockBlock.visible
+        require(!islandHiddenOptional.workspaceBlock.visible &&
+                !islandHiddenOptional.weatherBlock.visible &&
+                !islandHiddenOptional.mediaBlock.visible && islandHiddenOptional.clockBlock.visible
                 && islandHiddenOptional.implicitWidth === islandHiddenOptional.contentPadding * 2
                 + islandHiddenOptional.clockGroupBlock.width,
                 "visibility settings collapse optional groups while Clock remains mandatory");
@@ -223,21 +235,22 @@ ShellRoot {
                 && islandFull.implicitHeight === islandNoWeatherNoMedia.implicitHeight,
                 "Idle height is stable across optional-content combinations");
 
-        // Stale weather keeps the last valid content without churn.
-        pendingStaleWidth = islandFull.implicitWidth;
+        // Stale weather keeps the last valid content without changing its block.
+        pendingStaleWeatherWidth = islandFull.weatherBlock.width;
         islandFullWeather.stale = true;
         require(islandFull.weatherBlock.visible, "stale weather stays visible");
         require(islandFull.temperatureText === "24°", "stale weather keeps the temperature");
         staleTimer.start();
     }
 
-    property real pendingStaleWidth: 0
+    property real pendingStaleWeatherWidth: 0
     property real pendingWithMedia: 0
     property real pendingMediaWidth: 0
 
     function staleStage() {
-        require(islandFull.implicitWidth === pendingStaleWidth,
-                "stale weather causes no layout churn");
+        require(islandFull.weatherBlock.width === pendingStaleWeatherWidth,
+                "stale weather leaves compact weather geometry unchanged (before="
+                + pendingStaleWeatherWidth + ", after=" + islandFull.weatherBlock.width + ")");
 
         // Media lifecycle: stopped media clears text and space, recovery restores.
         require(islandMediaLifecycle.mediaBlock.visible, "playing media renders");

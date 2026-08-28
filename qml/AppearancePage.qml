@@ -10,6 +10,18 @@ Flickable {
     required property var settingsModel
     property bool reducedMotion: false
     property string validationText: ""
+    readonly property var installedFontFamilies: {
+        const families = Qt.fontFamilies();
+        const accepted = [];
+        for (let index = 0; index < families.length; index += 1) {
+            const family = families[index];
+            if (settingsModel.boundedString(family, settingsModel.maximumFontFamilyBytes, false)) {
+                accepted.push(family);
+            }
+        }
+        accepted.sort((first, second) => first.localeCompare(second));
+        return Object.freeze(accepted);
+    }
 
     clip: true
     contentWidth: width
@@ -34,15 +46,117 @@ Flickable {
         validationText = "";
         return true;
     }
+    component TypographyScopeControls: ColumnLayout {
+        id: scopeControl
+
+        required property string scopeLabel
+        required property string familyKey
+        required property string sizeKey
+        required property string selectorObjectName
+        required property string sizeObjectName
+        property bool separated: true
+
+        Layout.fillWidth: true
+        spacing: Theme.spacing.sm
+
+        readonly property string configuredFamily: root.settingsModel.snapshot.appearance[familyKey]
+        readonly property int selectedFamilyIndex: root.installedFontFamilies.indexOf(
+                                                       configuredFamily)
+        readonly property bool configuredFamilyInstalled: selectedFamilyIndex >= 0
+
+        ControlCenterSectionHeading {
+            objectName: scopeControl.selectorObjectName + "Section"
+            text: scopeControl.scopeLabel
+            separated: scopeControl.separated
+        }
+
+        ControlCenterSettingRow {
+            id: fontFamilyRow
+            Layout.fillWidth: true
+            label: "Font family"
+            description: scopeControl.configuredFamilyInstalled
+                         ? "Choose from the font families installed on this system." :
+                           "The configured family is unavailable. Choose an installed font to replace it."
+
+            ComboBox {
+                id: fontFamilySelector
+
+                objectName: scopeControl.selectorObjectName
+                width: 280
+                implicitHeight: Theme.size.controlHeightLg
+                model: root.installedFontFamilies
+                currentIndex: scopeControl.selectedFamilyIndex
+                displayText: currentIndex >= 0 ? currentText : scopeControl.configuredFamily
+                                                 + " (unavailable)"
+                enabled: root.settingsModel.writable && count > 0
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                opacity: enabled ? 1 : Theme.opacity.disabled
+                font.family: currentIndex >= 0 ? currentText : Theme.type.familyFor("controlCenter")
+                font.pixelSize: Theme.type.sizeFor("controlCenter", "body")
+                palette.button: Theme.color.controlFill
+                palette.buttonText: Theme.color.textPrimary
+                palette.base: Theme.color.surfaceOpaque
+                palette.text: Theme.color.textPrimary
+                palette.window: Theme.color.surfaceOpaque
+                palette.windowText: Theme.color.textPrimary
+                palette.highlight: Theme.snapshot.accent
+                palette.highlightedText: Theme.snapshot.accentForeground
+                palette.mid: Theme.color.surfaceBorder
+                palette.dark: Theme.color.surfaceBorder
+                Accessible.role: Accessible.ComboBox
+                Accessible.name: scopeControl.scopeLabel + " font family"
+                Accessible.description: fontFamilyRow.description
+                onActivated: index => {
+                    const changes = {};
+                    changes[scopeControl.familyKey] = root.installedFontFamilies[index];
+                    root.request(changes, false);
+                }
+
+                IslandFocusRing {
+                    visible: fontFamilySelector.visualFocus
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.NoButton
+                    cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
+                    enabled: fontFamilySelector.enabled
+                }
+            }
+        }
+
+        SettingSliderRow {
+            Layout.fillWidth: true
+            objectName: scopeControl.sizeObjectName
+            label: scopeControl.scopeLabel + " default size"
+            description:
+            "Sets body text from 11 to 18 px. Titles, captions, and muted text keep their semantic proportions."
+            value: root.settingsModel.snapshot.appearance[scopeControl.sizeKey]
+            from: root.settingsModel.minimumBaseFontSize
+            to: root.settingsModel.maximumBaseFontSize
+            stepSize: 1
+            valueText: Math.round(value) + " px"
+            writable: root.settingsModel.writable
+            onValueRequested: (value, continuous) => {
+                const changes = {};
+                changes[scopeControl.sizeKey] = value;
+                root.request(changes, continuous);
+            }
+        }
+    }
 
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
             text: "Appearance"
+            objectName: "appearancePageTitle"
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -50,10 +164,40 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Choose one maintained semantic scheme. Nagi derives every component state from the same validated palette."
+            text: "Set an installed family and default body size independently for each Nagi surface. Semantic text roles preserve their hierarchy."
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
+        }
+
+        TypographyScopeControls {
+            scopeLabel: "Idle island"
+            familyKey: "idleFontFamily"
+            sizeKey: "idleBaseFontSize"
+            selectorObjectName: "appearanceIdleFontFamily"
+            sizeObjectName: "appearanceIdleBaseFontSize"
+            separated: false
+        }
+
+        TypographyScopeControls {
+            scopeLabel: "Expanded island"
+            familyKey: "expandedFontFamily"
+            sizeKey: "expandedBaseFontSize"
+            selectorObjectName: "appearanceExpandedFontFamily"
+            sizeObjectName: "appearanceExpandedBaseFontSize"
+        }
+
+        TypographyScopeControls {
+            scopeLabel: "Control Center"
+            familyKey: "controlCenterFontFamily"
+            sizeKey: "controlCenterBaseFontSize"
+            selectorObjectName: "appearanceControlCenterFontFamily"
+            sizeObjectName: "appearanceControlCenterBaseFontSize"
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "appearanceColorSection"
+            text: "Color"
         }
 
         SettingChoiceRow {
@@ -158,6 +302,11 @@ Flickable {
             onValueRequested: value => root.request({
                                                         "customAccent": value
                                                     }, false)
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "appearanceSurfaceMotionSection"
+            text: "Surface & motion"
         }
 
         SettingSliderRow {

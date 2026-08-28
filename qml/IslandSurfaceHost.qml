@@ -81,6 +81,8 @@ Scope {
                                                                               fallbackSurface.interactiveExitLoaderX
     readonly property real interactiveExitMappedX: fallbackSurface === null ? 0 :
                                                                               fallbackSurface.interactiveExitMappedX
+    readonly property real interactiveExitLoaderZ: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.interactiveExitLoaderZ
     readonly property bool interactiveExitLoaderEnabled: fallbackSurface !== null
                                                          && fallbackSurface.interactiveExitLoaderEnabled
     readonly property var interactiveExitItem: fallbackSurface === null ? null :
@@ -429,9 +431,11 @@ Scope {
                 DashboardNavigation {
                     coordinator: host.coordinator
                     surfaceToken: entry.surfaceToken
+                    applicationModel: host.applicationModel
                     showHistory: host.notificationService === null
                                  || host.notificationService.historyVisible !== false
                     onControlCenterRequested: host.controlCenterRequested(entry.surfaceToken)
+                    onSystemSettingsOpened: host.coordinator.resetToIdle(entry.surfaceToken)
                 }
             }
 

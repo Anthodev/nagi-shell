@@ -40,7 +40,8 @@ Singleton {
                                                             "mediaNext": "media-next.svg"
                                                         })
     readonly property var _systemIcons: Object.freeze({
-                                                          "settings": "preferences-system",
+                                                          "settings": "settings-configure",
+                                                          "systemSettings": "preferences-system",
                                                           "lock": "system-lock-screen",
                                                           "suspend": "system-suspend",
                                                           "logout": "system-log-out",
@@ -55,6 +56,7 @@ Singleton {
                                                      "tray": "System tray",
                                                      "session": "Session",
                                                      "settings": "Nagi Control Center",
+                                                     "systemSettings": "KDE Plasma System Settings",
                                                      "restartShell": "Restart shell",
                                                      "wifi": "Wi-Fi",
                                                      "bluetooth": "Bluetooth",
@@ -227,7 +229,7 @@ Singleton {
                                      "tint": tintFor(requestedState),
                                      // preferences-system is commonly a full-color application
                                      // icon; colorizing its opaque plate destroys its identity.
-                                     "tintable": meaning !== "settings",
+                                     "tintable": meaning !== "systemSettings",
                                      "attention": requestedState === "attention",
                                      "disabled": requestedState === "disabled",
                                      "accessibleName": root._labels[meaning]

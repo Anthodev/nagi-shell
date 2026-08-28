@@ -39,8 +39,8 @@ ControlCenterSettingRow {
         color: Theme.color.textPrimary
         selectionColor: Theme.snapshot.accent
         selectedTextColor: Theme.snapshot.accentForeground
-        font.family: Theme.type.family
-        font.pixelSize: Theme.type.body
+        font.family: Theme.type.familyForItem(this)
+        font.pixelSize: Theme.type.sizeForItem(this, "body")
         Accessible.name: root.label
         Accessible.description: root.description
         Accessible.role: Accessible.EditableText

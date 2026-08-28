@@ -11,11 +11,35 @@ Item {
     required property var coordinator
     property var surfaceToken: null
     property bool showHistory: true
+    property var applicationModel: null
+    readonly property string systemSettingsDesktopId: "systemsettings.desktop"
+    property int systemSettingsRequestId: 0
+    property string systemSettingsFailure: ""
     signal controlCenterRequested
+    signal systemSettingsOpened
+
+    function openSystemSettings() {
+        if (systemSettingsRequestId !== 0) {
+            return false;
+        }
+        systemSettingsFailure = "";
+        if (applicationModel === null || typeof applicationModel.dispatchLaunch !== "function") {
+            systemSettingsFailure = "KDE Plasma System Settings is unavailable.";
+            return false;
+        }
+        const requestId = applicationModel.dispatchLaunch(systemSettingsDesktopId);
+        if (requestId <= 0) {
+            systemSettingsFailure = "KDE Plasma System Settings could not be opened.";
+            return false;
+        }
+        systemSettingsRequestId = requestId;
+        return true;
+    }
 
     readonly property alias topCluster: navigationTopCluster
     readonly property alias bottomCluster: navigationBottomCluster
     readonly property alias settingsButton: navigationSettings
+    readonly property alias systemSettingsButton: navigationSystemSettings
     readonly property alias sessionButton: navigationSession
 
     implicitWidth: Math.max(navigationTopCluster.implicitWidth,
@@ -72,12 +96,44 @@ Item {
         }
 
         RailButton {
+            id: navigationSystemSettings
+
+            objectName: "dashboardSystemSettings"
+            meaning: "systemSettings"
+            accessibleName: "KDE Plasma System Settings"
+            failureText: root.systemSettingsFailure
+            onOpenRequested: root.openSystemSettings()
+        }
+
+        RailButton {
             id: navigationSession
 
             objectName: "dashboardSession"
             meaning: "session"
             accessibleName: "Session"
             onOpenRequested: root.coordinator.openSession(root.surfaceToken)
+        }
+    }
+
+    Connections {
+        target: root.applicationModel
+        ignoreUnknownSignals: true
+
+        function onLaunchAccepted(requestId, desktopFileId) {
+            if (requestId !== root.systemSettingsRequestId || desktopFileId
+                    !== root.systemSettingsDesktopId) {
+                return;
+            }
+            root.systemSettingsRequestId = 0;
+            root.systemSettingsOpened();
+        }
+
+        function onLaunchRejected(requestId, category) {
+            if (requestId !== root.systemSettingsRequestId) {
+                return;
+            }
+            root.systemSettingsRequestId = 0;
+            root.systemSettingsFailure = "KDE Plasma System Settings could not be opened.";
         }
     }
 

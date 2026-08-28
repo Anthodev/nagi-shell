@@ -39,7 +39,7 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width
+        width: Math.min(root.width, Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.lg
 
         IslandText {
@@ -77,7 +77,8 @@ Flickable {
 
                 IslandText {
                     text: "Links and licenses"
-                    size: "title"
+                    size: "body"
+                    font.weight: Theme.type.weightSemibold
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
                 }
@@ -127,7 +128,8 @@ Flickable {
                     IslandText {
                         Layout.fillWidth: true
                         text: "Safe diagnostic"
-                        size: "title"
+                        size: "body"
+                        font.weight: Theme.type.weightSemibold
                         Accessible.role: Accessible.Heading
                         Accessible.name: text
                     }
@@ -162,8 +164,8 @@ Flickable {
                     color: Theme.color.textPrimary
                     selectionColor: Theme.snapshot.accent
                     selectedTextColor: Theme.snapshot.accentForeground
-                    font.family: Theme.type.family
-                    font.pixelSize: Theme.type.caption
+                    font.family: Theme.type.familyForItem(this)
+                    font.pixelSize: Theme.type.sizeForItem(this, "caption")
                     wrapMode: TextEdit.NoWrap
                     Accessible.name: "Safe diagnostic text"
                     Accessible.description: "Read-only allowlisted diagnostic"

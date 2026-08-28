@@ -33,7 +33,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -49,6 +50,11 @@ Flickable {
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
+        }
+        ControlCenterSectionHeading {
+            objectName: "islandGeometrySection"
+            text: "Geometry"
+            separated: false
         }
 
         SettingSliderRow {
@@ -113,11 +119,9 @@ Flickable {
                                                                   }, continuous)
         }
 
-        IslandText {
+        ControlCenterSectionHeading {
+            objectName: "islandFeedbackSection"
             text: "Feedback"
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
         }
 
         SettingToggleRow {
@@ -136,11 +140,9 @@ Flickable {
                                                         "gamingIndicator": value
                                                     }, false)
         }
-        IslandText {
+        ControlCenterSectionHeading {
+            objectName: "islandCompactContentSection"
             text: "Compact content"
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
         }
 
         IslandText {

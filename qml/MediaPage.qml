@@ -69,7 +69,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -85,6 +86,12 @@ Flickable {
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "mediaVisibilitySection"
+            text: "Visibility"
+            separated: false
         }
 
         SettingToggleRow {
@@ -120,6 +127,11 @@ Flickable {
                                                     })
         }
 
+        ControlCenterSectionHeading {
+            objectName: "mediaPlayerSelectionSection"
+            text: "Player selection"
+        }
+
         ControlCenterSettingRow {
             Layout.fillWidth: true
             label: "Player policy"
@@ -134,6 +146,8 @@ Flickable {
                 valueRole: "value"
                 currentIndex: root.selectedPlayerIndex()
                 enabled: root.settingsModel.writable && root.settingsModel.snapshot.media.enabled
+                font.family: Theme.type.familyForItem(this)
+                font.pixelSize: Theme.type.sizeForItem(this, "body")
                 Accessible.role: Accessible.ComboBox
                 Accessible.name: "Media player policy"
                 Accessible.description:
@@ -155,7 +169,7 @@ Flickable {
             visible: !root.settingsModel.snapshot.media.enabled
             text: "Player selection is unavailable while the integration is disabled."
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
             Accessible.role: Accessible.StaticText
             Accessible.name: text

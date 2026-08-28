@@ -499,7 +499,7 @@ test-notifications: check-quickshell check-notification-toolchain $(NOTIFICATION
 	cp tests/notification-history/shell.qml $(NOTIFICATION_HISTORY_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/NotificationHistoryView.qml $(NOTIFICATION_HISTORY_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(NOTIFICATION_HISTORY_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(NOTIFICATION_HISTORY_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(NOTIFICATION_HISTORY_TEST_DIR))/config' $(QS) -p $(NOTIFICATION_HISTORY_TEST_DIR) --no-duplicate
 	rm -rf $(NOTIFICATION_QML_TEST_DIR)
 	mkdir -p $(NOTIFICATION_QML_TEST_DIR)/qml $(NOTIFICATION_QML_TEST_DIR)/assets/icons/nagi
 	cp tests/notifications/shell.qml $(NOTIFICATION_QML_TEST_DIR)/shell.qml
@@ -552,7 +552,7 @@ test-session: check-quickshell | $(BUILD_DIR)
 	cp tests/session/shell.qml $(SESSION_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/SessionBridge.qml qml/SessionService.qml qml/SessionEntry.qml qml/SessionView.qml $(SESSION_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SESSION_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(SESSION_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(SESSION_TEST_DIR))/config' $(QS) -p $(SESSION_TEST_DIR) --no-duplicate
 
 test-adapter: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/adapter-test/qml
@@ -584,7 +584,7 @@ test-transients: check-quickshell | $(BUILD_DIR)
 	cp tests/transients/shell.qml $(TRANSIENT_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandText.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/TransientView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml $(TRANSIENT_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(TRANSIENT_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(TRANSIENT_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(TRANSIENT_TEST_DIR))/config' $(QS) -p $(TRANSIENT_TEST_DIR) --no-duplicate
 
 test-weather: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(WEATHER_TEST_DIR)/qml
@@ -603,7 +603,7 @@ test-audio: check-quickshell | $(BUILD_DIR)
 	cp tests/audio/shell.qml $(AUDIO_TEST_DIR)/shell.qml
 	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml qml/EasyEffectsStatusService.qml qml/AudioSelectionView.qml $(THEME_QML_SOURCES) qml/SubviewFrame.qml qml/IslandText.qml qml/IslandIcon.qml qml/IconResolver.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandPanel.qml $(AUDIO_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(AUDIO_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(AUDIO_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(AUDIO_TEST_DIR))/config' $(QS) -p $(AUDIO_TEST_DIR) --no-duplicate
 
 test-audio-live: check-quickshell audio-helper | $(BUILD_DIR)
 	mkdir -p $(AUDIO_LIVE_TEST_DIR)/qml
@@ -640,7 +640,7 @@ test-tray: check-quickshell | $(BUILD_DIR)
 	cp tests/tray/shell.qml $(TRAY_TEST_DIR)/shell.qml
 	cp qml/TrayAdapter.qml $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandButton.qml qml/IslandFocusRing.qml qml/IconResolver.qml qml/IslandIcon.qml qml/DashboardQuickControls.qml qml/SubviewFrame.qml qml/TrayView.qml $(TRAY_TEST_DIR)/qml/
 	cp assets/icons/nagi/navigation-back.svg assets/icons/nagi/placeholder.svg $(TRAY_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(TRAY_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(TRAY_TEST_DIR))/config' $(QS) -p $(TRAY_TEST_DIR) --no-duplicate
 
 test-tray-live: check-quickshell check-tray-toolchain $(TRAY_LIVE_TEST) | $(BUILD_DIR)
 	mkdir -p $(TRAY_LIVE_TEST_DIR)/qml
@@ -663,7 +663,7 @@ test-launcher: check-quickshell | $(BUILD_DIR)
 	cp tests/launcher/shell.qml $(LAUNCHER_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/LauncherView.qml qml/GlobalShortcutAdapter.qml $(LAUNCHER_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(LAUNCHER_TEST_DIR)/assets/icons/nagi/
-	QT_QPA_PLATFORM='offscreen' $(QS) -p $(LAUNCHER_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(LAUNCHER_TEST_DIR))/config' $(QS) -p $(LAUNCHER_TEST_DIR) --no-duplicate
 
 test-surface-state: check-quickshell platform-plugin | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi
@@ -677,6 +677,7 @@ test-display-orchestration: check-quickshell platform-plugin | $(BUILD_DIR)
 	mkdir -p $(DISPLAY_TEST_DIR)/qml $(DISPLAY_TEST_DIR)/assets/icons/nagi
 	cp tests/displays/shell.qml $(DISPLAY_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/DisplayManager.qml qml/DisplaysPage.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(DISPLAY_TEST_DIR)/qml/
+	cp qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml $(DISPLAY_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(DISPLAY_TEST_DIR)/assets/icons/nagi/
 	@set -eu; \
 	for outputs in 1 2 3; do \
@@ -689,7 +690,7 @@ test-polkit-ui: check-quickshell | $(BUILD_DIR)
 	cp tests/polkit-ui/shell.qml $(POLKIT_UI_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/PolkitView.qml $(POLKIT_UI_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(POLKIT_UI_TEST_DIR)/assets/icons/nagi/
-	QT_QPA_PLATFORM='offscreen' $(QS) -p $(POLKIT_UI_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(POLKIT_UI_TEST_DIR))/config' $(QS) -p $(POLKIT_UI_TEST_DIR) --no-duplicate
 
 test-wallpaper-dbus: wallpaper-helper
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper-dbus-test
@@ -715,7 +716,7 @@ test-wallpaper-live: wallpaper-helper
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper-live-test
 	'$(WALLPAPER_LIVE_TEST)' '$(abspath $(WALLPAPER_HELPER))'
 
-test-theme-config: check-quickshell | $(BUILD_DIR)
+test-theme-config: settings-helper check-quickshell | $(BUILD_DIR)
 	rm -rf $(THEME_CONFIG_TEST_DIR)
 	mkdir -p $(THEME_CONFIG_TEST_DIR)/qml $(THEME_CONFIG_TEST_DIR)/normal
 	cp tests/theme-config/shell.qml $(THEME_CONFIG_TEST_DIR)/shell.qml
@@ -724,6 +725,11 @@ test-theme-config: check-quickshell | $(BUILD_DIR)
 	cmp packaging/settings.conf $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf
 	test "$$(stat -c '%a' $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf)" = 600
 	test "$$(stat -c '%a' $(THEME_CONFIG_TEST_DIR)/normal/nagi-shell/settings.conf.last-good)" = 600
+	mkdir -p $(THEME_CONFIG_TEST_DIR)/version2/nagi-shell
+	cp tests/theme-config/settings-v2.conf $(THEME_CONFIG_TEST_DIR)/version2/nagi-shell/settings.conf
+	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='version2' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/version2' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
+	cmp tests/theme-config/settings-v2.conf $(THEME_CONFIG_TEST_DIR)/version2/nagi-shell/settings.conf.v2.bak
+	test "$$(stat -c '%a' $(THEME_CONFIG_TEST_DIR)/version2/nagi-shell/settings.conf.v2.bak)" = 600
 	mkdir -p $(THEME_CONFIG_TEST_DIR)/migration/nagi-shell
 	printf '%s\n' '; preserved comment' '[theme]' 'mode=accent' 'accent=#123456' 'surface_opacity=0.85' 'font_family=Noto Sans' 'outer_radius=32' '' '[media]' 'enabled=false' '' '[weather]' 'enabled=true' 'latitude=-90' 'longitude=180' '' '[clock]' 'format=12h' 'date_format=yyyy-MM-dd' 'show_idle_date=true' > $(THEME_CONFIG_TEST_DIR)/migration/nagi-shell/theme.conf
 	QT_QPA_PLATFORM='offscreen' NAGI_SETTINGS_TEST_PHASE='migration' XDG_CONFIG_HOME='$(abspath $(THEME_CONFIG_TEST_DIR))/migration' $(QS) -p $(THEME_CONFIG_TEST_DIR) --no-duplicate
@@ -762,7 +768,7 @@ test-icons: check-quickshell | $(BUILD_DIR)
 	cp tests/icons/shell.qml $(ICON_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IconResolver.qml qml/IslandIcon.qml $(ICON_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(ICON_TEST_DIR)/assets/icons/nagi/
-	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' $(QS) -p $(ICON_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(ICON_TEST_DIR))/config' $(QS) -p $(ICON_TEST_DIR) --no-duplicate
 
 test-subview-frame: check-quickshell | $(BUILD_DIR)
 	rm -rf $(SUBVIEW_FRAME_TEST_DIR)
@@ -770,7 +776,7 @@ test-subview-frame: check-quickshell | $(BUILD_DIR)
 	cp tests/subview-frame/shell.qml $(SUBVIEW_FRAME_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IconResolver.qml qml/IslandIcon.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/SubviewFrame.qml $(SUBVIEW_FRAME_TEST_DIR)/qml/
 	cp assets/icons/nagi/navigation-back.svg assets/icons/nagi/placeholder.svg $(SUBVIEW_FRAME_TEST_DIR)/assets/icons/nagi/
-	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' $(QS) -p $(SUBVIEW_FRAME_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' QS_ICON_THEME='breeze' NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(SUBVIEW_FRAME_TEST_DIR))/config' $(QS) -p $(SUBVIEW_FRAME_TEST_DIR) --no-duplicate
 
 test-dashboard: check-quickshell | $(BUILD_DIR)
 	rm -rf $(DASHBOARD_TEST_DIR)
@@ -778,7 +784,7 @@ test-dashboard: check-quickshell | $(BUILD_DIR)
 	cp tests/dashboard/shell.qml $(DASHBOARD_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/TrayView.qml $(DASHBOARD_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(DASHBOARD_TEST_DIR)/assets/icons/nagi/
-	QT_QPA_PLATFORM='offscreen' $(QS) -p $(DASHBOARD_TEST_DIR) --no-duplicate
+	QT_QPA_PLATFORM='offscreen' NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(DASHBOARD_TEST_DIR))/config' $(QS) -p $(DASHBOARD_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
 	rm -rf $(IDLE_TEST_DIR)
@@ -786,7 +792,7 @@ test-idle: check-quickshell | $(BUILD_DIR)
 	cp tests/idle/shell.qml $(IDLE_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IconResolver.qml qml/IslandIcon.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/KdeAppearanceAdapter.qml $(IDLE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(IDLE_TEST_DIR)/assets/icons/nagi/
-	$(QS) -p $(IDLE_TEST_DIR) --no-duplicate
+	NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(IDLE_TEST_DIR))/config' $(QS) -p $(IDLE_TEST_DIR) --no-duplicate
 
 test-typography: check-quickshell | $(BUILD_DIR)
 	rm -rf $(TYPOGRAPHY_TEST_DIR)
@@ -802,14 +808,14 @@ test-typography: check-quickshell | $(BUILD_DIR)
 	cp '$(TYPOGRAPHY_INTER_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/Inter-Regular.ttf
 	cp '$(TYPOGRAPHY_NOTO_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/NotoSans-Regular.ttf
 	cp '$(TYPOGRAPHY_SOURCE_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/SourceSans3-Regular.ttf
-	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
+	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 XDG_CONFIG_HOME='$(abspath $(TYPOGRAPHY_TEST_DIR))/config' NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
 
-test-control-center: check-quickshell | $(BUILD_DIR)
+test-control-center: settings-helper check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
 	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
 	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/WallpaperPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
-	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' NAGI_WIFI_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wifi.png' NAGI_BLUETOOTH_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/bluetooth.png' NAGI_WALLPAPER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wallpaper.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/WallpaperPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SETTINGS_HELPER='$(abspath $(SETTINGS_HELPER))' NAGI_CONTROL_CENTER_CAPTURE_DIR='$(abspath $(CONTROL_CENTER_TEST_DIR))' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
 	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
 
 # Issue #70 gate: one PanelWindow per connected screen, independent
