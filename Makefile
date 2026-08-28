@@ -162,6 +162,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-gaming-performance-dbus
 .PHONY: test-gaming-performance
 .PHONY: test-wallpaper-write-contract
+.PHONY: test-easyeffects-contract
 
 help:
 	@printf '%s\n' \
@@ -182,6 +183,7 @@ help:
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
+		'make test-easyeffects-contract  Test EasyEffects capability and lifecycle contracts' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-bluetooth-manager-dbus  Test scoped Bluetooth discovery and pairing' \
 		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
@@ -826,6 +828,11 @@ test-gaming-power-contract: check-helper-toolchain
 test-wallpaper-write-contract:
 	@bash $(CURDIR)/tests/wallpaper-write-contract/run-probe.sh
 
+# Issue #85 gate: package-agnostic EasyEffects capability, local-socket,
+# preset-root lifecycle, security bounds, and exact PipeWire identity.
+test-easyeffects-contract:
+	@$(PYTHON) $(CURDIR)/tests/easyeffects-contract/easyeffects_contract_probe.py
+
 check-quickshell: $(SETTINGS_HELPER)
 	@set -eu; \
 	version="$$($(QS) --version | sed -n 's/^Quickshell \([0-9][0-9.]*\).*/\1/p')"; \
@@ -890,7 +897,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-easyeffects-contract test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)
