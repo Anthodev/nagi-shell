@@ -202,7 +202,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -450,8 +451,8 @@ Flickable {
                         color: Theme.color.textPrimary
                         selectionColor: Theme.snapshot.accent
                         selectedTextColor: Theme.snapshot.accentForeground
-                        font.pixelSize: Theme.type.body
-                        font.family: Theme.type.family
+                        font.pixelSize: Theme.type.sizeForItem(this, "body")
+                        font.family: Theme.type.familyForItem(this)
                         verticalAlignment: TextInput.AlignVCenter
                         clip: true
                         activeFocusOnTab: true

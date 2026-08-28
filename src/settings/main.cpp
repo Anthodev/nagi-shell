@@ -22,6 +22,7 @@ constexpr std::string_view SettingsName = "settings.conf";
 constexpr std::string_view LastGoodName = "settings.conf.last-good";
 constexpr std::string_view LegacyName = "theme.conf";
 constexpr std::string_view MigrationBackupName = "settings.conf.bak";
+constexpr std::string_view Version2BackupName = "settings.conf.v2.bak";
 constexpr std::string_view InvalidBackupName = "settings.conf.invalid";
 
 class FileDescriptor {
@@ -281,6 +282,10 @@ bool performOperation(int directory, std::string_view operation, std::string_vie
         }
         return success;
     }
+    if (operation == "upgrade") {
+        return backupExact(directory, SettingsName, Version2BackupName, MaximumSettingsBytes, false)
+            && writeBundle(directory, content, false);
+    }
     if (operation == "recover") {
         return backupExact(directory, SettingsName, InvalidBackupName, MaximumSettingsBytes, true)
             && writeBundle(directory, content, false);
@@ -376,20 +381,24 @@ int main(int argc, char **argv)
         const PathKind lastGood = pathKind(directory.get(), LastGoodName);
         const PathKind legacy = pathKind(directory.get(), LegacyName);
         const PathKind backup = pathKind(directory.get(), MigrationBackupName);
+        const PathKind version2Backup = pathKind(directory.get(), Version2BackupName);
         const PathKind invalid = pathKind(directory.get(), InvalidBackupName);
         if ((settings == PathKind::Regular && !makePrivate(directory.get(), SettingsName))
                 || (lastGood == PathKind::Regular && !makePrivate(directory.get(), LastGoodName))
                 || (legacy == PathKind::Regular && !makePrivate(directory.get(), LegacyName))
                 || (backup == PathKind::Regular
                     && !makePrivate(directory.get(), MigrationBackupName))
+                || (version2Backup == PathKind::Regular
+                    && !makePrivate(directory.get(), Version2BackupName))
                 || (invalid == PathKind::Regular
                     && !makePrivate(directory.get(), InvalidBackupName))) {
             return fail("settings permissions could not be secured");
         }
         std::cout << "{\"settings\":\"" << kindName(settings) << "\",\"lastGood\":\""
                   << kindName(lastGood) << "\",\"legacy\":\"" << kindName(legacy)
-                  << "\",\"backup\":\"" << kindName(backup) << "\",\"invalid\":\""
-                  << kindName(invalid) << "\"}\n";
+                  << "\",\"backup\":\"" << kindName(backup) << "\",\"version2Backup\":\""
+                  << kindName(version2Backup) << "\",\"invalid\":\"" << kindName(invalid)
+                  << "\"}\n";
         return 0;
     }
     if (operation == "serve") {

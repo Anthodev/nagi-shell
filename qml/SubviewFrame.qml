@@ -208,7 +208,8 @@ FocusScope {
         }
     }
 
-    implicitWidth: Math.max(headerImplicitWidth, contentImplicitWidth) + Theme.spacing.lg * 2
+    implicitWidth: Math.max(Theme.size.islandSubviewMinimumWidth, headerImplicitWidth
+                            + Theme.spacing.lg * 2, contentImplicitWidth + Theme.spacing.lg * 2)
     implicitHeight: Theme.spacing.lg + headerHeight + Theme.spacing.md + contentImplicitHeight
                     + Theme.spacing.lg
     visible: active

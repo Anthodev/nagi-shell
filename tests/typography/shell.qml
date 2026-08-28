@@ -15,6 +15,42 @@ ShellRoot {
         console.error("FAIL: " + message);
         Qt.exit(1);
     }
+    function require(condition, message) {
+        if (!condition) {
+            fail(message);
+        }
+    }
+
+    function verifyScopedTypography() {
+        const previous = UserConfig.snapshot;
+        const candidate = UserConfig.mutableSnapshot(previous);
+        candidate.appearance.idleFontFamily = interLoader.name;
+        candidate.appearance.idleBaseFontSize = 11;
+        candidate.appearance.expandedFontFamily = notoLoader.name;
+        candidate.appearance.expandedBaseFontSize = 16;
+        candidate.appearance.controlCenterFontFamily = sourceSansLoader.name;
+        candidate.appearance.controlCenterBaseFontSize = 18;
+        const normalized = UserConfig.validateCandidate(candidate);
+        require(normalized !== null, "scoped typography fixture satisfies settings bounds");
+        UserConfig.publish(normalized);
+        require(Theme.type.familyFor("idle") === interLoader.name && Theme.type.familyFor(
+                    "expanded") === notoLoader.name && Theme.type.familyFor("controlCenter")
+                === sourceSansLoader.name,
+                "each typography scope resolves its selected installed family");
+        require(Theme.type.sizeFor("idle", "body") === 11 && Theme.type.sizeFor("expanded", "body")
+                === 16 && Theme.type.sizeFor("controlCenter", "body") === 18,
+                "each typography scope resolves its independent base size");
+        require(Theme.type.sizeFor("idle", "caption") === Math.round(11 * 11 / 13) && Theme.type.sizeFor(
+                    "expanded", "title") === Math.round(16 * 15 / 13) && Theme.type.sizeFor("controlCenter",
+                                                                                            "display")
+                === Math.round(18 * 48 / 13) && Theme.type.sizeFor("controlCenter", "muted")
+                === Theme.type.sizeFor("controlCenter", "caption"),
+                "semantic and muted roles preserve their proportional scale");
+        require(Theme.type.scopeFor(idleProbe) === "idle" && Theme.type.scopeFor(expandedProbe)
+                === "expanded" && Theme.type.scopeFor(controlCenterProbe) === "controlCenter",
+                "descendants resolve the nearest explicit typography scope");
+        UserConfig.publish(previous);
+    }
 
     function verifyLoaders() {
         if (interLoader.status !== FontLoader.Ready || notoLoader.status !== FontLoader.Ready
@@ -22,6 +58,7 @@ ShellRoot {
             return;
         }
 
+        verifyScopedTypography();
         checked = true;
         readyPoll.running = false;
         guard.running = false;
@@ -47,6 +84,29 @@ ShellRoot {
         id: sourceSansLoader
 
         source: "fonts/SourceSans3-Regular.ttf"
+    }
+    Item {
+        id: idleScope
+        readonly property string nagiTypographyScope: "idle"
+        Item {
+            id: idleProbe
+        }
+    }
+
+    Item {
+        id: expandedScope
+        readonly property string nagiTypographyScope: "expanded"
+        Item {
+            id: expandedProbe
+        }
+    }
+
+    Item {
+        id: controlCenterScope
+        readonly property string nagiTypographyScope: "controlCenter"
+        Item {
+            id: controlCenterProbe
+        }
     }
 
     Timer {

@@ -6,6 +6,7 @@ import QtQuick.Window
 
 PanelWindow {
     id: surface
+    readonly property string nagiTypographyScope: "expanded"
 
     required property var coordinator
     required property var hostSurfaceToken
@@ -95,7 +96,7 @@ PanelWindow {
     property int exitingOwnerKind: -1
     property var exitingLoader: null
     property real interactiveExitOffset: 0
-    property bool focusPendingAfterExit: false
+    property bool focusHandoffPending: false
     readonly property bool interactiveExitRunning: interactiveExitAnimation.running
                                                    || exitingOwnerKind >= 0
     readonly property real interactiveExitLoaderX: exitingLoader === null ? 0 : exitingLoader.x
@@ -104,6 +105,7 @@ PanelWindow {
                                                                                            exitingLoader.mapToItem(
                                                                                                surface.contentItem,
                                                                                                0, 0).x)
+    readonly property real interactiveExitLoaderZ: exitingLoader === null ? 0 : exitingLoader.z
     readonly property bool interactiveExitLoaderEnabled: exitingLoader !== null
                                                          && exitingLoader.enabled
     readonly property var interactiveExitItem: exitingLoader === null ? null : exitingLoader.item
@@ -271,10 +273,6 @@ PanelWindow {
         }
         exitingOwnerKind = -1;
         exitingLoader = null;
-        if (focusPendingAfterExit) {
-            focusPendingAfterExit = false;
-            queueOwnerFocus();
-        }
         queuePresentationAcknowledgement();
     }
 
@@ -402,10 +400,6 @@ PanelWindow {
     }
 
     function queueOwnerFocus() {
-        if (interactiveExitRunning) {
-            focusPendingAfterExit = true;
-            return;
-        }
         const generation = hostSurfaceGeneration;
         const epoch = ownerEpoch;
         const serial = focusRequestSerial;
@@ -415,10 +409,6 @@ PanelWindow {
             }
             if (generation !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch
                     || serial !== surface.focusRequestSerial) {
-                return;
-            }
-            if (surface.interactiveExitRunning) {
-                surface.focusPendingAfterExit = true;
                 return;
             }
             let target = null;
@@ -453,6 +443,7 @@ PanelWindow {
 
             surface.focusedOwnerEpoch = epoch;
             surface.appliedFocusRequestSerial = serial;
+            surface.focusHandoffPending = false;
             target.focusInitialControl();
         });
     }
@@ -580,6 +571,7 @@ PanelWindow {
     onOwnerKindChanged: {
         const outgoingKind = previousOwnerKind;
         previousOwnerKind = ownerKind;
+        focusHandoffPending = focusTarget !== coordinator.focusNone;
         if (outgoingKind !== ownerKind) {
             beginInteractiveExit(outgoingKind);
         }
@@ -609,6 +601,7 @@ PanelWindow {
         }
     }
 
+    onFocusTargetChanged: focusHandoffPending = focusTarget !== coordinator.focusNone
     onFocusRequestSerialChanged: queueOwnerFocus()
     onOwnerEpochChanged: {
         focusedOwnerEpoch = 0;
@@ -662,24 +655,32 @@ PanelWindow {
     color: "transparent"
     exclusiveZone: 0
     BackgroundEffect.blurRegion: Theme.snapshot.blurEnabled ? backgroundBlurRegion : null
-    focusable: !interactiveExitRunning && focusedOwnerEpoch === ownerEpoch
-               && appliedFocusRequestSerial === focusRequestSerial && ((expanded && focusTarget
-                                                                        === coordinator.focusExpandedDashboard)
-                                                                       || (launcher && focusTarget
-                                                                           === coordinator.focusLauncherSearch)
-                                                                       || (history && focusTarget
-                                                                           === coordinator.focusNotificationHistory)
-                                                                       || (tray && focusTarget
-                                                                           === coordinator.focusTray)
-                                                                       || (audio && focusTarget
-                                                                           === coordinator.focusAudio)
-                                                                       || (weatherDetails
-                                                                           && focusTarget
-                                                                           === coordinator.focusWeather)
-                                                                       || (session && focusTarget
-                                                                           === coordinator.focusSessionActions)
-                                                                       || (polkit && focusTarget
-                                                                           === coordinator.focusPolkitModal))
+    focusable: focusHandoffPending || (focusedOwnerEpoch === ownerEpoch
+                                       && appliedFocusRequestSerial === focusRequestSerial && ((
+                                                                                                   expanded
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusExpandedDashboard)
+                                                                                               || (launcher
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusLauncherSearch)
+                                                                                               || (history
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusNotificationHistory)
+                                                                                               || (tray
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusTray)
+                                                                                               || (audio
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusAudio)
+                                                                                               || (weatherDetails
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusWeather)
+                                                                                               || (session
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusSessionActions)
+                                                                                               || (polkit
+                                                                                                   && focusTarget
+                                                                                                   === coordinator.focusPolkitModal)))
     implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height,
                                     largeContent ? UserConfig.snapshot.island.expandedHeightPercent :
                                                    1)
@@ -875,6 +876,7 @@ PanelWindow {
                  === surface.coordinator.ownerLauncher) && surface.applicationModel !== null
         visible: active
         enabled: surface.launcher
+        z: launcherLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: launcherLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -905,6 +907,7 @@ PanelWindow {
                 && surface.notificationService !== null
         visible: active
         enabled: surface.history
+        z: historyLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: historyLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -933,6 +936,7 @@ PanelWindow {
                 && surface.trayAdapter !== null
         visible: active
         enabled: surface.tray
+        z: trayLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: trayLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -965,6 +969,7 @@ PanelWindow {
                 && surface.audioAdapter !== null
         visible: active
         enabled: surface.audio
+        z: audioLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: audioLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -998,6 +1003,7 @@ PanelWindow {
                  === surface.coordinator.ownerWeather) && surface.weather !== null
         visible: active
         enabled: surface.weatherDetails
+        z: weatherLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: weatherLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -1025,6 +1031,7 @@ PanelWindow {
         active: surface.polkit || surface.exitingOwnerKind === surface.coordinator.ownerPolkitModal
         visible: active
         enabled: surface.polkit
+        z: polkitLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: polkitLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }
@@ -1053,6 +1060,7 @@ PanelWindow {
                 && surface.sessionService !== null
         visible: active
         enabled: surface.session
+        z: sessionLoader === surface.exitingLoader ? 1 : 0
         transform: Translate {
             x: sessionLoader === surface.exitingLoader ? surface.interactiveExitOffset : 0
         }

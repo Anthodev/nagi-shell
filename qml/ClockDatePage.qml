@@ -33,7 +33,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -80,6 +81,11 @@ Flickable {
                     Accessible.name: "Date preview " + text
                 }
             }
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "clockPresentationSection"
+            text: "Presentation"
         }
 
         SettingChoiceRow {

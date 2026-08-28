@@ -73,6 +73,7 @@ ShellRoot {
             throw new Error(message);
         }
     }
+
     function findObject(root, name) {
         if (root === null || root === undefined) {
             return null;
@@ -327,8 +328,9 @@ ShellRoot {
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
             require(host.interactiveExitRunning && host.geometryAnimationRunning
-                    && host.launcherLoaded && !host.surfaceFocusable,
-                    "reverse exit and outer geometry morph begin together while retaining Launcher");
+                    && host.launcherLoaded && host.surfaceFocusable
+                    && host.interactiveExitLoaderZ > 0,
+                    "reverse exit retains focus and layers Launcher above the restored dashboard");
             require(!host.interactiveExitLoaderEnabled,
                     "outgoing Launcher is disabled as soon as ownership returns");
             launcherExitAnchorX = host.interactiveExitLoaderX;
@@ -456,8 +458,9 @@ ShellRoot {
                     "stale history Back cannot close the current owner");
             require(coordinator.cancelInteractive(historyEpoch),
                     "history Back accepts the current owner epoch");
-            require(host.interactiveExitRunning && host.historyLoaded && !host.surfaceFocusable,
-                    "reverse exit retains History and delays dashboard focus");
+            require(host.interactiveExitRunning && host.historyLoaded && host.surfaceFocusable
+                    && host.interactiveExitLoaderZ > 0,
+                    "reverse exit retains focus while History fades above the dashboard");
             require(!host.interactiveExitLoaderEnabled,
                     "outgoing History is disabled immediately while retained for its fade");
         } else if (step === 12) {
@@ -470,11 +473,18 @@ ShellRoot {
                 }
                 require(coordinator.focusTarget === coordinator.focusTray,
                         "tray presentation receives the item focus target");
+                require(host.surfacePreferredWidth >= Theme.size.islandSubviewMinimumWidth
+                        && host.surfaceWidth >= Theme.size.islandSubviewMinimumWidth - 1,
+                        "sparse Tray keeps the shared interactive width floor");
+                require(coordinator.setHover(host.surfaceGeneration, false)
+                        && coordinator.ownerName === "tray" && host.surfaceFocusable,
+                        "pointer exit cannot reset an active interactive subview");
                 requireSurfaceMatches(trayReference, "tray");
                 require(coordinator.cancelInteractive(trayEpoch),
                         "tray Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.trayLoaded && !host.surfaceFocusable,
-                        "generic reverse exit retains Tray without wrapper-specific lifecycle code");
+                require(host.interactiveExitRunning && host.trayLoaded && host.surfaceFocusable
+                        && host.interactiveExitLoaderZ > 0,
+                        "generic reverse exit keeps focus and layers Tray above its replacement");
                 require(!host.interactiveExitLoaderEnabled,
                         "outgoing Tray is disabled immediately while retained for its fade");
                 const trayControl = findObject(host.interactiveExitItem, "trayItemButton");
@@ -499,6 +509,8 @@ ShellRoot {
                 require(Math.abs(host.surfacePreferredWidth - audioWidthReference.implicitWidth)
                         <= 1 && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth) <= 1,
                         "audio surface width equals the audio view implicit width");
+                require(host.surfacePreferredWidth >= Theme.size.islandSubviewMinimumWidth,
+                        "Audio keeps the shared interactive width floor");
                 require(coordinator.focusTarget === coordinator.focusAudio,
                         "audio presentation receives the dropdown focus target");
                 const presetSelect = findObject(host.interactiveContent,
@@ -514,8 +526,9 @@ ShellRoot {
                 presetSelect.closePopup();
                 require(coordinator.cancelInteractive(audioEpoch),
                         "audio Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.audioLoaded && !host.surfaceFocusable,
-                        "generic reverse exit retains Audio without wrapper-specific lifecycle code");
+                require(host.interactiveExitRunning && host.audioLoaded && host.surfaceFocusable
+                        && host.interactiveExitLoaderZ > 0,
+                        "generic reverse exit keeps focus and layers Audio above its replacement");
                 require(!host.interactiveExitLoaderEnabled,
                         "outgoing Audio is disabled immediately while retained for its fade");
                 const audioControl = findObject(host.interactiveExitItem, "audioOutputDropdown");
@@ -548,16 +561,18 @@ ShellRoot {
                         "Weather natural content is screen-bounded and clipped by SubviewFrame");
                 require(coordinator.cancelInteractive(weatherEpoch),
                         "Weather Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.weatherLoaded && !host.surfaceFocusable,
-                        "generic reverse exit retains Weather only for its fade");
+                require(host.interactiveExitRunning && host.weatherLoaded && host.surfaceFocusable
+                        && host.interactiveExitLoaderZ > 0,
+                        "generic reverse exit keeps focus and layers Weather above its replacement");
                 require(!host.interactiveExitLoaderEnabled,
                         "outgoing Weather disables actions immediately");
                 weatherVerified = true;
                 step = 11;
             } else {
                 if (!awaitState(coordinator.ownerName === "expanded"
-                                && coordinator.presentationVisible && host.dashboardFocused,
-                                "interactive Back did not restore the deliberate dashboard")) {
+                                && coordinator.presentationVisible && host.dashboardFocused
+                                && !host.interactiveExitRunning,
+                                "interactive Back did not settle the deliberate dashboard")) {
                     return;
                 }
                 require(!host.interactiveExitRunning,

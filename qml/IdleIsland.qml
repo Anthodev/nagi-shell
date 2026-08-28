@@ -26,6 +26,7 @@ import QtQuick.Controls
 // available true during the bounded stale window.
 Item {
     id: idle
+    readonly property string nagiTypographyScope: "idle"
 
     property var virtualDesktops: null
     property var clock: null
@@ -51,13 +52,13 @@ Item {
     readonly property int verticalPadding: Theme.spacing.sm
     readonly property string gamingPerformanceTooltip: "Gaming performance active"
 
-    // Height formula: caption + body tight bounds, their semantic gap, and
-    // two vertical paddings, clamped to the 44–48 px contract. This covers the
-    // tallest two-line group. The published Theme token remains the surface
-    // baseline; a later typeface may raise the local height only when required.
-    readonly property int metricsContentHeight: Math.ceil(bodyMetrics.tightBoundingRect.height
-                                                          + weatherLabelGap
-                                                          + captionMetrics.tightBoundingRect.height)
+    // Height follows the tallest single-line text metric plus semantic vertical
+    // padding, clamped to the 44–48 px contract. The published Theme token
+    // remains the stable baseline; a later typeface may raise the local height
+    // only when required.
+    readonly property int metricsContentHeight: Math.ceil(Math.max(
+                                                              bodyMetrics.tightBoundingRect.height,
+                                                              captionMetrics.tightBoundingRect.height))
     readonly property int derivedContentHeight: Math.max(44, Math.min(48, metricsContentHeight
                                                                       + verticalPadding * 2))
     readonly property int resolvedHeight: Math.max(44, Math.min(48, Math.max(Theme.size.islandIdleHeight,
@@ -198,16 +199,16 @@ Item {
         id: bodyMetrics
 
         text: "Ag"
-        font.pixelSize: Theme.type.body
-        font.family: Theme.type.family
+        font.pixelSize: Theme.type.sizeFor("idle", "body")
+        font.family: Theme.type.familyFor("idle")
     }
 
     TextMetrics {
         id: captionMetrics
 
         text: "Ag"
-        font.pixelSize: Theme.type.caption
-        font.family: Theme.type.family
+        font.pixelSize: Theme.type.sizeFor("idle", "caption")
+        font.family: Theme.type.familyFor("idle")
     }
 
     component GroupSeparator: Item {
@@ -375,14 +376,15 @@ Item {
 
                 x: weatherGlyph.implicitWidth + idle.weatherGap
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: Math.max(temperatureLabel.implicitWidth,
-                                        weatherConditionLabel.implicitWidth)
-                implicitHeight: temperatureLabel.implicitHeight + idle.weatherLabelGap
-                                + weatherConditionLabel.implicitHeight
+                implicitWidth: temperatureLabel.implicitWidth + idle.weatherLabelGap
+                               + weatherConditionLabel.implicitWidth
+                implicitHeight: Math.max(temperatureLabel.implicitHeight,
+                                         weatherConditionLabel.implicitHeight)
 
                 IslandText {
                     id: temperatureLabel
 
+                    anchors.verticalCenter: parent.verticalCenter
                     text: idle.temperatureText
                     tone: "secondary"
                     size: "body"
@@ -392,7 +394,8 @@ Item {
                 IslandText {
                     id: weatherConditionLabel
 
-                    y: temperatureLabel.implicitHeight + idle.weatherLabelGap
+                    x: temperatureLabel.implicitWidth + idle.weatherLabelGap
+                    anchors.verticalCenter: parent.verticalCenter
                     text: idle.weatherCaptionText
                     tone: "muted"
                     size: "caption"

@@ -54,7 +54,7 @@ media  ▲                       │                         │
 - **Focused tools.** Launcher, notification history, tray, bounded output/input device dropdowns, detailed Weather, and six session actions replace dashboard content inside the same island. The Audio view excludes only exact EasyEffects internal graph nodes and, when the validated desktop entry exists, reads bounded last-loaded state through the official native socket, discovers native local output/input presets through bounded non-recursive snapshots, presents them in keyboard-accessible select lists, and confirms each explicit selection through fresh readback. Weather shows the shared current conditions, next 12 returned hours, and five returned days in a bounded scrolling view. History keeps a 480 px reading lane within a 512 px surface and shows up to five rows before scrolling.
 - **Native desktop integration.** KWin virtual desktops, GameMode, Power Profiles Daemon, PowerDevil brightness, PipeWire audio, MPRIS media, NetworkManager Wi-Fi management, BlueZ Bluetooth management, D-Bus session actions, desktop entries, KGlobalAccel, StatusNotifier items, notifications, KDE appearance, and one Plasma wallpaper service feed normalized adapters.
 - **Local wallpaper management.** The Control Center shows common, mixed, and unsupported per-display state; indexes only approved local folders; renders lazy cached thumbnails; previews a static image without changing Theme; and applies it to every active display only after an explicit action and fresh readback.
-- **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback.
+- **Bounded live appearance.** Nagi Dark, OLED, Light, System, and reduced Custom inputs publish one contrast-checked semantic snapshot across every island and Nagi window. Nagi, System, Wallpaper, and Custom accents share one derivation path; optional blur keeps a readable plain-surface fallback. Appearance independently selects installed font families and `11–18 px` body baselines for Idle, Expanded, and Control Center typography; titles, captions, display text, and muted labels retain proportional semantic roles.
 - **Semantic icons.** Nagi icons, KDE action icons, and untinted application icons share one resolver/rendering path with a neutral fallback and adapt contrast to the current semantic surface; muted input has its own slashed-microphone shape.
 - **Restrained motion.** Full, Reduced, and Minimal combine with KDE's animation preference by selecting the most restrictive scale. Minimal settles geometry, loaders, and focus synchronously.
 
@@ -115,14 +115,14 @@ For startup diagnostics, use `make diagnose`, then inspect the checkout with `ma
 
 ## Configuration
 
-Nagi owns one canonical file at `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/settings.conf`. Schema version `2` is a file-format version, not the product's internal V2 program name. New files use the private canonical template in `packaging/settings.conf`; valid legacy `theme.conf` values migrate once, byte-for-byte backup to `settings.conf.bak`, then the old file stops being active.
+Nagi owns one canonical file at `${XDG_CONFIG_HOME:-$HOME/.config}/nagi-shell/settings.conf`. Schema version `3` is the current file format. New files use the private canonical template in `packaging/settings.conf`; valid schema V2 files upgrade once with an exact private `settings.conf.v2.bak`, mapping the former family to all three typography scopes at the `13 px` baseline. Valid legacy `theme.conf` values migrate once with a byte-for-byte `settings.conf.bak`, then the old file stops being active.
 
 > [!WARNING]
 > Weather is opt-in. Manual search sends the submitted city or postal text and your IP address to Open-Meteo; if it is unavailable, Nagi may send the same submitted search to the configured Nominatim endpoint. Confirmed forecasts send your IP address and four-decimal coordinates to MET Norway. Nagi stores no search history, uses no IP geolocation or automatic location tracking, and saves only the confirmed local label and coordinates. Accept this disclosure before searching or enabling Weather.
 
 ```ini
 [settings]
-schema_version=2
+schema_version=3
 
 [appearance]
 scheme=nagi-dark
@@ -134,7 +134,12 @@ surface_opacity=0.96
 border_intensity=0
 blur_enabled=false
 motion=full
-font_family=Inter
+idle_font_family=Inter
+idle_base_font_size=13
+expanded_font_family=Inter
+expanded_base_font_size=13
+control_center_font_family=Inter
+control_center_base_font_size=13
 outer_radius=16
 
 [island]
@@ -184,8 +189,8 @@ roots=[]
 
 | Section | Allowed values and bounds |
 |---|---|
-| `settings` | Exact integer `schema_version=2`; newer versions enter read-only compatibility mode |
-| `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full`, `reduced`, or `minimal`; family: 1–128 UTF-8 bytes; radius: `8–32` |
+| `settings` | Exact integer `schema_version=3`; schema V2 upgrades once and newer versions enter read-only compatibility mode |
+| `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full`, `reduced`, or `minimal`; separate Idle, Expanded, and Control Center families of 1–128 UTF-8 bytes plus integer body baselines of `11–18 px`; radius: `8–32` |
 | `island` | Compact height `44–48`, padding `16–32`, expanded width/height fractions `0.6–1`; fixed booleans for compact content and Gaming feedback; duration `short`, `normal`, or `long` |
 | `clock` | Format `auto`, `12h`, or `24h`; seconds and Idle date booleans; date pattern `dddd, d MMMM`, `ddd, d MMM`, `yyyy-MM-dd`, `MM/dd/yyyy`, or `dd/MM/yyyy` |
 | `media` | Integration, compact, and dashboard booleans; `automatic` or `preferred` player policy; preferred desktop-file ID up to 256 UTF-8 bytes |
@@ -197,7 +202,7 @@ Nagi never adds a wallpaper folder automatically. The Wallpaper page suggests th
 
 The complete file is capped at 32 KiB: eight bounded wallpaper roots consume at most 8 KiB, while every other scalar remains below 2 KiB, leaving editorial headroom without permitting unbounded input. Unknown, duplicate, empty, malformed, NUL-containing, non-finite, or out-of-range input rejects the complete snapshot; no consumer sees a per-field hybrid.
 
-Valid UI changes publish one immutable generation immediately. Continuous controls persist after a bounded 180 ms debounce; a write failure rolls the complete snapshot back. Valid external replacements win atomically. Invalid, partial, unreadable, or removed content keeps `settings.conf.last-good`, retains the bad file, blocks ordinary writes, and requires explicit **Restore last-good** or **Reset defaults**. Recovery first saves invalid bytes to `settings.conf.invalid`. A newer schema is never rewritten or downgraded.
+Valid UI changes publish one immutable generation immediately. Continuous controls persist after a bounded 180 ms debounce; a write failure rolls the complete snapshot back. Valid external replacements win atomically. Invalid, partial, unreadable, or removed content keeps `settings.conf.last-good`, retains the bad file, and blocks ordinary writes. The Control Center exposes a confirmed **Reset to defaults** action for malformed or invalid content; recovery first saves the rejected bytes to `settings.conf.invalid`. A newer schema is never rewritten or downgraded.
 
 All settings files and backups use mode `0600` inside a mode-`0700` directory. A native writer rejects symlinks, directories, devices, FIFOs, foreign ownership, and unsafe replacements before performing private atomic writes. Wi-Fi passwords, Bluetooth codes, Polkit secrets, notification content, wallpaper thumbnails, provider responses, hardware IDs, and backend paths never enter settings, backups, diagnostics, or logs. Reset all affects settings only; it does not clear histories, caches, credentials, paired devices, saved networks, or user files.
 
@@ -225,7 +230,7 @@ Everything below stays on this machine; Nagi has no telemetry or sync.
 | Dashboard device name | Open output/input device selection |
 | Dashboard Wi-Fi, right click or `Shift+Enter` | Open the Wi-Fi Control Center page on the initiating display |
 | Dashboard Bluetooth, right click or `Shift+Enter` | Open the Bluetooth Control Center page on the initiating display |
-| Dashboard Tray, Launcher, History, Audio, Settings, or Session action | Open the corresponding focused view or Nagi Control Center |
+| Dashboard Tray, Launcher, History, Control Center, KDE Settings, or Session action | Open the corresponding focused view, same-process Nagi Control Center, or `systemsettings.desktop` |
 | Expanded or Tray application icon, primary/middle click | Dispatch the tray action and return the non-modal island to Idle |
 | Expanded or Tray application icon, right click | Keep the island open while showing the native context menu; selecting an entry returns Idle, while dismissal preserves the current state |
 | Accepted application launch or reliable external focus loss | Clear non-modal state and return directly to Idle |
@@ -243,7 +248,7 @@ KDE lists these actions under **Nagi Shell**:
 | Open Session Controls | Unbound |
 | Open Control Center | Unbound |
 
-Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's right rail keeps the launcher reachable when no global shortcut is active, and its Settings action opens the same-process Control Center even when every binding is unbound.
+Edit bindings in **System Settings -> Keyboard -> Shortcuts -> Nagi Shell**. Nagi reports active, conflicting, and unbound states but never removes or replaces another component's shortcut. If KRunner already owns `Meta+Space`, keep that binding or resolve the conflict in System Settings. The dashboard's right rail keeps the launcher reachable when no global shortcut is active; its bottom cluster orders Nagi Control Center, KDE Plasma System Settings, then Session.
 
 Backend-confirmed state is authoritative for audio, connectivity, brightness, and session operations. Pending and failure states do not report success.
 

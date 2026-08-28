@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 FloatingWindow {
     id: root
@@ -23,6 +24,7 @@ FloatingWindow {
     property bool compactNavigationVisible: false
     property var pendingFreshScreen: null
     property var activeTargetScreen: null
+    property bool settingsRecoveryConfirmationVisible: false
 
     readonly property var availableRoutes: Object.freeze([
                                                              {
@@ -81,6 +83,50 @@ FloatingWindow {
     readonly property bool weatherLookupAllowed: currentPageId === "weather" && pageLoader.item
                                                  !== null && pageLoader.item.lookupAllowed === true
     readonly property var backingWindow: contentItem.Window.window
+    readonly property bool currentPageUsesSettings: currentPageId === "island" || currentPageId
+                                                    === "appearance" || currentPageId
+                                                    === "clock-date" || currentPageId === "media"
+                                                    || currentPageId === "weather" || currentPageId
+                                                    === "notifications" || currentPageId
+                                                    === "wallpaper"
+    readonly property bool invalidSettingsRecoveryRequired: settingsModel.status === "recovery"
+                                                            && settingsModel.recoveryKind
+                                                            === "invalid"
+    readonly property bool settingsUnavailable: !settingsModel.writable && (currentPageUsesSettings
+                                                                            || invalidSettingsRecoveryRequired)
+    readonly property string settingsUnavailableText: settingsModel.status === "loading"
+                                                      ? "Preparing the private settings writer…" :
+                                                        settingsModel.errorMessage !== ""
+                                                        ? settingsModel.errorMessage :
+                                                          "Settings are read-only until the private writer is available."
+    readonly property bool canResetInvalidSettings: invalidSettingsRecoveryRequired &&
+                                                    !settingsModel.readOnly
+
+    onCanResetInvalidSettingsChanged: {
+        if (!canResetInvalidSettings) {
+            settingsRecoveryConfirmationVisible = false;
+        }
+    }
+
+    function beginSettingsRecoveryReset() {
+        if (!canResetInvalidSettings) {
+            return false;
+        }
+        settingsRecoveryConfirmationVisible = true;
+        return true;
+    }
+
+    function cancelSettingsRecoveryReset() {
+        settingsRecoveryConfirmationVisible = false;
+    }
+
+    function confirmSettingsRecoveryReset() {
+        if (!canResetInvalidSettings || !settingsRecoveryConfirmationVisible) {
+            return false;
+        }
+        settingsRecoveryConfirmationVisible = false;
+        return settingsModel.resetAll();
+    }
 
     title: "Nagi Control Center"
     visible: false
@@ -267,6 +313,54 @@ FloatingWindow {
         Qt.callLater(focusCurrentContext);
     }
 
+    component RouteButton: AbstractButton {
+        id: routeButton
+
+        required property string routeLabel
+        property bool selected: false
+
+        implicitHeight: Theme.size.controlHeightLg
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        leftPadding: Theme.spacing.lg
+        rightPadding: Theme.spacing.md
+        focusPolicy: Qt.StrongFocus
+        hoverEnabled: true
+        Accessible.role: Accessible.ListItem
+        Accessible.name: routeLabel
+        Accessible.description: "Open " + routeLabel
+
+        background: Rectangle {
+            radius: Theme.radius.sm
+            color: routeButton.selected ? Theme.color.surfaceActive : routeButton.hovered
+                                          ? Theme.color.surfaceHover : "transparent"
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacing.xs
+                anchors.verticalCenter: parent.verticalCenter
+                width: 2
+                height: Theme.spacing.lg
+                radius: 1
+                visible: routeButton.selected
+                color: Theme.snapshot.accent
+            }
+        }
+
+        contentItem: IslandText {
+            text: routeButton.routeLabel
+            size: "body"
+            font.weight: routeButton.selected ? Theme.type.weightSemibold : Theme.type.weightMedium
+            color: routeButton.selected ? Theme.snapshot.accent : Theme.color.textPrimary
+            horizontalAlignment: Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        IslandFocusRing {
+            visible: routeButton.visualFocus
+            controlRadius: Theme.radius.sm
+        }
+    }
+
     Connections {
         target: Quickshell
 
@@ -281,6 +375,7 @@ FloatingWindow {
 
         Item {
             id: keyScope
+            readonly property string nagiTypographyScope: "controlCenter"
 
             anchors.fill: parent
             focus: true
@@ -296,26 +391,39 @@ FloatingWindow {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.spacing.xl
-                spacing: Theme.spacing.xl
+                anchors.margins: Theme.spacing.lg
+                spacing: Theme.spacing.lg
 
-                IslandPanel {
+                Rectangle {
                     Layout.preferredWidth: Theme.size.controlCenterSidebarWidth
                     Layout.fillHeight: true
                     visible: root.layoutMode === "sidebar"
-                    color: Theme.color.controlFill
+                    radius: Theme.radius.lg
+                    color: Theme.color.surface
+                    border.width: Theme.size.hairlineWidth
+                    border.color: Theme.color.surfaceBorder
 
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: Theme.spacing.md
-                        spacing: Theme.spacing.sm
+                        spacing: Theme.spacing.md
 
                         IslandText {
                             Layout.fillWidth: true
                             text: "Nagi Control Center"
                             size: "title"
+                            font.weight: Theme.type.weightSemibold
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
                             Accessible.role: Accessible.Heading
                             Accessible.name: text
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: Theme.size.hairlineWidth
+                            color: Theme.color.surfaceBorder
                         }
 
                         ColumnLayout {
@@ -330,16 +438,12 @@ FloatingWindow {
                                 id: sidebarRouteRepeater
                                 model: root.availableRoutes
 
-                                delegate: IslandButton {
+                                delegate: RouteButton {
                                     required property var modelData
 
                                     Layout.fillWidth: true
-                                    label: modelData.name
-                                    reducedMotion: root.reducedMotion
-                                    variant: root.currentPageId === modelData.id ? "accent" :
-                                                                                   "standard"
-                                    Accessible.role: Accessible.ListItem
-                                    Accessible.description: "Open " + modelData.name
+                                    routeLabel: modelData.name
+                                    selected: root.currentPageId === modelData.id
                                     onClicked: root.selectRoute(modelData.id)
                                 }
                             }
@@ -347,14 +451,6 @@ FloatingWindow {
 
                         Item {
                             Layout.fillHeight: true
-                        }
-
-                        IslandText {
-                            Layout.fillWidth: true
-                            text: "Only complete pages are listed."
-                            size: "caption"
-                            color: Theme.color.textMuted
-                            wrapMode: Text.Wrap
                         }
                     }
                 }
@@ -385,6 +481,7 @@ FloatingWindow {
                             Layout.fillWidth: true
                             text: root.activeRouteName
                             size: "title"
+                            font.weight: Theme.type.weightSemibold
                             horizontalAlignment: Text.AlignRight
                             Accessible.role: Accessible.Heading
                             Accessible.name: text
@@ -397,7 +494,7 @@ FloatingWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         visible: root.layoutMode === "compact" && root.compactNavigationVisible
-                        spacing: Theme.spacing.sm
+                        spacing: Theme.spacing.md
                         Accessible.role: Accessible.List
                         Accessible.name: "Control Center pages"
 
@@ -405,28 +502,112 @@ FloatingWindow {
                             Layout.fillWidth: true
                             text: "Nagi Control Center"
                             size: "title"
+                            font.weight: Theme.type.weightSemibold
                             Accessible.role: Accessible.Heading
                             Accessible.name: text
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: Theme.size.hairlineWidth
+                            color: Theme.color.surfaceBorder
                         }
 
                         Repeater {
                             id: compactRouteRepeater
                             model: root.availableRoutes
 
-                            delegate: IslandButton {
+                            delegate: RouteButton {
                                 required property var modelData
 
                                 Layout.fillWidth: true
-                                label: modelData.name
-                                reducedMotion: root.reducedMotion
-                                Accessible.role: Accessible.ListItem
-                                Accessible.description: "Open " + modelData.name
+                                routeLabel: modelData.name
+                                selected: root.currentPageId === modelData.id
                                 onClicked: root.selectRoute(modelData.id)
                             }
                         }
 
                         Item {
                             Layout.fillHeight: true
+                        }
+                    }
+
+                    IslandPanel {
+                        objectName: "controlCenterSettingsStatus"
+                        Layout.fillWidth: true
+                        visible: root.settingsUnavailable
+                        implicitHeight: settingsStatusLayout.implicitHeight + Theme.spacing.md * 2
+                        color: root.settingsModel.status === "loading" ? Theme.color.controlFill :
+                                                                         Theme.color.dangerFill
+                        border.color: root.settingsModel.status === "loading"
+                                      ? Theme.color.surfaceBorder : Theme.color.danger
+                        Accessible.role: Accessible.AlertMessage
+                        Accessible.name: settingsStatusText.text
+
+                        ColumnLayout {
+                            id: settingsStatusLayout
+
+                            anchors.fill: parent
+                            anchors.margins: Theme.spacing.md
+                            spacing: Theme.spacing.sm
+
+                            IslandText {
+                                id: settingsStatusText
+
+                                Layout.fillWidth: true
+                                text: root.settingsUnavailableText
+                                size: "caption"
+                                color: root.settingsModel.status === "loading"
+                                       ? Theme.color.textSecondary : Theme.color.danger
+                                wrapMode: Text.Wrap
+                            }
+
+                            IslandButton {
+                                objectName: "controlCenterResetDefaults"
+                                Layout.alignment: Qt.AlignRight
+                                visible: root.canResetInvalidSettings &&
+                                         !root.settingsRecoveryConfirmationVisible
+                                label: "Reset to defaults"
+                                variant: "danger"
+                                reducedMotion: root.reducedMotion
+                                Accessible.description:
+                                "Request confirmation before replacing invalid settings with defaults"
+                                onClicked: root.beginSettingsRecoveryReset()
+                            }
+
+                            IslandText {
+                                Layout.fillWidth: true
+                                visible: root.settingsRecoveryConfirmationVisible
+                                text: "Replace the invalid settings file with Nagi defaults? The rejected file will be kept as settings.conf.invalid."
+                                size: "caption"
+                                color: Theme.color.danger
+                                wrapMode: Text.Wrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: root.settingsRecoveryConfirmationVisible
+                                spacing: Theme.spacing.sm
+
+                                Item {
+                                    Layout.fillWidth: true
+                                }
+
+                                IslandButton {
+                                    objectName: "controlCenterCancelResetDefaults"
+                                    label: "Cancel"
+                                    reducedMotion: root.reducedMotion
+                                    onClicked: root.cancelSettingsRecoveryReset()
+                                }
+
+                                IslandButton {
+                                    objectName: "controlCenterConfirmResetDefaults"
+                                    label: "Confirm reset"
+                                    variant: "danger"
+                                    reducedMotion: root.reducedMotion
+                                    onClicked: root.confirmSettingsRecoveryReset()
+                                }
+                            }
                         }
                     }
 

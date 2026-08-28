@@ -270,7 +270,7 @@ FocusScope {
                     visible: view.hourly.length === 0
                     text: "Hourly forecast unavailable"
                     size: "caption"
-                    color: Theme.color.textMuted
+                    tone: "muted"
                 }
 
                 IslandText {
@@ -310,14 +310,14 @@ FocusScope {
                     visible: view.daily.length === 0
                     text: "Daily forecast unavailable"
                     size: "caption"
-                    color: Theme.color.textMuted
+                    tone: "muted"
                 }
 
                 IslandText {
                     Layout.fillWidth: true
                     text: "Weather data from MET Norway · NLOD 2.0 / CC BY 4.0"
                     size: "caption"
-                    color: Theme.color.textMuted
+                    tone: "muted"
                     wrapMode: Text.Wrap
                     Accessible.name: text
                 }

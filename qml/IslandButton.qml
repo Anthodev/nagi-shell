@@ -49,6 +49,9 @@ AbstractButton {
     }
 
     function contentColor() {
+        if (!enabled) {
+            return Theme.color.textPrimary;
+        }
         if (variant === "accent") {
             return Theme.snapshot.accentForeground;
         }

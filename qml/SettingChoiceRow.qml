@@ -35,6 +35,7 @@ ControlCenterSettingRow {
 
             delegate: IslandButton {
                 id: choiceButton
+                objectName: "settingChoice-" + choiceValue
 
                 required property var modelData
                 readonly property string choiceValue: typeof modelData === "string" ? modelData :

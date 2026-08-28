@@ -22,6 +22,9 @@ ControlCenterSettingRow {
     }
 
     function requestAt(position, continuous) {
+        if (!writable) {
+            return false;
+        }
         valueRequested(bounded(from + Math.max(0, Math.min(1, position)) * (to - from)),
                        continuous);
 
@@ -38,6 +41,8 @@ ControlCenterSettingRow {
             width: Theme.spacing.xxl * 5
             height: Theme.size.controlHeightMd
             enabled: root.writable
+            hoverEnabled: true
+            opacity: enabled ? 1 : Theme.opacity.disabled
             focusPolicy: Qt.StrongFocus
             Accessible.role: Accessible.Slider
             Accessible.name: root.label
@@ -68,7 +73,8 @@ ControlCenterSettingRow {
                     anchors.verticalCenter: parent.verticalCenter
                     height: Theme.size.progressBarHeight
                     radius: height / 2
-                    color: Theme.color.progressTrack
+                    color: slider.enabled && slider.hovered ? Theme.color.surfaceActive :
+                                                              Theme.snapshot.controlFillHover
                 }
 
                 Rectangle {
@@ -84,15 +90,20 @@ ControlCenterSettingRow {
                     anchors.verticalCenter: parent.verticalCenter
                     x: Math.max(0, Math.min(parent.width - width, parent.width * slider.ratio
                                             - width / 2))
-                    width: Theme.spacing.md
+                    width: Theme.spacing.lg
                     height: width
                     radius: width / 2
-                    color: Theme.color.textPrimary
+                    color: slider.enabled ? Theme.color.textPrimary : Theme.color.textMuted
+                    border.width: Theme.size.hairlineWidth
+                    border.color: slider.enabled ? Theme.snapshot.accent : Theme.color.surfaceBorder
                 }
 
                 MouseArea {
+                    id: sliderPointer
+
                     anchors.fill: parent
                     enabled: slider.enabled
+                    cursorShape: slider.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onPressed: mouse => {
                         slider.forceActiveFocus(Qt.MouseFocusReason);
                         root.requestAt(mouse.x / Math.max(1, width), true);

@@ -117,7 +117,7 @@ IslandPanel {
             text: "This system or administrator profile remains managed by KDE."
             textFormat: Text.PlainText
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
             Accessible.name: text
         }
@@ -128,7 +128,7 @@ IslandPanel {
             text: "Enterprise, certificate, and advanced profiles remain managed by KDE."
             textFormat: Text.PlainText
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
             Accessible.name: text
         }

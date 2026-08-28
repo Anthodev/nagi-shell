@@ -2,15 +2,24 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
-ColumnLayout {
+Flickable {
     id: root
 
     required property var displayController
     property string failureText: ""
     property bool reducedMotion: false
 
-    spacing: Theme.spacing.md
+    clip: true
+    contentWidth: width
+    contentHeight: content.implicitHeight
+    boundsBehavior: Flickable.StopAtBounds
+    Accessible.role: Accessible.Pane
+    Accessible.name: "Displays settings"
+    ScrollBar.vertical: ScrollBar {
+        policy: root.contentHeight > root.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+    }
 
     function activeRows() {
         const ignored = displayController.revision;
@@ -33,128 +42,106 @@ ColumnLayout {
         failureText = displayController.lastFailure;
     }
 
-    IslandText {
-        text: "Displays"
-        size: "title"
-        Accessible.role: Accessible.Heading
-        Accessible.name: text
-    }
+    ColumnLayout {
+        id: content
 
-    IslandText {
-        Layout.fillWidth: true
-        text: "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target."
-        size: "body"
-        color: Theme.color.textSecondary
-        wrapMode: Text.Wrap
-    }
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
+        spacing: Theme.spacing.md
 
-    Repeater {
-        model: root.activeRows()
+        IslandText {
+            text: "Displays"
+            size: "title"
+            font.weight: Theme.type.weightSemibold
+            Accessible.role: Accessible.Heading
+            Accessible.name: text
+        }
 
-        delegate: IslandPanel {
-            id: activeRow
-
-            required property var modelData
-
+        IslandText {
             Layout.fillWidth: true
-            implicitHeight: rowLayout.implicitHeight + Theme.spacing.md * 2
-            Accessible.role: Accessible.Grouping
-            Accessible.name: modelData.label
+            text: "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target."
+            size: "body"
+            color: Theme.color.textSecondary
+            wrapMode: Text.Wrap
+        }
+        ControlCenterSectionHeading {
+            objectName: "displaysActiveSection"
+            text: "Active"
+            separated: false
+        }
 
-            RowLayout {
-                id: rowLayout
+        Repeater {
+            model: root.activeRows()
 
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.md
-                spacing: Theme.spacing.sm
+            delegate: ControlCenterSettingRow {
+                id: activeRow
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacing.xs
+                required property var modelData
 
-                    IslandText {
-                        text: activeRow.modelData.label
-                        size: "body"
-                        font.weight: Theme.type.weightMedium
+                Layout.fillWidth: true
+                label: modelData.label
+                description: modelData.reliable ? "Remembered across sessions" :
+                                                  "Available for this session only"
+
+                RowLayout {
+                    spacing: Theme.spacing.sm
+
+                    IslandButton {
+                        label: activeRow.modelData.enabled ? "Disable island" : "Enable island"
+                        reducedMotion: root.reducedMotion
+                        enabled: !activeRow.modelData.enabled
+                                 || root.displayController.enabledDisplayCount > 1
+                        onClicked: root.requestEnabled(activeRow.modelData.screen,
+                                                       !activeRow.modelData.enabled)
                     }
 
-                    IslandText {
-                        text: activeRow.modelData.reliable ? "Remembered across sessions" :
-                                                             "Available for this session only"
-                        size: "caption"
-                        color: Theme.color.textMuted
+                    IslandButton {
+                        label: activeRow.modelData.fallback ? "Fallback" : "Make fallback"
+                        reducedMotion: root.reducedMotion
+                        variant: activeRow.modelData.fallback ? "accent" : "standard"
+                        enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
+                        onClicked: root.requestFallback(activeRow.modelData.screen)
                     }
-                }
-
-                IslandButton {
-                    label: activeRow.modelData.enabled ? "Disable island" : "Enable island"
-                    reducedMotion: root.reducedMotion
-                    enabled: !activeRow.modelData.enabled
-                             || root.displayController.enabledDisplayCount > 1
-                    onClicked: root.requestEnabled(activeRow.modelData.screen,
-                                                   !activeRow.modelData.enabled)
-                }
-
-                IslandButton {
-                    label: activeRow.modelData.fallback ? "Fallback" : "Make fallback"
-                    reducedMotion: root.reducedMotion
-                    variant: activeRow.modelData.fallback ? "accent" : "standard"
-                    enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
-                    onClicked: root.requestFallback(activeRow.modelData.screen)
                 }
             }
         }
-    }
 
-    IslandText {
-        Layout.fillWidth: true
-        visible: root.failureText !== ""
-        text: root.failureText
-        size: "caption"
-        color: Theme.color.danger
-        wrapMode: Text.Wrap
-        Accessible.role: Accessible.AlertMessage
-        Accessible.name: text
-    }
-
-    IslandText {
-        text: "Remembered"
-        size: "title"
-        Accessible.role: Accessible.Heading
-        Accessible.name: text
-    }
-
-    IslandText {
-        Layout.fillWidth: true
-        visible: root.displayController.rememberedDisplays.length === 0
-        text: "No disconnected displays can be remembered reliably on this platform."
-        size: "body"
-        color: Theme.color.textMuted
-        wrapMode: Text.Wrap
-    }
-
-    Repeater {
-        model: root.displayController.rememberedDisplays
-
-        delegate: IslandPanel {
-            id: rememberedRow
-
-            required property var modelData
-
+        IslandText {
             Layout.fillWidth: true
-            implicitHeight: rememberedLayout.implicitHeight + Theme.spacing.md * 2
+            visible: root.failureText !== ""
+            text: root.failureText
+            size: "caption"
+            color: Theme.color.danger
+            wrapMode: Text.Wrap
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
+        }
 
-            RowLayout {
-                id: rememberedLayout
+        ControlCenterSectionHeading {
+            objectName: "displaysRememberedSection"
+            text: "Remembered"
+        }
 
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.md
+        IslandText {
+            Layout.fillWidth: true
+            visible: root.displayController.rememberedDisplays.length === 0
+            text: "No disconnected displays can be remembered reliably on this platform."
+            size: "body"
+            tone: "muted"
+            wrapMode: Text.Wrap
+        }
 
-                IslandText {
-                    Layout.fillWidth: true
-                    text: rememberedRow.modelData.label
-                    size: "body"
-                }
+        Repeater {
+            model: root.displayController.rememberedDisplays
+
+            delegate: ControlCenterSettingRow {
+                id: rememberedRow
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                label: modelData.label
+                description: "Disconnected display"
 
                 IslandButton {
                     label: "Forget"

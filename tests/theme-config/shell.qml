@@ -44,9 +44,9 @@ ShellRoot {
         require(snapshot !== null && Object.isFrozen(snapshot), "snapshot is frozen");
         require(Object.isFrozen(snapshot.appearance) && Object.isFrozen(snapshot.wallpaper.roots),
                 "nested settings are frozen");
-        require(snapshot.schemaVersion === 2, "schema version is independent and exact");
-        require(snapshot.appearance.surfaceOpacity >= 0.85
-                && snapshot.appearance.surfaceOpacity <= 1, "opacity is bounded");
+        require(snapshot.schemaVersion === 3, "schema version is independent and exact");
+        require(snapshot.appearance.surfaceOpacity >= 0.85 && snapshot.appearance.surfaceOpacity
+                <= 1, "opacity is bounded");
         require(snapshot.island.compactHeight >= 44 && snapshot.island.compactHeight <= 48,
                 "compact height is bounded");
     }
@@ -63,7 +63,12 @@ ShellRoot {
             "borderIntensity": 1,
             "blurEnabled": true,
             "motion": "minimal",
-            "fontFamily": "Noto Sans",
+            "idleFontFamily": "Noto Sans",
+            "idleBaseFontSize": 11,
+            "expandedFontFamily": "Source Sans 3",
+            "expandedBaseFontSize": 18,
+            "controlCenterFontFamily": "Inter",
+            "controlCenterBaseFontSize": 16,
             "outerRadius": 32
         };
         full.island = {
@@ -114,76 +119,110 @@ ShellRoot {
         require(normalized !== null, "every non-default schema field is accepted");
         const serialized = UserConfig.serializeConfiguration(normalized);
         const parsed = UserConfig.parseConfiguration(serialized, UserConfig.utf8Length(serialized));
-        require(parsed !== null && parsed.futureVersion === undefined
-                && UserConfig.snapshotKey(parsed) === UserConfig.snapshotKey(normalized),
+        require(parsed !== null && parsed.futureVersion === undefined && UserConfig.snapshotKey(
+                    parsed) === UserConfig.snapshotKey(normalized),
                 "every schema field round-trips canonically");
         const invalidDate = UserConfig.mutableSnapshot(normalized);
         invalidDate.clock.dateFormat = "yyyy qqq unsafe";
         require(UserConfig.validateCandidate(invalidDate) === null,
                 "unregistered date patterns are rejected at the settings boundary");
-        const continuousPartitions = [{
-                                          "page": "appearance",
-                                          "key": "surfaceOpacity",
-                                          "values": [0.85, 0.9, 0.96, 1]
-                                      }, {
-                                          "page": "appearance",
-                                          "key": "borderIntensity",
-                                          "values": [0, 0.25, 0.5, 0.75, 1]
-                                      }, {
-                                          "page": "appearance",
-                                          "key": "outerRadius",
-                                          "values": [8, 12, 16, 24, 32]
-                                      }, {
-                                          "page": "island",
-                                          "key": "compactHeight",
-                                          "values": [44, 45, 46, 47, 48]
-                                      }, {
-                                          "page": "island",
-                                          "key": "compactPadding",
-                                          "values": [16, 20, 24, 28, 32]
-                                      }, {
-                                          "page": "island",
-                                          "key": "expandedWidthPercent",
-                                          "values": [0.6, 0.7, 0.8, 0.9, 1]
-                                      }, {
-                                          "page": "island",
-                                          "key": "expandedHeightPercent",
-                                          "values": [0.6, 0.7, 0.8, 0.9, 1]
-                                      }];
+        const tooSmallTypography = UserConfig.mutableSnapshot(normalized);
+        tooSmallTypography.appearance.idleBaseFontSize = UserConfig.minimumBaseFontSize - 1;
+        require(UserConfig.validateCandidate(tooSmallTypography) === null,
+                "base typography size rejects values below the safe partition");
+        const tooLargeTypography = UserConfig.mutableSnapshot(normalized);
+        tooLargeTypography.appearance.controlCenterBaseFontSize = UserConfig.maximumBaseFontSize
+                + 1;
+        require(UserConfig.validateCandidate(tooLargeTypography) === null,
+                "base typography size rejects values above the safe partition");
+        const oversizedFamily = UserConfig.mutableSnapshot(normalized);
+        oversizedFamily.appearance.expandedFontFamily = "x".repeat(
+                    UserConfig.maximumFontFamilyBytes + 1);
+        require(UserConfig.validateCandidate(oversizedFamily) === null,
+                "scoped font families retain the bounded string contract");
+        const continuousPartitions = [
+                  {
+                      "page": "appearance",
+                      "key": "surfaceOpacity",
+                      "values": [0.85, 0.9, 0.96, 1]
+                  },
+                  {
+                      "page": "appearance",
+                      "key": "borderIntensity",
+                      "values": [0, 0.25, 0.5, 0.75, 1]
+                  },
+                  {
+                      "page": "appearance",
+                      "key": "outerRadius",
+                      "values": [8, 12, 16, 24, 32]
+                  },
+                  {
+                      "page": "appearance",
+                      "key": "idleBaseFontSize",
+                      "values": [11, 13, 18]
+                  },
+                  {
+                      "page": "appearance",
+                      "key": "expandedBaseFontSize",
+                      "values": [11, 13, 18]
+                  },
+                  {
+                      "page": "appearance",
+                      "key": "controlCenterBaseFontSize",
+                      "values": [11, 13, 18]
+                  },
+                  {
+                      "page": "island",
+                      "key": "compactHeight",
+                      "values": [44, 45, 46, 47, 48]
+                  },
+                  {
+                      "page": "island",
+                      "key": "compactPadding",
+                      "values": [16, 20, 24, 28, 32]
+                  },
+                  {
+                      "page": "island",
+                      "key": "expandedWidthPercent",
+                      "values": [0.6, 0.7, 0.8, 0.9, 1]
+                  },
+                  {
+                      "page": "island",
+                      "key": "expandedHeightPercent",
+                      "values": [0.6, 0.7, 0.8, 0.9, 1]
+                  }
+              ];
         for (let partition = 0; partition < continuousPartitions.length; partition += 1) {
             const entry = continuousPartitions[partition];
             for (let valueIndex = 0; valueIndex < entry.values.length; valueIndex += 1) {
                 const candidate = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
                 candidate[entry.page][entry.key] = entry.values[valueIndex];
-                require(UserConfig.validateCandidate(candidate) !== null,
-                        entry.page + "." + entry.key + " partition " + entry.values[valueIndex]
+                require(UserConfig.validateCandidate(candidate) !== null, entry.page + "."
+                        + entry.key + " partition " + entry.values[valueIndex]
                         + " stays inside the complete schema invariants");
             }
         }
 
-
         const legacyAlphaContent = "[theme]\nmode=accent\naccent=#CC24C78A\n";
-        const legacyAlpha = UserConfig.parseLegacyConfiguration(
-                    legacyAlphaContent, UserConfig.utf8Length(legacyAlphaContent));
-        require(legacyAlpha !== null
-                && legacyAlpha.appearance.customAccent === "#CC24C78A",
+        const legacyAlpha = UserConfig.parseLegacyConfiguration(legacyAlphaContent,
+                                                                UserConfig.utf8Length(
+                                                                    legacyAlphaContent));
+        require(legacyAlpha !== null && legacyAlpha.appearance.customAccent === "#CC24C78A",
                 "valid V1 alpha accent migrates without loss");
 
-        const invalid = [
-            "[settings]\nschema_version=2\n[unknown]\nvalue=x\n",
-            "[settings]\nschema_version=2\n",
-            "[settings]\nschema_version=2\n[settings]\nschema_version=2\n",
-            "[settings]\nschema_version=2\n[media]\nenabled=\n",
-            "[settings]\nschema_version=2\n[appearance]\nsurface_opacity=Infinity\n",
-            "[settings]\nschema_version=2\n[island]\ncompact_height=43\n",
-            "[settings]\nschema_version=2\n[clock]\nformat=locale\n",
-            "[settings]\nschema_version=2\n[media]\nplayer_policy=preferred\n",
-            "[settings]\nschema_version=2\n[notifications]\ncritical_mode=all\n",
-            "[settings]\nschema_version=2\n[weather]\nenabled=true\n",
-            "[settings]\nschema_version=2\n[wallpaper]\nroots=[\"relative\"]\n",
-            "[settings]\nschema_version=2\n[wallpaper]\nroots=[\"/same\",\"/same\"]\n",
-            "[settings]\nschema_version=2\u0000\n"
-        ];
+        const invalid = ["[settings]\nschema_version=2\n[unknown]\nvalue=x\n",
+                         "[settings]\nschema_version=2\n",
+                         "[settings]\nschema_version=2\n[settings]\nschema_version=2\n",
+                         "[settings]\nschema_version=2\n[media]\nenabled=\n",
+                         "[settings]\nschema_version=2\n[appearance]\nsurface_opacity=Infinity\n",
+                         "[settings]\nschema_version=2\n[island]\ncompact_height=43\n",
+                         "[settings]\nschema_version=2\n[clock]\nformat=locale\n",
+                         "[settings]\nschema_version=2\n[media]\nplayer_policy=preferred\n",
+                         "[settings]\nschema_version=2\n[notifications]\ncritical_mode=all\n",
+                         "[settings]\nschema_version=2\n[weather]\nenabled=true\n",
+                         "[settings]\nschema_version=2\n[wallpaper]\nroots=[\"relative\"]\n",
+                         "[settings]\nschema_version=2\n[wallpaper]\nroots=[\"/same\",\"/same\"]\n",
+                         "[settings]\nschema_version=2\u0000\n"];
         for (let index = 0; index < invalid.length; index += 1) {
             require(UserConfig.parseConfiguration(invalid[index], UserConfig.utf8Length(
                                                       invalid[index])) === null,
@@ -192,10 +231,10 @@ ShellRoot {
         require(UserConfig.parseConfiguration("x".repeat(UserConfig.maximumConfigBytes + 1),
                                               UserConfig.maximumConfigBytes + 1) === null,
                 "oversized settings are rejected before parsing");
-        const futureContent = "[settings]\nschema_version=3\n[x]\ny=z\n";
-        const future = UserConfig.parseConfiguration(futureContent,
-                                                     UserConfig.utf8Length(futureContent));
-        require(future !== null && future.futureVersion === 3,
+        const futureContent = "[settings]\nschema_version=4\n[x]\ny=z\n";
+        const future = UserConfig.parseConfiguration(futureContent, UserConfig.utf8Length(
+                                                         futureContent));
+        require(future !== null && future.futureVersion === 4,
                 "future schema detection ignores unknown future fields safely");
     }
     function validateAppearanceContract() {
@@ -223,11 +262,10 @@ ShellRoot {
                     && snapshot.contrast.textOnSurface >= 4.5
                     && snapshot.contrast.textSecondaryOnSurface >= 4.5
                     && snapshot.contrast.textMutedOnSurface >= 4.5
-                    && snapshot.contrast.statusOnSurface >= 4.5
-                    && snapshot.contrast.dangerOnFills >= 4.5
-                    && snapshot.contrast.focusRingOnSurface >= 3,
-                    "maintained scheme " + schemes[index] + " publishes a complete safe palette: "
-                    + JSON.stringify(snapshot));
+                    && snapshot.contrast.statusOnSurface >= 4.5 && snapshot.contrast.dangerOnFills
+                    >= 4.5 && snapshot.contrast.focusRingOnSurface >= 3, "maintained scheme "
+                    + schemes[index] + " publishes a complete safe palette: " + JSON.stringify(
+                        snapshot));
         }
 
         const accentModes = ["nagi", "system", "wallpaper", "custom"];
@@ -241,8 +279,8 @@ ShellRoot {
                                              });
             const snapshot = Theme.buildSnapshot(Theme.visualConfiguration(appearance));
             require(snapshot !== null && snapshot.mode === accentModes[index]
-                    && snapshot.contrast.accentForeground >= 4.5,
-                    "accent mode " + accentModes[index] + " derives readable state roles");
+                    && snapshot.contrast.accentForeground >= 4.5, "accent mode "
+                    + accentModes[index] + " derives readable state roles");
         }
         Theme.wallpaperPalette = null;
 
@@ -260,24 +298,24 @@ ShellRoot {
         unsafeAccent.appearance.customAccent = "#202020";
         const normalizedAccent = UserConfig.validateCandidate(unsafeAccent);
         require(normalizedAccent !== null, "syntactically valid custom accent is normalized");
-        const derivedAccent = Theme.buildSnapshot(
-                    Theme.visualConfiguration(normalizedAccent.appearance));
+        const derivedAccent = Theme.buildSnapshot(Theme.visualConfiguration(
+                                                      normalizedAccent.appearance));
         require(derivedAccent !== null && derivedAccent.contrast.accentOnSurface >= 3
                 && derivedAccent.contrast.accentForeground >= 4.5,
                 "low-contrast custom accent derives safe non-text and foreground roles");
-        require(Theme.effectiveMotionScale("full", 1) === 1
-                && Theme.motionMode(Theme.effectiveMotionScale("full", 1)) === "full"
-                && Theme.effectiveMotionScale("reduced", 1) === 0.5
-                && Theme.motionMode(Theme.effectiveMotionScale("reduced", 1)) === "reduced"
-                && Theme.effectiveMotionScale("minimal", 1) === 0
-                && Theme.effectiveMotionScale("full", 0) === 0,
+        require(Theme.effectiveMotionScale("full", 1) === 1 && Theme.motionMode(
+                    Theme.effectiveMotionScale("full", 1)) === "full" && Theme.effectiveMotionScale(
+                    "reduced", 1) === 0.5 && Theme.motionMode(Theme.effectiveMotionScale("reduced",
+                                                                                         1)) === "reduced"
+                && Theme.effectiveMotionScale("minimal", 1) === 0 && Theme.effectiveMotionScale(
+                    "full", 0) === 0,
                 "effective motion always chooses the most restrictive Nagi or KDE preference");
     }
 
-
     function runNormal() {
         switch (stage) {
-        case "startup": {
+        case "startup":
+        {
             if (!schemaValidated) {
                 validateSchemaContract();
                 validateAppearanceContract();
@@ -290,8 +328,8 @@ ShellRoot {
             validateSnapshot(UserConfig.snapshot);
             require(UserConfig.configPath.endsWith("/nagi-shell/settings.conf"),
                     "settings.conf is canonical");
-            require(configReader.text().indexOf("[settings]\nschema_version=2") === 0,
-                    "default file is canonical V2");
+            require(configReader.text().indexOf("[settings]\nschema_version=3") === 0,
+                    "default file is canonical V3");
             require(UserConfig.snapshot.appearance.accentMode === "wallpaper"
                     && UserConfig.snapshot.media.enabled && !UserConfig.snapshot.weather.enabled,
                     "V1 visible defaults are preserved");
@@ -313,9 +351,10 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "debounced": {
+        case "debounced":
+        {
             if (!awaitState(UserConfig.status === "ready" && !UserConfig._writeInProgress
-                                && configReader.text().indexOf("surface_opacity=0.93") !== -1,
+                            && configReader.text().indexOf("surface_opacity=0.93") !== -1,
                             "debounced settings were not persisted: status=" + UserConfig.status
                             + " pending=" + (UserConfig._writeCandidate !== null) + " file="
                             + configReader.text().indexOf("surface_opacity=0.93"))) {
@@ -336,10 +375,11 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "queued-write": {
+        case "queued-write":
+        {
             if (!awaitState(UserConfig.status === "ready"
-                                && UserConfig.snapshot.appearance.surfaceOpacity === 0.89
-                                && configReader.text().indexOf("surface_opacity=0.89") !== -1,
+                            && UserConfig.snapshot.appearance.surfaceOpacity === 0.89
+                            && configReader.text().indexOf("surface_opacity=0.89") !== -1,
                             "latest in-flight update was not persisted")) {
                 return;
             }
@@ -349,7 +389,8 @@ ShellRoot {
             fixtureWriter.setText(UserConfig.serializeConfiguration(external));
             return;
         }
-        case "external-valid": {
+        case "external-valid":
+        {
             if (!awaitState(UserConfig.snapshot.clock.format === "12h",
                             "valid external edit did not win atomically")) {
                 return;
@@ -359,7 +400,8 @@ ShellRoot {
             fixtureWriter.setText("[broken\npartial=true\n");
             return;
         }
-        case "external-invalid": {
+        case "external-invalid":
+        {
             if (!awaitState(UserConfig.recoveryRequired, "invalid edit did not require recovery")) {
                 return;
             }
@@ -373,7 +415,8 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "restored": {
+        case "restored":
+        {
             if (!awaitState(UserConfig.status === "ready" && invalidReader.loaded,
                             "last-good restore did not complete")) {
                 return;
@@ -385,9 +428,10 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "page-reset": {
-            if (!awaitState(UserConfig.status === "ready" && UserConfig.snapshot.clock.format === "24h",
-                            "page reset did not persist defaults")) {
+        case "page-reset":
+        {
+            if (!awaitState(UserConfig.status === "ready" && UserConfig.snapshot.clock.format
+                            === "24h", "page reset did not persist defaults")) {
                 return;
             }
             require(UserConfig.updatePage("media", {
@@ -397,7 +441,8 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "media-off": {
+        case "media-off":
+        {
             if (!awaitState(UserConfig.status === "ready" && !UserConfig.snapshot.media.enabled,
                             "media disable did not persist")) {
                 return;
@@ -407,9 +452,10 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "reset-all": {
+        case "reset-all":
+        {
             if (!awaitState(UserConfig.status === "ready" && UserConfig.snapshot.media.enabled
-                                && UserConfig.snapshot.appearance.surfaceOpacity === 0.96,
+                            && UserConfig.snapshot.appearance.surfaceOpacity === 0.96,
                             "global reset did not restore versioned defaults")) {
                 return;
             }
@@ -418,7 +464,8 @@ ShellRoot {
             fixtureCommand.running = true;
             return;
         }
-        case "removed": {
+        case "removed":
+        {
             if (!awaitState(UserConfig.recoveryRequired && UserConfig.recoveryKind === "missing",
                             "missing-after-load did not preserve last-good")) {
                 return;
@@ -428,7 +475,8 @@ ShellRoot {
             poll.restart();
             return;
         }
-        case "missing-reset": {
+        case "missing-reset":
+        {
             if (!awaitState(UserConfig.status === "ready" && configReader.loaded,
                             "missing settings reset did not recreate the file")) {
                 return;
@@ -442,6 +490,29 @@ ShellRoot {
         }
     }
 
+    function runVersion2Migration() {
+        if (!awaitState(UserConfig.status === "ready" && !UserConfig._writeInProgress
+                        && version2BackupReader.loaded && configReader.text().indexOf(
+                            "schema_version=3") !== -1, "V2 settings upgrade did not complete")) {
+            return;
+        }
+        require(UserConfig.snapshot.appearance.idleFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.expandedFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.controlCenterFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.idleBaseFontSize === 13
+                && UserConfig.snapshot.appearance.expandedBaseFontSize === 13
+                && UserConfig.snapshot.appearance.controlCenterBaseFontSize === 13,
+                "V2 font choice expands to all three V3 scopes with baseline sizes");
+        require(version2BackupReader.text().indexOf("[settings]\nschema_version=2") === 0,
+                "V2 settings backup retains the exact source schema");
+        require(configReader.text().indexOf("idle_font_family=Noto Sans") !== -1
+                && configReader.text().indexOf("expanded_font_family=Noto Sans") !== -1
+                && configReader.text().indexOf("control_center_font_family=Noto Sans") !== -1,
+                "V2 settings upgrade writes the canonical scoped typography keys");
+        console.log("versioned settings V2 upgrade tests passed");
+        Qt.exit(0);
+    }
+
     function runMigration() {
         if (!awaitState(UserConfig.status === "ready" && backupReader.loaded,
                         "legacy migration did not complete")) {
@@ -450,17 +521,21 @@ ShellRoot {
         require(UserConfig.snapshot.appearance.accentMode === "custom"
                 && UserConfig.snapshot.appearance.customAccent === "#123456"
                 && UserConfig.snapshot.appearance.surfaceOpacity === 0.85
-                && !UserConfig.snapshot.media.enabled && UserConfig.snapshot.weather.enabled
-                && UserConfig.snapshot.weather.consent
-                && UserConfig.snapshot.weather.locationLabel === "Configured location"
-                && UserConfig.snapshot.weather.latitude === -90
+                && UserConfig.snapshot.appearance.idleFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.expandedFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.controlCenterFontFamily === "Noto Sans"
+                && UserConfig.snapshot.appearance.idleBaseFontSize === 13
+                && UserConfig.snapshot.appearance.expandedBaseFontSize === 13
+                && UserConfig.snapshot.appearance.controlCenterBaseFontSize === 13 &&
+                !UserConfig.snapshot.media.enabled && UserConfig.snapshot.weather.enabled
+                && UserConfig.snapshot.weather.consent && UserConfig.snapshot.weather.locationLabel
+                === "Configured location" && UserConfig.snapshot.weather.latitude === -90
                 && UserConfig.snapshot.weather.longitude === 180
                 && UserConfig.snapshot.clock.format === "12h",
                 "all valid V1 values migrated without loss");
-        require(backupReader.text() === legacyContent,
-                "migration backup is byte-for-byte exact");
-        require(configReader.text().indexOf("schema_version=2") !== -1,
-                "migration writes canonical V2");
+        require(backupReader.text() === legacyContent, "migration backup is byte-for-byte exact");
+        require(configReader.text().indexOf("schema_version=3") !== -1,
+                "migration writes canonical V3");
         fixtureCommand.command = ["test", "!", "-e", UserConfig.legacyPath];
         stage = "migration-file-check";
         fixtureCommand.running = true;
@@ -538,11 +613,16 @@ ShellRoot {
         if (phase === "migration" && !backupReader.loaded) {
             backupReader.reload();
         }
+        if (phase === "version2" && !version2BackupReader.loaded) {
+            version2BackupReader.reload();
+        }
         if (stage === "restored" && !invalidReader.loaded) {
             invalidReader.reload();
         }
         if (phase === "normal") {
             runNormal();
+        } else if (phase === "version2") {
+            runVersion2Migration();
         } else if (phase === "migration") {
             runMigration();
         } else if (phase === "future") {
@@ -557,7 +637,7 @@ ShellRoot {
     }
 
     readonly property string legacyContent:
-    "; preserved comment\n[theme]\nmode=accent\naccent=#123456\nsurface_opacity=0.85\nfont_family=Noto Sans\nouter_radius=32\n\n[media]\nenabled=false\n\n[weather]\nenabled=true\nlatitude=-90\nlongitude=180\n\n[clock]\nformat=12h\ndate_format=yyyy-MM-dd\nshow_idle_date=true\n"
+        "; preserved comment\n[theme]\nmode=accent\naccent=#123456\nsurface_opacity=0.85\nfont_family=Noto Sans\nouter_radius=32\n\n[media]\nenabled=false\n\n[weather]\nenabled=true\nlatitude=-90\nlongitude=180\n\n[clock]\nformat=12h\ndate_format=yyyy-MM-dd\nshow_idle_date=true\n"
 
     Component.onCompleted: poll.restart()
 
@@ -576,6 +656,14 @@ ShellRoot {
     FileView {
         id: backupReader
         path: UserConfig.migrationBackupPath
+        watchChanges: true
+        preload: true
+        printErrors: false
+        onFileChanged: reload()
+    }
+    FileView {
+        id: version2BackupReader
+        path: UserConfig.version2BackupPath
         watchChanges: true
         preload: true
         printErrors: false

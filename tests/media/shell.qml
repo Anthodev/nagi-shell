@@ -722,14 +722,40 @@ ShellRoot {
                 "session loss clears timing values");
 
         destroyBundle(bundle);
-        for (let i = 0; i < 3; ++i) {
-            const disposable = makeAdapter({});
-            setPlayers(disposable, [player]);
-            destroyBundle(disposable);
-        }
 
-        console.warn("media tests passed");
-        Qt.exit(0);
+        const closedBundle = makeAdapter({});
+        const closedPlayer = makePlayer({
+                                                "dbusName": "org.mpris.closed",
+                                                "identity": "Closed Player",
+                                                "uniqueId": 99,
+                                                "trackTitle": "Closing Track",
+                                                "playbackState": MprisPlaybackState.Playing
+                                            });
+        setPlayers(closedBundle, [closedPlayer]);
+        require(closedBundle.adapter.available,
+                "closing-player regression starts from visible media");
+        closedPlayer.destroy();
+        Qt.callLater(function () {
+            closedBundle.model.values = [];
+            closedBundle.model.objectRemovedPost(null, 0);
+            closedBundle.adapter.processPendingChanges();
+            require(!closedBundle.adapter.available && closedBundle.adapter.trackKey === ""
+                    && closedBundle.adapter.trackedPlayerCount === 0,
+                    "destroyed player removal clears media instead of retaining a stale block");
+            require(!closedBundle.adapter.positionTimerRunning
+                    && closedBundle.adapter.artworkRequest === "",
+                    "destroyed player removal stops hidden media work");
+            destroyBundle(closedBundle);
+
+            for (let i = 0; i < 3; ++i) {
+                const disposable = makeAdapter({});
+                setPlayers(disposable, [player]);
+                destroyBundle(disposable);
+            }
+
+            console.warn("media tests passed");
+            Qt.exit(0);
+        });
     }
 
     Component.onCompleted: Qt.callLater(test.runDisabledStage)

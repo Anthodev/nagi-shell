@@ -47,7 +47,8 @@ Flickable {
     ColumnLayout {
         id: content
 
-        width: root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0)
+        width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
+                        Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
         IslandText {
@@ -63,6 +64,12 @@ Flickable {
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
+        }
+
+        ControlCenterSectionHeading {
+            objectName: "notificationsPopupPolicySection"
+            text: "Popup policy"
+            separated: false
         }
 
         SettingToggleRow {
@@ -111,6 +118,11 @@ Flickable {
                                                     })
         }
 
+        ControlCenterSectionHeading {
+            objectName: "notificationsFeedbackSection"
+            text: "Feedback"
+        }
+
         SettingChoiceRow {
             Layout.fillWidth: true
             label: "Feedback duration"
@@ -138,6 +150,11 @@ Flickable {
                                                     })
         }
 
+        ControlCenterSectionHeading {
+            objectName: "notificationsIslandContentSection"
+            text: "Island content"
+        }
+
         SettingToggleRow {
             Layout.fillWidth: true
             label: "Dashboard recents"
@@ -160,6 +177,11 @@ Flickable {
                                                     })
         }
 
+        ControlCenterSectionHeading {
+            objectName: "notificationsHistorySection"
+            text: "History"
+        }
+
         SettingActionRow {
             Layout.fillWidth: true
             label: "Clear history"
@@ -176,7 +198,7 @@ Flickable {
             Layout.fillWidth: true
             text: "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime."
             size: "caption"
-            color: Theme.color.textMuted
+            tone: "muted"
             wrapMode: Text.Wrap
         }
 

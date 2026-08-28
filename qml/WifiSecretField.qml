@@ -83,8 +83,8 @@ ColumnLayout {
             color: Theme.color.textPrimary
             selectionColor: Theme.snapshot.accent
             selectedTextColor: Theme.snapshot.accentForeground
-            font.pixelSize: Theme.type.body
-            font.family: Theme.type.family
+            font.pixelSize: Theme.type.sizeForItem(this, "body")
+            font.family: Theme.type.familyForItem(this)
             verticalAlignment: TextInput.AlignVCenter
             clip: true
             activeFocusOnTab: true

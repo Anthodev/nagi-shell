@@ -10,9 +10,11 @@ Text {
     property string tone: "primary"
     property string size: "body"
 
-    font.family: Theme.type.family
-    font.pixelSize: size === "caption" ? Theme.type.caption : size === "title" ? Theme.type.title :
-                                                                                 Theme.type.body
+    readonly property string typographyScope: Theme.type.scopeFor(label)
+    readonly property string typographyRole: tone === "muted" && size === "body" ? "muted" : size
+
+    font.family: Theme.type.familyFor(typographyScope)
+    font.pixelSize: Theme.type.sizeFor(typographyScope, typographyRole)
     color: tone === "secondary" ? Theme.color.textSecondary : tone === "muted"
                                   ? Theme.color.textMuted : Theme.color.textPrimary
 }
