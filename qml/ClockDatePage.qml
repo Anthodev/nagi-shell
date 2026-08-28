@@ -25,8 +25,8 @@ Flickable {
             failureText = "";
             return true;
         }
-        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                          "The clock change could not be applied.";
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                              "The clock change could not be applied.");
         return false;
     }
 
@@ -38,7 +38,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Clock & Date"
+            text: qsTr("Clock & Date")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -46,7 +46,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "One shared clock updates Idle, Expanded, and this preview. Timezone, network time, and the system clock remain managed by KDE."
+            text: qsTr(
+                      "One shared clock updates Idle, Expanded, and this preview. Timezone, network time, and the system clock remain managed by KDE.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -69,7 +70,7 @@ Flickable {
                     text: root.clock.text
                     size: "display"
                     horizontalAlignment: Text.AlignHCenter
-                    Accessible.name: "Clock preview " + text
+                    Accessible.name: qsTr("Clock preview: %1").arg(text)
                 }
 
                 IslandText {
@@ -78,24 +79,24 @@ Flickable {
                     size: "body"
                     color: Theme.color.textSecondary
                     horizontalAlignment: Text.AlignHCenter
-                    Accessible.name: "Date preview " + text
+                    Accessible.name: qsTr("Date preview: %1").arg(text)
                 }
             }
         }
 
         ControlCenterSectionHeading {
             objectName: "clockPresentationSection"
-            text: "Presentation"
+            text: qsTr("Presentation")
         }
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Time format"
-            description: "Follow the current locale or force a 12-hour or 24-hour clock."
+            label: qsTr("Time format")
+            description: qsTr("Follow the current locale or force a 12-hour or 24-hour clock.")
             value: root.settingsModel.snapshot.clock.format
             choices: [
                 {
-                    "label": "Auto",
+                    "label": qsTr("Auto"),
                     "value": "auto"
                 },
                 {
@@ -116,9 +117,9 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Show seconds"
-            description:
-            "Use the single shared second-level schedule while a Nagi surface is visible."
+            label: qsTr("Show seconds")
+            description: qsTr(
+                             "Use the single shared second-level schedule while a Nagi surface is visible.")
             value: root.settingsModel.snapshot.clock.showSeconds
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -128,8 +129,8 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Date in compact clock"
-            description: "Show the configured date beside the mandatory compact clock."
+            label: qsTr("Date in compact clock")
+            description: qsTr("Show the configured date beside the mandatory compact clock.")
             value: root.settingsModel.snapshot.clock.showIdleDate
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -139,16 +140,16 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Date format"
-            description: "Choose one validated, locale-safe presentation pattern."
+            label: qsTr("Date format")
+            description: qsTr("Choose one validated, locale-safe presentation pattern.")
             value: root.settingsModel.snapshot.clock.dateFormat
             choices: [
                 {
-                    "label": "Full",
+                    "label": qsTr("Full"),
                     "value": "dddd, d MMMM"
                 },
                 {
-                    "label": "Compact",
+                    "label": qsTr("Compact"),
                     "value": "ddd, d MMM"
                 },
                 {
@@ -156,11 +157,11 @@ Flickable {
                     "value": "yyyy-MM-dd"
                 },
                 {
-                    "label": "Month first",
+                    "label": qsTr("Month first"),
                     "value": "MM/dd/yyyy"
                 },
                 {
-                    "label": "Day first",
+                    "label": qsTr("Day first"),
                     "value": "dd/MM/yyyy"
                 }
             ]

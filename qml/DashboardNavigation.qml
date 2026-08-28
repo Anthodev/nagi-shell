@@ -24,12 +24,12 @@ Item {
         }
         systemSettingsFailure = "";
         if (applicationModel === null || typeof applicationModel.dispatchLaunch !== "function") {
-            systemSettingsFailure = "KDE Plasma System Settings is unavailable.";
+            systemSettingsFailure = qsTr("KDE Plasma System Settings is unavailable.");
             return false;
         }
         const requestId = applicationModel.dispatchLaunch(systemSettingsDesktopId);
         if (requestId <= 0) {
-            systemSettingsFailure = "KDE Plasma System Settings could not be opened.";
+            systemSettingsFailure = qsTr("KDE Plasma System Settings could not be opened.");
             return false;
         }
         systemSettingsRequestId = requestId;
@@ -58,14 +58,14 @@ Item {
         RailButton {
             objectName: "dashboardTray"
             meaning: "tray"
-            accessibleName: "System tray"
+            accessibleName: qsTr("System tray")
             onOpenRequested: root.coordinator.openTray(root.surfaceToken)
         }
 
         RailButton {
             objectName: "dashboardLauncher"
             meaning: "launcher"
-            accessibleName: "Launcher"
+            accessibleName: qsTr("Launcher")
             onOpenRequested: root.coordinator.openLauncher(root.surfaceToken)
         }
 
@@ -73,7 +73,7 @@ Item {
             visible: root.showHistory
             objectName: "dashboardHistory"
             meaning: "history"
-            accessibleName: "Notification history"
+            accessibleName: qsTr("Notification history")
             onOpenRequested: root.coordinator.openHistory(root.surfaceToken)
         }
     }
@@ -91,7 +91,7 @@ Item {
 
             objectName: "dashboardSettings"
             meaning: "settings"
-            accessibleName: "Nagi Control Center"
+            accessibleName: qsTr("Nagi Control Center")
             onOpenRequested: root.controlCenterRequested()
         }
 
@@ -100,7 +100,7 @@ Item {
 
             objectName: "dashboardSystemSettings"
             meaning: "systemSettings"
-            accessibleName: "KDE Plasma System Settings"
+            accessibleName: qsTr("KDE Plasma System Settings")
             failureText: root.systemSettingsFailure
             onOpenRequested: root.openSystemSettings()
         }
@@ -110,7 +110,7 @@ Item {
 
             objectName: "dashboardSession"
             meaning: "session"
-            accessibleName: "Session"
+            accessibleName: qsTr("Session")
             onOpenRequested: root.coordinator.openSession(root.surfaceToken)
         }
     }
@@ -133,7 +133,7 @@ Item {
                 return;
             }
             root.systemSettingsRequestId = 0;
-            root.systemSettingsFailure = "KDE Plasma System Settings could not be opened.";
+            root.systemSettingsFailure = qsTr("KDE Plasma System Settings could not be opened.");
         }
     }
 

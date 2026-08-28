@@ -19,12 +19,16 @@ FocusScope {
     readonly property var statusItems: projectTrayItems(tray === null ? [] : tray.items)
     property bool centerStatusInMainLane: false
     property int openedMenuToken: 0
-    readonly property string wifiState: connectivity === null || !connectivity.wifiAvailable
-                                        ? "Unavailable" : connectivity.wifiEnabled ? "On" : "Off"
+    readonly property string wifiState: connectivity === null || !connectivity.wifiAvailable ? qsTr(
+                                                                                                   "Unavailable") :
+                                                                                               connectivity.wifiEnabled
+                                                                                               ? qsTr("On") :
+                                                                                                 qsTr("Off")
     readonly property string bluetoothState: connectivity === null ||
-                                             !connectivity.bluetoothAvailable ? "Unavailable" :
+                                             !connectivity.bluetoothAvailable ? qsTr("Unavailable") :
                                                                                 connectivity.bluetoothEnabled
-                                                                                ? "On" : "Off"
+                                                                                ? qsTr("On") : qsTr(
+                                                                                      "Off")
     readonly property bool wifiFailureVisible: connectivity !== null && connectivity.wifiFailure
                                                !== "none"
     readonly property bool bluetoothFailureVisible: connectivity !== null
@@ -202,10 +206,12 @@ FocusScope {
                 enabled: root.connectivity !== null && root.connectivity.wifiAvailable &&
                          !root.connectivity.wifiPending
                 Accessible.role: Accessible.Button
-                Accessible.name: "Wi-Fi"
-                Accessible.description: "Toggle Wi-Fi. Confirmed state " + root.wifiState + (
-                                            root.wifiFailureVisible ? ". Last request failed." :
-                                                                      "") + ". Right-click or press Shift+Enter to manage networks."
+                Accessible.name: qsTr("Wi-Fi")
+                Accessible.description: root.wifiFailureVisible ? qsTr(
+                                                                      "Toggle Wi-Fi. Confirmed state: %1. The last request failed. Right-click or press Shift+Enter to manage networks.").arg(
+                                                                      root.wifiState) : qsTr(
+                                                                      "Toggle Wi-Fi. Confirmed state: %1. Right-click or press Shift+Enter to manage networks.").arg(
+                                                                      root.wifiState)
                 onClicked: root.toggleWifi()
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Menu || (event.key === Qt.Key_Return && (event.modifiers
@@ -236,7 +242,7 @@ FocusScope {
                 }
                 ToolTip.delay: Theme.motion.durationSlow
                 ToolTip.visible: hovered || visualFocus
-                ToolTip.text: "Wi-Fi · " + root.wifiState + " · Right-click to manage"
+                ToolTip.text: qsTr("Wi-Fi · %1 · Right-click to manage").arg(root.wifiState)
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: root.wifiManagerRequested()
@@ -257,10 +263,12 @@ FocusScope {
                 enabled: root.connectivity !== null && root.connectivity.bluetoothAvailable &&
                          !root.connectivity.bluetoothPending
                 Accessible.role: Accessible.Button
-                Accessible.name: "Bluetooth"
-                Accessible.description: "Toggle Bluetooth. Confirmed state " + root.bluetoothState
-                                        + (root.bluetoothFailureVisible ? ". Last request failed." :
-                                                                          "") + ". Right-click or press Shift+Enter to manage devices."
+                Accessible.name: qsTr("Bluetooth")
+                Accessible.description: root.bluetoothFailureVisible ? qsTr(
+                                                                           "Toggle Bluetooth. Confirmed state: %1. The last request failed. Right-click or press Shift+Enter to manage devices.").arg(
+                                                                           root.bluetoothState) :
+                                                                       qsTr("Toggle Bluetooth. Confirmed state: %1. Right-click or press Shift+Enter to manage devices.").arg(
+                                                                           root.bluetoothState)
                 onClicked: root.toggleBluetooth()
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Menu || (event.key === Qt.Key_Return && (event.modifiers
@@ -293,7 +301,8 @@ FocusScope {
                 }
                 ToolTip.delay: Theme.motion.durationSlow
                 ToolTip.visible: hovered || visualFocus
-                ToolTip.text: "Bluetooth · " + root.bluetoothState + " · Right-click to manage"
+                ToolTip.text: qsTr("Bluetooth · %1 · Right-click to manage").arg(
+                                  root.bluetoothState)
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: root.bluetoothManagerRequested()
@@ -329,7 +338,7 @@ FocusScope {
                     height: implicitHeight
                     spacing: Theme.spacing.sm
                     Accessible.role: Accessible.List
-                    Accessible.name: "Active and attention applications"
+                    Accessible.name: qsTr("Active and attention applications")
 
                     Repeater {
                         model: root.statusItems
@@ -346,9 +355,12 @@ FocusScope {
                             hoverEnabled: true
                             Accessible.role: Accessible.Button
                             Accessible.name: modelData.label
-                            Accessible.description: modelData.hasMenu === true ? modelData.tooltip
-                                                                                 + ". Context menu available" :
+                            Accessible.description: modelData.hasMenu !== true ? modelData.tooltip :
                                                                                  modelData.tooltip
+                                                                                 === "" ? qsTr(
+                                                                                              "Context menu available") :
+                                                                                          qsTr("%1. Context menu available").arg(
+                                                                                              modelData.tooltip)
                             onClicked: root.primaryStatusAction(modelData, statusButton)
 
                             Keys.onPressed: event => {
@@ -403,7 +415,7 @@ FocusScope {
             spacing: Theme.spacing.sm
 
             IslandText {
-                text: "Pinned"
+                text: qsTr("Pinned")
                 textFormat: Text.PlainText
                 tone: "muted"
                 size: "caption"
@@ -420,7 +432,7 @@ FocusScope {
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.HorizontalFlick
                 Accessible.role: Accessible.List
-                Accessible.name: "Pinned applications"
+                Accessible.name: qsTr("Pinned applications")
 
                 Row {
                     id: pinRow
@@ -441,7 +453,8 @@ FocusScope {
                             label: modelData.name
                             enabled: root.applicationModel !== null &&
                                      !root.applicationModel.launchPending
-                            Accessible.description: "Launch pinned application " + modelData.name
+                            Accessible.description: qsTr("Launch pinned application %1").arg(
+                                                        modelData.name)
                             onActiveFocusChanged: {
                                 if (activeFocus) {
                                     root.reveal(pinFlickable, this);

@@ -25,51 +25,52 @@ FloatingWindow {
     property var pendingFreshScreen: null
     property var activeTargetScreen: null
     property bool settingsRecoveryConfirmationVisible: false
+    property var settingsRecoveryReturnFocus: null
 
     readonly property var availableRoutes: Object.freeze([
                                                              {
                                                                  "id": "island",
-                                                                 "name": "Island"
+                                                                 "name": qsTr("Island")
                                                              },
                                                              {
                                                                  "id": "appearance",
-                                                                 "name": "Appearance"
+                                                                 "name": qsTr("Appearance")
                                                              },
                                                              {
                                                                  "id": "clock-date",
-                                                                 "name": "Clock & Date"
+                                                                 "name": qsTr("Clock & Date")
                                                              },
                                                              {
                                                                  "id": "media",
-                                                                 "name": "Media"
+                                                                 "name": qsTr("Media")
                                                              },
                                                              {
                                                                  "id": "weather",
-                                                                 "name": "Weather"
+                                                                 "name": qsTr("Weather")
                                                              },
                                                              {
                                                                  "id": "notifications",
-                                                                 "name": "Notifications"
+                                                                 "name": qsTr("Notifications")
                                                              },
                                                              {
                                                                  "id": "wifi",
-                                                                 "name": "Wi-Fi"
+                                                                 "name": qsTr("Wi-Fi")
                                                              },
                                                              {
                                                                  "id": "bluetooth",
-                                                                 "name": "Bluetooth"
+                                                                 "name": qsTr("Bluetooth")
                                                              },
                                                              {
                                                                  "id": "wallpaper",
-                                                                 "name": "Wallpaper"
+                                                                 "name": qsTr("Wallpaper")
                                                              },
                                                              {
                                                                  "id": "displays",
-                                                                 "name": "Displays"
+                                                                 "name": qsTr("Displays")
                                                              },
                                                              {
                                                                  "id": "about",
-                                                                 "name": "About"
+                                                                 "name": qsTr("About")
                                                              }
                                                          ])
     readonly property string layoutMode: width >= Theme.size.controlCenterResponsiveBreakpoint
@@ -94,11 +95,11 @@ FloatingWindow {
                                                             === "invalid"
     readonly property bool settingsUnavailable: !settingsModel.writable && (currentPageUsesSettings
                                                                             || invalidSettingsRecoveryRequired)
-    readonly property string settingsUnavailableText: settingsModel.status === "loading"
-                                                      ? "Preparing the private settings writer…" :
-                                                        settingsModel.errorMessage !== ""
-                                                        ? settingsModel.errorMessage :
-                                                          "Settings are read-only until the private writer is available."
+    readonly property string settingsUnavailableText: settingsModel.status === "loading" ? qsTr(
+                                                                                               "Preparing the private settings writer…") :
+                                                                                           settingsModel.errorMessage
+                                                                                           !== "" ? settingsModel.errorMessage :
+                                                                                                    qsTr("Settings are read-only until the private writer is available.")
     readonly property bool canResetInvalidSettings: invalidSettingsRecoveryRequired &&
                                                     !settingsModel.readOnly
 
@@ -108,16 +109,29 @@ FloatingWindow {
         }
     }
 
+    function restoreSettingsRecoveryFocus() {
+        const target = settingsRecoveryReturnFocus;
+        settingsRecoveryReturnFocus = null;
+        if (visible && target !== null && target.visible && target.enabled) {
+            Qt.callLater(() => target.forceActiveFocus(Qt.TabFocusReason));
+        } else {
+            Qt.callLater(focusCurrentContext);
+        }
+    }
+
     function beginSettingsRecoveryReset() {
         if (!canResetInvalidSettings) {
             return false;
         }
+        settingsRecoveryReturnFocus = settingsRecoveryResetButton;
         settingsRecoveryConfirmationVisible = true;
+        Qt.callLater(() => settingsRecoveryConfirmButton.forceActiveFocus(Qt.TabFocusReason));
         return true;
     }
 
     function cancelSettingsRecoveryReset() {
         settingsRecoveryConfirmationVisible = false;
+        restoreSettingsRecoveryFocus();
     }
 
     function confirmSettingsRecoveryReset() {
@@ -125,10 +139,17 @@ FloatingWindow {
             return false;
         }
         settingsRecoveryConfirmationVisible = false;
-        return settingsModel.resetAll();
+        const accepted = settingsModel.resetAll();
+        if (accepted) {
+            settingsRecoveryReturnFocus = null;
+            Qt.callLater(focusCurrentContext);
+        } else {
+            restoreSettingsRecoveryFocus();
+        }
+        return accepted;
     }
 
-    title: "Nagi Control Center"
+    title: qsTr("Nagi Control Center")
     visible: false
     color: Theme.color.surfaceOpaque
     implicitWidth: Theme.size.controlCenterPreferredWidth
@@ -150,27 +171,27 @@ FloatingWindow {
     function routeName(routeId) {
         switch (routeId) {
         case "island":
-            return "Island";
+            return qsTr("Island");
         case "appearance":
-            return "Appearance";
+            return qsTr("Appearance");
         case "clock-date":
-            return "Clock & Date";
+            return qsTr("Clock & Date");
         case "media":
-            return "Media";
+            return qsTr("Media");
         case "weather":
-            return "Weather";
+            return qsTr("Weather");
         case "notifications":
-            return "Notifications";
+            return qsTr("Notifications");
         case "wifi":
-            return "Wi-Fi";
+            return qsTr("Wi-Fi");
         case "bluetooth":
-            return "Bluetooth";
+            return qsTr("Bluetooth");
         case "wallpaper":
-            return "Wallpaper";
+            return qsTr("Wallpaper");
         case "displays":
-            return "Displays";
+            return qsTr("Displays");
         case "about":
-            return "About";
+            return qsTr("About");
         default:
             return "";
         }
@@ -296,15 +317,20 @@ FloatingWindow {
     }
 
     function rehomeAfterDisplayLoss() {
-        if (!visible || (connected(activeTargetScreen) && connected(screen))) {
+        if (activeTargetScreen === null || (connected(activeTargetScreen) && connected(screen))) {
             return;
         }
         const targetScreen = routedScreen(null);
         if (targetScreen !== null) {
             placeOnScreen(targetScreen);
         }
+        visible = true;
+        if (backingWindow !== null) {
+            backingWindow.raise();
+            backingWindow.requestActivate();
+        }
+        Qt.callLater(focusCurrentContext);
     }
-
     onClosed: closeWindow()
     onLayoutModeChanged: {
         if (layoutMode === "sidebar") {
@@ -318,6 +344,8 @@ FloatingWindow {
 
         required property string routeLabel
         property bool selected: false
+        required property int routeIndex
+        required property var routeRepeater
 
         implicitHeight: Theme.size.controlHeightLg
         implicitWidth: implicitContentWidth + leftPadding + rightPadding
@@ -327,7 +355,34 @@ FloatingWindow {
         hoverEnabled: true
         Accessible.role: Accessible.ListItem
         Accessible.name: routeLabel
-        Accessible.description: "Open " + routeLabel
+        Accessible.description: qsTr("Open %1").arg(routeLabel)
+
+        function focusRouteAt(index) {
+            const target = routeRepeater.itemAt(index);
+            if (target === null) {
+                return false;
+            }
+            target.forceActiveFocus(Qt.TabFocusReason);
+            return true;
+        }
+
+        function focusRelativeRoute(offset) {
+            const count = root.availableRoutes.length;
+            if (count < 1) {
+                return false;
+            }
+            return focusRouteAt((routeIndex + offset + count) % count);
+        }
+
+        Keys.onUpPressed: event => event.accepted = focusRelativeRoute(-1)
+        Keys.onDownPressed: event => event.accepted = focusRelativeRoute(1)
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Home) {
+                event.accepted = focusRouteAt(0);
+            } else if (event.key === Qt.Key_End) {
+                event.accepted = focusRouteAt(root.availableRoutes.length - 1);
+            }
+        }
 
         background: Rectangle {
             radius: Theme.radius.sm
@@ -380,7 +435,9 @@ FloatingWindow {
             anchors.fill: parent
             focus: true
             Keys.onEscapePressed: event => {
-                if (root.layoutMode === "compact" && !root.compactNavigationVisible) {
+                if (root.settingsRecoveryConfirmationVisible) {
+                    root.cancelSettingsRecoveryReset();
+                } else if (root.layoutMode === "compact" && !root.compactNavigationVisible) {
                     root.compactNavigationVisible = true;
                     Qt.callLater(root.focusCurrentContext);
                 } else {
@@ -410,7 +467,7 @@ FloatingWindow {
 
                         IslandText {
                             Layout.fillWidth: true
-                            text: "Nagi Control Center"
+                            text: qsTr("Nagi Control Center")
                             size: "title"
                             font.weight: Theme.type.weightSemibold
                             wrapMode: Text.WordWrap
@@ -432,7 +489,7 @@ FloatingWindow {
                             Layout.fillWidth: true
                             spacing: Theme.spacing.xs
                             Accessible.role: Accessible.List
-                            Accessible.name: "Control Center pages"
+                            Accessible.name: qsTr("Control Center pages")
 
                             Repeater {
                                 id: sidebarRouteRepeater
@@ -440,7 +497,11 @@ FloatingWindow {
 
                                 delegate: RouteButton {
                                     required property var modelData
+                                    required property int index
 
+                                    routeIndex: index
+                                    routeRepeater: sidebarRouteRepeater
+                                    objectName: "controlCenterSidebarRoute-" + modelData.id
                                     Layout.fillWidth: true
                                     routeLabel: modelData.name
                                     selected: root.currentPageId === modelData.id
@@ -468,9 +529,9 @@ FloatingWindow {
                         IslandButton {
                             id: compactBack
 
-                            label: "All settings"
+                            label: qsTr("All settings")
                             reducedMotion: root.reducedMotion
-                            Accessible.description: "Return to Control Center navigation"
+                            Accessible.description: qsTr("Return to Control Center navigation")
                             onClicked: {
                                 root.compactNavigationVisible = true;
                                 Qt.callLater(root.focusCurrentContext);
@@ -496,11 +557,11 @@ FloatingWindow {
                         visible: root.layoutMode === "compact" && root.compactNavigationVisible
                         spacing: Theme.spacing.md
                         Accessible.role: Accessible.List
-                        Accessible.name: "Control Center pages"
+                        Accessible.name: qsTr("Control Center pages")
 
                         IslandText {
                             Layout.fillWidth: true
-                            text: "Nagi Control Center"
+                            text: qsTr("Nagi Control Center")
                             size: "title"
                             font.weight: Theme.type.weightSemibold
                             Accessible.role: Accessible.Heading
@@ -519,7 +580,11 @@ FloatingWindow {
 
                             delegate: RouteButton {
                                 required property var modelData
+                                required property int index
 
+                                routeIndex: index
+                                routeRepeater: compactRouteRepeater
+                                objectName: "controlCenterCompactRoute-" + modelData.id
                                 Layout.fillWidth: true
                                 routeLabel: modelData.name
                                 selected: root.currentPageId === modelData.id
@@ -563,22 +628,24 @@ FloatingWindow {
                             }
 
                             IslandButton {
+                                id: settingsRecoveryResetButton
                                 objectName: "controlCenterResetDefaults"
                                 Layout.alignment: Qt.AlignRight
                                 visible: root.canResetInvalidSettings &&
                                          !root.settingsRecoveryConfirmationVisible
-                                label: "Reset to defaults"
+                                label: qsTr("Reset to defaults")
                                 variant: "danger"
                                 reducedMotion: root.reducedMotion
-                                Accessible.description:
-                                "Request confirmation before replacing invalid settings with defaults"
+                                Accessible.description: qsTr(
+                                                            "Request confirmation before replacing invalid settings with defaults")
                                 onClicked: root.beginSettingsRecoveryReset()
                             }
 
                             IslandText {
                                 Layout.fillWidth: true
                                 visible: root.settingsRecoveryConfirmationVisible
-                                text: "Replace the invalid settings file with Nagi defaults? The rejected file will be kept as settings.conf.invalid."
+                                text: qsTr(
+                                          "Replace the invalid settings file with Nagi defaults? The rejected file will be kept as settings.conf.invalid.")
                                 size: "caption"
                                 color: Theme.color.danger
                                 wrapMode: Text.Wrap
@@ -595,14 +662,15 @@ FloatingWindow {
 
                                 IslandButton {
                                     objectName: "controlCenterCancelResetDefaults"
-                                    label: "Cancel"
+                                    label: qsTr("Cancel")
                                     reducedMotion: root.reducedMotion
                                     onClicked: root.cancelSettingsRecoveryReset()
                                 }
 
                                 IslandButton {
+                                    id: settingsRecoveryConfirmButton
                                     objectName: "controlCenterConfirmResetDefaults"
-                                    label: "Confirm reset"
+                                    label: qsTr("Confirm reset")
                                     variant: "danger"
                                     reducedMotion: root.reducedMotion
                                     onClicked: root.confirmSettingsRecoveryReset()

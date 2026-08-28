@@ -149,14 +149,15 @@ Scope {
             iconName = "audio-volume-medium-symbolic";
         }
 
-        let detail = confirmed.muted ? "Muted" : "Output volume";
-        if (confirmed.overamplified) {
-            detail += " · Amplified";
-        }
+        const detail = confirmed.muted ? confirmed.overamplified ? qsTr("Muted · Amplified") : qsTr(
+                                                                       "Muted") :
+                                                                   confirmed.overamplified ? qsTr(
+                                                                                                 "Output volume · Amplified") :
+                                                                                             qsTr("Output volume");
         return {
             "detail": detail,
             "iconName": iconName,
-            "primary": confirmed.label !== "" ? confirmed.label : "Audio output",
+            "primary": confirmed.label !== "" ? confirmed.label : qsTr("Audio output"),
             "progress": volume,
             "value": Math.round(volume * 100) + "%"
         };

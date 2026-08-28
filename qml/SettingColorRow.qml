@@ -24,8 +24,8 @@ ControlCenterSettingRow {
     }
 
     errorText: validationText !== "" ? validationText : input.acceptableInput ? "" : allowAlpha
-                                                                                ? "Use #RRGGBB or #AARRGGBB." :
-                                                                                  "Use #RRGGBB."
+                                                                                ? qsTr("Use #RRGGBB or #AARRGGBB.") :
+                                                                                  qsTr("Use #RRGGBB.")
 
     TextField {
         id: input

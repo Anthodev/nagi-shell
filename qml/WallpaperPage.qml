@@ -48,7 +48,7 @@ Item {
         if (!settingsModel.updatePage("wallpaper", {
                                           "roots": next
                                       }, false)) {
-            failureText = "The approved folder could not be saved.";
+            failureText = qsTr("The approved folder could not be saved.");
             return false;
         }
         currentDirectoryId = "";
@@ -62,7 +62,7 @@ Item {
         if (next.length === roots.length || !settingsModel.updatePage("wallpaper", {
                                                                           "roots": next
                                                                       }, false)) {
-            failureText = "The approved folder could not be removed.";
+            failureText = qsTr("The approved folder could not be removed.");
             return false;
         }
         currentDirectoryId = "";
@@ -129,30 +129,44 @@ Item {
 
     function currentSummary() {
         if (wallpaper.status === "Ready") {
-            return "One static image is active on every display.";
+            return qsTr("One static image is active on every display.");
         }
         if (wallpaper.status === "Multiple") {
-            return "Multiple wallpapers are active across displays.";
+            return qsTr("Multiple wallpapers are active across displays.");
         }
         if (wallpaper.status === "UnsupportedPlugin") {
-            return "A slideshow or unsupported Plasma wallpaper is active.";
+            return qsTr("A slideshow or unsupported Plasma wallpaper is active.");
         }
         if (wallpaper.status === "Unavailable") {
-            return "Plasma wallpaper state is unavailable.";
+            return qsTr("Plasma wallpaper state is unavailable.");
         }
-        return "The current static wallpaper cannot be used by Nagi.";
+        return qsTr("The current static wallpaper cannot be used by Nagi.");
     }
     function screenStatusLabel(value) {
         if (value === "Ready") {
-            return "Static";
+            return qsTr("Static");
         }
         if (value === "UnsupportedPlugin") {
-            return "Unsupported";
+            return qsTr("Unsupported");
         }
         if (value === "UnsupportedSource") {
-            return "Unsupported source";
+            return qsTr("Unsupported source");
         }
-        return value;
+        if (value === "Missing") {
+            return qsTr("Missing");
+        }
+        if (value === "Unreadable") {
+            return qsTr("Unreadable");
+        }
+        if (value === "Unavailable") {
+            return qsTr("Unavailable");
+        }
+        return qsTr("Unknown status");
+    }
+
+    function applyStatusLabel(value) {
+        return value === "success" ? qsTr("Succeeded") : value === "failed" ? qsTr("Failed") : qsTr(
+                                                                                  "Unknown result");
     }
 
     function rootLabel(path) {
@@ -162,9 +176,9 @@ Item {
 
     function formatBytes(bytes) {
         if (bytes >= 1048576) {
-            return (bytes / 1048576).toFixed(1) + " MiB";
+            return qsTr("%1 MiB").arg((bytes / 1048576).toFixed(1));
         }
-        return Math.max(1, Math.round(bytes / 1024)) + " KiB";
+        return qsTr("%1 KiB").arg(Math.max(1, Math.round(bytes / 1024)));
     }
 
     Component.onCompleted: {
@@ -182,11 +196,11 @@ Item {
 
         function onApplyStatusChanged() {
             if (root.wallpaper.applyStatus === "partial") {
-                root.failureText
-                        = "Some displays changed and some did not. Review the results below.";
+                root.failureText = qsTr(
+                            "Some displays changed and some did not. Review the results below.");
             } else if (root.wallpaper.applyStatus === "failed" || root.wallpaper.applyStatus
                        === "changed") {
-                root.failureText = "The wallpaper was not confirmed on every display.";
+                root.failureText = qsTr("The wallpaper was not confirmed on every display.");
             } else if (root.wallpaper.applyStatus === "success") {
                 root.failureText = "";
             }
@@ -205,22 +219,22 @@ Item {
 
     FolderDialog {
         id: rootDialog
-        title: "Approve wallpaper folder"
+        title: qsTr("Approve wallpaper folder")
         options: FolderDialog.ReadOnly | FolderDialog.DontResolveSymlinks
         onAccepted: root.addRoot(selectedFolder)
     }
 
     FileDialog {
         id: browseDialog
-        title: "Preview local image"
+        title: qsTr("Preview local image")
         fileMode: FileDialog.OpenFile
-        nameFilters: ["Static images (*.jpg *.jpeg *.png *.webp *.bmp)"]
+        nameFilters: [qsTr("Static images (*.jpg *.jpeg *.png *.webp *.bmp)")]
         options: FileDialog.ReadOnly | FileDialog.DontResolveSymlinks
         onAccepted: {
             root.selectedLibraryId = "";
             root.applyWarningVisible = false;
             if (!root.wallpaper.previewExternal(selectedFile)) {
-                root.failureText = "The selected image could not be validated.";
+                root.failureText = qsTr("The selected image could not be validated.");
             }
         }
     }
@@ -239,7 +253,7 @@ Item {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Wallpaper"
+                    text: qsTr("Wallpaper")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -256,14 +270,14 @@ Item {
 
             IslandButton {
                 objectName: "wallpaperBrowseButton"
-                label: "Browse image"
+                label: qsTr("Browse image")
                 reducedMotion: root.reducedMotion
                 onClicked: browseDialog.open()
             }
 
             IslandButton {
                 objectName: "wallpaperAddRootButton"
-                label: "Add folder"
+                label: qsTr("Add folder")
                 reducedMotion: root.reducedMotion
                 enabled: root.settingsModel.writable && root.roots.length < 8
                 onClicked: rootDialog.open()
@@ -294,8 +308,8 @@ Item {
                     IslandText {
                         id: screenStatus
                         anchors.centerIn: parent
-                        text: screenChip.modelData.label + " · " + root.screenStatusLabel(
-                                  screenChip.modelData.status)
+                        text: qsTr("%1 · %2").arg(screenChip.modelData.label).arg(
+                                  root.screenStatusLabel(screenChip.modelData.status))
                         size: "caption"
                         color: Theme.color.textSecondary
                     }
@@ -309,9 +323,10 @@ Item {
 
             IslandText {
                 Layout.fillWidth: true
-                text: root.roots.length === 0
-                      ? "Approve a folder to build the local library. Suggested: Pictures/Wallpapers or /usr/share/wallpapers." :
-                        root.roots.length + (root.roots.length === 1 ? " approved folder" :
+                text: root.roots.length === 0 ? qsTr(
+                                                    "Approve a folder to build the local library. Suggested: Pictures/Wallpapers or /usr/share/wallpapers.") :
+                                                root.roots.length + (root.roots.length === 1
+                                                                     ? " approved folder" :
                                                                        " approved folders")
                 size: "caption"
                 tone: "muted"
@@ -320,14 +335,14 @@ Item {
 
             IslandText {
                 visible: root.wallpaper.libraryScanning
-                text: "Indexing " + root.wallpaper.libraryVisited + " entries…"
+                text: qsTr("Indexing %1 entries…").arg(root.wallpaper.libraryVisited)
                 size: "caption"
                 color: Theme.snapshot.warning
             }
 
             IslandText {
                 visible: root.wallpaper.libraryTruncated
-                text: "Bound reached"
+                text: qsTr("Bound reached")
                 size: "caption"
                 color: Theme.snapshot.warning
             }
@@ -347,7 +362,7 @@ Item {
                     label: root.rootLabel(modelData)
                     reducedMotion: root.reducedMotion
                     enabled: root.settingsModel.writable
-                    Accessible.description: "Remove approved folder. Files remain untouched."
+                    Accessible.description: qsTr("Remove approved folder. Files remain untouched.")
                     onClicked: root.removeRoot(modelData)
                 }
             }
@@ -372,7 +387,7 @@ Item {
 
                     IslandButton {
                         objectName: "wallpaperDirectoryBack"
-                        label: "Up"
+                        label: qsTr("Up")
                         reducedMotion: root.reducedMotion
                         enabled: {
                             const directory = root.currentDirectory();
@@ -390,7 +405,8 @@ Item {
                         Layout.fillWidth: true
                         text: {
                             const directory = root.currentDirectory();
-                            return directory === null ? "Local library" : directory.breadcrumb;
+                            return directory === null ? qsTr("Local library") :
+                                                        directory.breadcrumb;
                         }
                         size: "caption"
                         color: Theme.color.textSecondary
@@ -422,7 +438,7 @@ Item {
                             clip: true
                             maximumLength: 128
                             Accessible.role: Accessible.EditableText
-                            Accessible.name: "Filter images"
+                            Accessible.name: qsTr("Filter images")
                             Accessible.focused: activeFocus
                             onTextChanged: root.filterText = text
                         }
@@ -431,7 +447,7 @@ Item {
                             anchors.fill: parent
                             anchors.leftMargin: Theme.spacing.md
                             verticalAlignment: Text.AlignVCenter
-                            text: "Filter images"
+                            text: qsTr("Filter images")
                             size: "caption"
                             tone: "muted"
                             visible: filterInput.text === "" && !filterInput.activeFocus
@@ -450,7 +466,7 @@ Item {
                     clip: true
                     visible: count > 0
                     Accessible.role: Accessible.List
-                    Accessible.name: "Folders"
+                    Accessible.name: qsTr("Folders")
 
                     delegate: IslandButton {
                         required property var modelData
@@ -474,7 +490,7 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     keyNavigationEnabled: true
                     Accessible.role: Accessible.List
-                    Accessible.name: "Local wallpaper images"
+                    Accessible.name: qsTr("Local wallpaper images")
 
                     ScrollBar.vertical: ScrollBar {}
 
@@ -485,9 +501,10 @@ Item {
                         height: imageGrid.cellHeight - Theme.spacing.sm
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Button
-                        Accessible.name: "Preview " + modelData.name
-                        Accessible.description: modelData.width + " by " + modelData.height + ", "
-                                                + root.formatBytes(modelData.byteSize)
+                        Accessible.name: qsTr("Preview %1").arg(modelData.name)
+                        Accessible.description: qsTr("%1 by %2, %3").arg(modelData.width).arg(
+                                                    modelData.height).arg(root.formatBytes(
+                                                                              modelData.byteSize))
                         Accessible.focused: activeFocus
 
                         Component.onCompleted: root.wallpaper.requestThumbnail(modelData.id)
@@ -562,9 +579,10 @@ Item {
                         anchors.centerIn: parent
                         width: Math.min(parent.width, 360)
                         visible: imageGrid.count === 0 && !root.wallpaper.libraryScanning
-                        text: root.roots.length === 0 ? "No approved folders." : root.filterText
-                                                        === "" ? "No static images in this folder." :
-                                                                 "No images match this filter."
+                        text: root.roots.length === 0 ? qsTr("No approved folders.") :
+                                                        root.filterText === "" ? qsTr(
+                                                                                     "No static images in this folder.") :
+                                                                                 qsTr("No images match this filter.")
                         size: "body"
                         tone: "muted"
                         wrapMode: Text.Wrap
@@ -587,7 +605,7 @@ Item {
 
                     IslandText {
                         Layout.fillWidth: true
-                        text: "Preview"
+                        text: qsTr("Preview")
                         size: "body"
                         font.weight: Theme.type.weightSemibold
                         Accessible.role: Accessible.Heading
@@ -617,8 +635,8 @@ Item {
                             width: parent.width - Theme.spacing.xl * 2
                             visible: !root.previewReady
                             text: root.wallpaper.preview !== null && root.wallpaper.preview.status
-                                  === "loading" ? "Analyzing image…" :
-                                                  "Select or browse a static image."
+                                  === "loading" ? qsTr("Analyzing image…") : qsTr(
+                                                      "Select or browse a static image.")
                             size: "body"
                             tone: "muted"
                             wrapMode: Text.Wrap
@@ -629,11 +647,12 @@ Item {
                     IslandText {
                         Layout.fillWidth: true
                         visible: root.previewReady
-                        text: root.previewReady ? root.wallpaper.preview.name + " · "
-                                                  + root.wallpaper.preview.width + "×"
-                                                  + root.wallpaper.preview.height + " · "
-                                                  + root.formatBytes(
-                                                      root.wallpaper.preview.byteSize) : ""
+                        text: root.previewReady ? qsTr("%1 · %2×%3 · %4").arg(
+                                                      root.wallpaper.preview.name).arg(
+                                                      root.wallpaper.preview.width).arg(
+                                                      root.wallpaper.preview.height).arg(
+                                                      root.formatBytes(
+                                                          root.wallpaper.preview.byteSize)) : ""
                         size: "caption"
                         color: Theme.color.textSecondary
                         elide: Text.ElideMiddle
@@ -642,7 +661,8 @@ Item {
                     IslandText {
                         Layout.fillWidth: true
                         visible: root.previewReady && root.wallpaper.preview.outsideLibrary
-                        text: "Previewed outside approved folders. Its directory will not be added or copied."
+                        text: qsTr(
+                                  "Previewed outside approved folders. Its directory will not be added or copied.")
                         size: "caption"
                         tone: "muted"
                         wrapMode: Text.Wrap
@@ -651,7 +671,8 @@ Item {
                     IslandText {
                         Layout.fillWidth: true
                         visible: root.applyWarningVisible
-                        text: "Apply will replace unsupported or slideshow wallpapers with this static image on every active display."
+                        text: qsTr(
+                                  "Apply will replace unsupported or slideshow wallpapers with this static image on every active display.")
                         size: "caption"
                         color: Theme.snapshot.warning
                         wrapMode: Text.Wrap
@@ -664,9 +685,10 @@ Item {
                         IslandButton {
                             objectName: "wallpaperApplyButton"
                             Layout.fillWidth: true
-                            label: root.operationPending ? "Applying…" : root.applyWarningVisible
-                                                           ? "Confirm Apply" :
-                                                             "Apply to all displays"
+                            label: root.operationPending ? qsTr("Applying…") :
+                                                           root.applyWarningVisible ? qsTr(
+                                                                                          "Confirm Apply") :
+                                                                                      qsTr("Apply to all displays")
                             variant: "accent"
                             reducedMotion: root.reducedMotion
                             enabled: root.previewReady && !root.operationPending
@@ -674,7 +696,7 @@ Item {
                         }
 
                         IslandButton {
-                            label: "Clear"
+                            label: qsTr("Clear")
                             reducedMotion: root.reducedMotion
                             enabled: root.wallpaper.preview !== null && !root.operationPending
                             onClicked: {
@@ -691,7 +713,8 @@ Item {
                         delegate: IslandText {
                             required property var modelData
                             Layout.fillWidth: true
-                            text: modelData.label + " · " + modelData.status
+                            text: qsTr("%1 · %2").arg(modelData.label).arg(root.applyStatusLabel(
+                                                                               modelData.status))
                             size: "caption"
                             color: modelData.status === "success" ? Theme.snapshot.success :
                                                                     Theme.snapshot.danger

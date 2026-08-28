@@ -5,7 +5,7 @@ IslandButton {
 
     signal openRequested
 
-    label: "Session"
-    Accessible.description: "Open lock, suspend, logout, reboot, and power-off actions"
+    label: qsTr("Session")
+    Accessible.description: qsTr("Open lock, suspend, logout, reboot, and power-off actions")
     onClicked: openRequested()
 }

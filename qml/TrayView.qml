@@ -128,7 +128,7 @@ FocusScope {
 
         anchors.fill: parent
         active: root.active
-        title: "System tray"
+        title: qsTr("System tray")
         reducedMotion: root.reducedMotion
         initialFocusItem: root.currentItem
         onBackRequested: root.cancelled(root.ownerEpoch)
@@ -187,9 +187,9 @@ FocusScope {
                         hoverEnabled: true
                         Accessible.role: Accessible.Button
                         Accessible.name: cell.modelData.label
-                        Accessible.description: cell.modelData.hasMenu
-                                                ? "System tray item; context menu available" :
-                                                  "System tray item"
+                        Accessible.description: cell.modelData.hasMenu ? qsTr(
+                                                                             "System tray item; context menu available") :
+                                                                         qsTr("System tray item")
 
                         onClicked: root.primaryAction(cell.modelData, trayButton)
 
@@ -298,7 +298,7 @@ FocusScope {
             IslandText {
                 anchors.centerIn: parent
                 visible: root.empty
-                text: "No tray items"
+                text: qsTr("No tray items")
                 textFormat: Text.PlainText
                 tone: "secondary"
             }

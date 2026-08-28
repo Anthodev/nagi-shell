@@ -150,8 +150,8 @@ Scope {
         const boundedName = projection.name.slice(0, 256).trim();
         return {
             "iconName": "preferences-desktop-virtual-symbolic",
-            "primary": boundedName === "" ? "Workspace" : boundedName,
-            "detail": "Current desktop",
+            "primary": boundedName === "" ? qsTr("Workspace") : boundedName,
+            "detail": qsTr("Current desktop"),
             "value": (projection.position + 1) + " / " + projection.count
         };
     }

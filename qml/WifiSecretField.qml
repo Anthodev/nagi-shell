@@ -10,9 +10,10 @@ ColumnLayout {
     property bool operationPending: false
     property bool secretVisible: false
     property string inputObjectName: "wifiPasswordInput"
-    property string label: "Password"
-    property string accessibleName: "Wi-Fi password"
-    property string accessibleDescription: "Enter the password for this connection"
+    property string label: qsTr("Password")
+    property string semanticName: qsTr("Wi-Fi password")
+    property string semanticDescription: qsTr("Enter the password for this connection")
+    property string revealLabel: qsTr("Show password")
     property int minimumLength: 8
     property int maximumLength: 64
     property int additionalInputMethodHints: Qt.ImhNone
@@ -48,14 +49,13 @@ ColumnLayout {
         text: root.label
         size: "caption"
         color: Theme.color.textSecondary
-        Accessible.role: Accessible.StaticText
-        Accessible.name: text
+        Accessible.ignored: true
     }
 
     IslandPanel {
         id: field
 
-        objectName: "wifiPasswordField"
+        Accessible.ignored: true
         Layout.fillWidth: true
         Layout.preferredHeight: Theme.size.controlHeightLg
         radius: Theme.radius.md
@@ -63,13 +63,6 @@ ColumnLayout {
         border.width: Theme.size.hairlineWidth
         border.color: input.activeFocus ? Theme.snapshot.focusRing : Theme.color.surfaceBorder
         opacity: root.operationPending ? Theme.opacity.disabled : 1
-        Accessible.role: Accessible.EditableText
-        Accessible.name: root.accessibleName
-        Accessible.description: root.accessibleDescription
-        Accessible.passwordEdit: true
-        Accessible.selectableText: false
-        Accessible.focusable: true
-        Accessible.focused: input.activeFocus
 
         TextInput {
             id: input
@@ -96,7 +89,13 @@ ColumnLayout {
             inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                               | root.additionalInputMethodHints | (root.secretVisible ? Qt.ImhNone :
                                                                                         Qt.ImhHiddenText)
-            Accessible.ignored: true
+            Accessible.role: Accessible.EditableText
+            Accessible.name: root.semanticName
+            Accessible.description: root.semanticDescription
+            Accessible.passwordEdit: true
+            Accessible.selectableText: false
+            Accessible.focusable: true
+            Accessible.focused: activeFocus
 
             onSelectedTextChanged: {
                 if (!root.secretVisible && selectedText !== "") {
@@ -125,8 +124,8 @@ ColumnLayout {
 
     SettingToggleRow {
         Layout.fillWidth: true
-        label: "Show " + root.label.toLowerCase()
-        description: "Reveal only while this form remains open."
+        label: root.revealLabel
+        description: qsTr("Reveal only while this form remains open.")
         value: root.secretVisible
         writable: !root.operationPending
         onValueRequested: value => root.secretVisible = value

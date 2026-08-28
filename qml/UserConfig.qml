@@ -231,7 +231,7 @@ Singleton {
     function appearanceValidationError(appearance) {
         if (appearance.scheme === "custom" && colorContrast(appearance.customText,
                                                             appearance.customSurface) < 4.5) {
-            return "Primary text must keep at least 4.5:1 contrast with the custom surface.";
+            return qsTr("Primary text must keep at least 4.5:1 contrast with the custom surface.");
         }
         return "";
     }
@@ -705,7 +705,7 @@ Singleton {
                                                                             weather.longitude);
         if (candidate.weather.enabled) {
             candidate.weather.consent = true;
-            candidate.weather.locationLabel = "Configured location";
+            candidate.weather.locationLabel = qsTr("Configured location");
         }
         const clock = sections.clock ?? {};
         candidate.clock.format = clock.format ?? "24h";
@@ -870,8 +870,8 @@ Singleton {
             const migrationFailed = purpose === "migration";
             status = migrationFailed ? "recovery" : "write-failed";
             recoveryKind = migrationFailed ? purpose : "write";
-            errorMessage
-                    = "Settings could not be saved. Check the configuration directory and try again.";
+            errorMessage = qsTr(
+                        "Settings could not be saved. Check the configuration directory and try again.");
             warnOnce("write", errorMessage);
             _pendingLastGoodSnapshot = null;
             _writeCandidate = null;
@@ -1020,14 +1020,14 @@ Singleton {
             status = "future";
             readOnly = true;
             recoveryKind = "future";
-            errorMessage
-                    = "Settings were created by a newer Nagi version. Update Nagi to edit them.";
+            errorMessage = qsTr(
+                        "Settings were created by a newer Nagi version. Update Nagi to edit them.");
             publish(_lastGoodSnapshot ?? defaultSnapshot(0));
             return;
         }
         if (candidate === null) {
-            enterRecovery("invalid",
-                          "Settings are invalid. Restore the last-good copy or reset defaults.",
+            enterRecovery("invalid", qsTr(
+                              "Settings are invalid. Restore the last-good copy or reset defaults."),
                           false);
             return;
         }
@@ -1063,15 +1063,15 @@ Singleton {
         try {
             paths = JSON.parse(result);
         } catch (error) {
-            enterRecovery("path", "The settings path could not be verified safely.", true);
+            enterRecovery("path", qsTr("The settings path could not be verified safely."), true);
             _initializing = false;
             return;
         }
         if (paths.settings === "unsafe" || paths.lastGood === "unsafe" || paths.legacy === "unsafe"
                 || paths.backup === "unsafe" || paths.version2Backup === "unsafe" || paths.invalid
                 === "unsafe") {
-            enterRecovery("path",
-                          "A settings path is a symlink or non-regular file and was rejected.",
+            enterRecovery("path", qsTr(
+                              "A settings path is a symlink or non-regular file and was rejected."),
                           true);
             _initializing = false;
             return;
@@ -1097,14 +1097,14 @@ Singleton {
                 status = "future";
                 readOnly = true;
                 recoveryKind = "future";
-                errorMessage
-                        = "Settings were created by a newer Nagi version. Update Nagi to edit them.";
+                errorMessage = qsTr(
+                            "Settings were created by a newer Nagi version. Update Nagi to edit them.");
                 publish(_lastGoodSnapshot ?? defaultSnapshot(0));
                 return;
             }
             if (candidate === null) {
-                enterRecovery("invalid",
-                              "Settings are invalid. Restore the last-good copy or reset defaults.",
+                enterRecovery("invalid", qsTr(
+                                  "Settings are invalid. Restore the last-good copy or reset defaults."),
                               false);
                 return;
             }
@@ -1133,8 +1133,8 @@ Singleton {
             const candidate = parseLegacyConfiguration(legacyFile.text(), bytes);
             _initializing = false;
             if (candidate === null) {
-                enterRecovery("migration", "The legacy theme file is invalid and was not migrated.",
-                              false);
+                enterRecovery("migration", qsTr(
+                                  "The legacy theme file is invalid and was not migrated."), false);
                 return;
             }
             publish(candidate);
@@ -1176,7 +1176,8 @@ Singleton {
         }
         onExited: function (exitCode) {
             if (exitCode !== 0) {
-                root.enterRecovery("path", "The settings directory could not be verified safely.",
+                root.enterRecovery("path", qsTr(
+                                       "The settings directory could not be verified safely."),
                                    true);
                 root._initializing = false;
                 return;
@@ -1195,8 +1196,8 @@ Singleton {
             onRead: data => root.finishWriter(data === "OK")
         }
         stderr: SplitParser {
-            onRead: data => root.warnOnce("helper",
-                                          "The settings writer reported a bounded failure.")
+            onRead: data => root.warnOnce("helper", qsTr(
+                                              "The settings writer reported a bounded failure."))
         }
         onStarted: {
             root._writerReady = true;
@@ -1209,7 +1210,8 @@ Singleton {
             } else if (root.status === "ready") {
                 root.status = "write-failed";
                 root.recoveryKind = "write";
-                root.errorMessage = "Settings cannot be saved because the private writer stopped.";
+                root.errorMessage = qsTr(
+                            "Settings cannot be saved because the private writer stopped.");
             }
         }
     }
@@ -1227,9 +1229,9 @@ Singleton {
         onLoadFailed: function (error) {
             if (!root._initializing && root._hasPersistedConfiguration) {
                 root.enterRecovery(error === FileViewError.FileNotFound ? "missing" : "unreadable",
-                                   error === FileViewError.FileNotFound
-                                   ? "Settings were removed. Restore the last-good copy or reset defaults." :
-                                     "Settings cannot be read. Fix permissions, then restore or reset.",
+                                   error === FileViewError.FileNotFound ? qsTr(
+                                                                              "Settings were removed. Restore the last-good copy or reset defaults.") :
+                                                                          qsTr("Settings cannot be read. Fix permissions, then restore or reset."),
                                    false);
             }
         }

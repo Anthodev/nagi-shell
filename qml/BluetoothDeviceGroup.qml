@@ -20,7 +20,7 @@ ColumnLayout {
     visible: devices.length > 0
     spacing: Theme.spacing.sm
     Accessible.role: Accessible.List
-    Accessible.name: title + " Bluetooth devices"
+    Accessible.name: qsTr("%1 Bluetooth devices").arg(title)
 
     IslandText {
         Layout.fillWidth: true

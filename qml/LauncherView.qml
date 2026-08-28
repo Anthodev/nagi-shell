@@ -157,7 +157,7 @@ FocusScope {
             for (let index = 0; index < applicationModel.pinnedApplications.length; ++index) {
                 result.push({
                                 "application": applicationModel.pinnedApplications[index],
-                                "section": index === 0 ? "Pinned" : "",
+                                "section": index === 0 ? qsTr("Pinned") : "",
                                 "pinIndex": pinIndex[applicationModel.pinnedApplications[index].id],
                                 "recencyIndex":
                                 recencyIndex[applicationModel.pinnedApplications[index].id] ?? -1
@@ -166,7 +166,7 @@ FocusScope {
             for (let index = 0; index < applicationModel.recentApplications.length; ++index) {
                 result.push({
                                 "application": applicationModel.recentApplications[index],
-                                "section": index === 0 ? "Recent" : "",
+                                "section": index === 0 ? qsTr("Recent") : "",
                                 "pinIndex": -1,
                                 "recencyIndex":
                                 recencyIndex[applicationModel.recentApplications[index].id]
@@ -270,7 +270,7 @@ FocusScope {
         launchFailure = "";
         const requestId = applicationModel.dispatchLaunch(application.id);
         if (requestId <= 0) {
-            launchFailure = "Application is no longer available.";
+            launchFailure = qsTr("Application is no longer available.");
             applicationModel.captureDiscoveryGeneration();
             return false;
         }
@@ -289,8 +289,9 @@ FocusScope {
         const accepted = pinned ? applicationModel.unpin(application.id) : applicationModel.pin(
                                       application.id);
         if (!accepted) {
-            pinStatus = applicationModel.pinFailure === "limit" ? "The eight-pin limit is full." :
-                                                                  "Pin change is unavailable.";
+            pinStatus = applicationModel.pinFailure === "limit" ? qsTr(
+                                                                      "The eight-pin limit is full.") :
+                                                                  qsTr("Pin change is unavailable.");
         }
         return accepted;
     }
@@ -327,24 +328,25 @@ FocusScope {
                 return;
             }
             view.pendingLaunchRequestId = 0;
-            view.launchFailure = category === "ineligible" ? "Application is no longer available." :
-                                                             "Application could not be launched.";
+            view.launchFailure = category === "ineligible" ? qsTr(
+                                                                 "Application is no longer available.") :
+                                                             qsTr("Application could not be launched.");
         }
 
         function onPinCommitted(desktopFileId) {
-            view.pinStatus = "Pinned.";
+            view.pinStatus = qsTr("Pinned.");
         }
 
         function onPinRemoved(desktopFileId) {
-            view.pinStatus = "Unpinned.";
+            view.pinStatus = qsTr("Unpinned.");
         }
 
         function onPinReordered(desktopFileId) {
-            view.pinStatus = "Pin order saved.";
+            view.pinStatus = qsTr("Pin order saved.");
         }
 
         function onPinMutationFailed(category) {
-            view.pinStatus = "Pin changes could not be saved.";
+            view.pinStatus = qsTr("Pin changes could not be saved.");
         }
     }
 
@@ -353,7 +355,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.active
-        title: "Applications"
+        title: qsTr("Applications")
         reducedMotion: view.reducedMotion
         initialFocusItem: searchInput
         onBackRequested: view.requestCancellation()
@@ -384,7 +386,7 @@ FocusScope {
                     IslandText {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.spacing.md
-                        text: "Search applications"
+                        text: qsTr("Search applications")
                         textFormat: Text.PlainText
                         tone: "muted"
                         verticalAlignment: Text.AlignVCenter
@@ -407,7 +409,7 @@ FocusScope {
                         activeFocusOnTab: true
                         inputMethodHints: Qt.ImhNoPredictiveText
                         Accessible.role: Accessible.EditableText
-                        Accessible.name: "Search applications"
+                        Accessible.name: qsTr("Search applications")
                         KeyNavigation.backtab: frame.backControl
 
                         onTextChanged: {
@@ -454,7 +456,7 @@ FocusScope {
                         model: view.rows
                         currentIndex: view.rows.length > 0 ? 0 : -1
                         Accessible.role: Accessible.List
-                        Accessible.name: "Application results"
+                        Accessible.name: qsTr("Application results")
 
                         delegate: FocusScope {
                             id: row
@@ -479,7 +481,8 @@ FocusScope {
                             activeFocusOnTab: true
                             Accessible.role: Accessible.ListItem
                             Accessible.name: application.name
-                            Accessible.description: pinned ? "Pinned application" : "Application"
+                            Accessible.description: pinned ? qsTr("Pinned application") : qsTr(
+                                                                 "Application")
 
                             onActiveFocusChanged: {
                                 if (activeFocus) {
@@ -558,8 +561,8 @@ FocusScope {
                                     IslandText {
                                         id: metadataLabel
                                         text: (row.modelData.section ?? "") !== ""
-                                              ? row.modelData.section : row.pinned ? "Pinned" :
-                                                                                     "Application"
+                                              ? row.modelData.section : row.pinned ? qsTr("Pinned") :
+                                                                                     qsTr("Application")
                                         textFormat: Text.PlainText
                                         tone: "secondary"
                                         size: "caption"
@@ -570,11 +573,12 @@ FocusScope {
 
                                 IslandButton {
                                     id: pinAction
-                                    label: row.pinned ? "Unpin" : "Pin"
+                                    label: row.pinned ? qsTr("Unpin") : qsTr("Pin")
                                     visible: row.selected || row.activeFocus || activeFocus
                                              || hover.hovered
                                     enabled: !view.applicationModel.pinMutationPending
-                                    Accessible.description: (row.pinned ? "Unpin " : "Pin ")
+                                    Accessible.description: (row.pinned ? qsTr("Unpin ") : qsTr(
+                                                                              "Pin "))
                                                             + row.application.name
                                     onClicked: {
                                         view.selectIndex(row.index);
@@ -583,13 +587,14 @@ FocusScope {
                                 }
 
                                 IslandButton {
-                                    label: "Earlier"
+                                    label: qsTr("Earlier")
                                     visible: row.pinned && (row.selected || row.activeFocus
                                                             || activeFocus || hover.hovered)
                                     enabled: !view.applicationModel.pinMutationPending
                                              && row.storedPinIndex > 0
-                                    Accessible.description: "Move " + row.application.name
-                                                            + " earlier in pinned applications"
+                                    Accessible.description: qsTr(
+                                                                "Move %1 earlier in pinned applications").arg(
+                                                                row.application.name)
                                     onClicked: {
                                         view.selectIndex(row.index);
                                         view.moveSelectedPin(-1);
@@ -597,14 +602,15 @@ FocusScope {
                                 }
 
                                 IslandButton {
-                                    label: "Later"
+                                    label: qsTr("Later")
                                     visible: row.pinned && (row.selected || row.activeFocus
                                                             || activeFocus || hover.hovered)
                                     enabled: !view.applicationModel.pinMutationPending
                                              && row.storedPinIndex >= 0 && row.storedPinIndex
                                              < view.applicationModel.pinIds.length - 1
-                                    Accessible.description: "Move " + row.application.name
-                                                            + " later in pinned applications"
+                                    Accessible.description: qsTr(
+                                                                "Move %1 later in pinned applications").arg(
+                                                                row.application.name)
                                     onClicked: {
                                         view.selectIndex(row.index);
                                         view.moveSelectedPin(1);
@@ -645,8 +651,9 @@ FocusScope {
                         visible: view.applicationModel === null || !view.applicationModel.available
                                  || view.rows.length === 0
                         text: view.applicationModel === null || !view.applicationModel.available
-                              ? "Applications unavailable" : searchInput.text === ""
-                                ? "No pinned or recent applications" : "No matches"
+                              ? qsTr("Applications unavailable") : searchInput.text === "" ? qsTr(
+                                                                                                 "No pinned or recent applications") :
+                                                                                             qsTr("No matches")
                         textFormat: Text.PlainText
                         tone: "secondary"
                     }

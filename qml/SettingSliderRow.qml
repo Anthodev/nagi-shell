@@ -46,7 +46,8 @@ ControlCenterSettingRow {
             focusPolicy: Qt.StrongFocus
             Accessible.role: Accessible.Slider
             Accessible.name: root.label
-            Accessible.description: root.description + ". Current value: " + root.valueText
+            Accessible.description: qsTr("%1 Current value: %2").arg(root.description).arg(
+                                        root.valueText)
 
             readonly property real ratio: root.to <= root.from ? 0 : (root.value - root.from) / (
                                                                      root.to - root.from)

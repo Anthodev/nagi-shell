@@ -22,7 +22,7 @@ Scope {
                                         "connected": true,
                                         "enabled": record.enabled,
                                         "fallback": record.screen === state.fallbackScreen,
-                                        "label": "Connected display " + (index + 1),
+                                        "label": qsTr("Connected display %1").arg(index + 1),
                                         "reliable": false,
                                         "screen": record.screen
                                     }));
@@ -54,7 +54,7 @@ Scope {
             return record !== null;
         }
         if (!enabled && state.enabledCount() <= 1) {
-            root.changeRejected("At least one island must remain enabled.");
+            root.changeRejected(qsTr("At least one island must remain enabled."));
             return false;
         }
 
@@ -71,7 +71,7 @@ Scope {
     function requestFallback(screen) {
         const record = state.recordFor(screen);
         if (record === null || !record.enabled) {
-            root.changeRejected("The fallback must be an active enabled display.");
+            root.changeRejected(qsTr("The fallback must be an active enabled display."));
             return false;
         }
         if (state.fallbackScreen === screen) {

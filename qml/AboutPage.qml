@@ -16,24 +16,33 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     Accessible.role: Accessible.Pane
-    Accessible.name: "About Nagi Shell"
+    Accessible.name: qsTr("About Nagi Shell")
 
     function capabilityState(key) {
-        return capabilities !== null && capabilities[key] === true ? "available" : "unavailable";
+        return capabilities !== null && capabilities[key] === true ? qsTr("available") : qsTr(
+                                                                         "unavailable");
     }
 
     function settingsState() {
-        const allowed = ["loading", "ready", "write-failed", "recovery", "future"];
-        return allowed.indexOf(settingsModel.status) === -1 ? "unavailable" : settingsModel.status;
+        const labels = {
+            "future": qsTr("newer schema"),
+            "loading": qsTr("loading"),
+            "ready": qsTr("ready"),
+            "recovery": qsTr("recovery required"),
+            "write-failed": qsTr("write failed")
+        };
+        return labels[settingsModel.status] ?? qsTr("unavailable");
     }
 
     function buildDiagnostic() {
-        return ["Nagi Shell " + version, "Settings schema: " + settingsModel.schemaVersion,
-                "Settings state: " + settingsState(), "Display routing: " + capabilityState(
-                    "displayRouting"), "Audio: " + capabilityState("audio"), "Media: "
-                + capabilityState("media"), "Wi-Fi: " + capabilityState("wifi"), "Bluetooth: "
-                + capabilityState("bluetooth"), "Notifications: " + capabilityState("notifications"),
-                "Weather: " + capabilityState("weather")].join("\n");
+        return [qsTr("Nagi Shell %1").arg(version), qsTr("Settings schema: %1").arg(
+                    settingsModel.schemaVersion), qsTr("Settings state: %1").arg(settingsState()),
+                qsTr("Display routing: %1").arg(capabilityState("displayRouting")), qsTr(
+                    "Audio: %1").arg(capabilityState("audio")), qsTr("Media: %1").arg(
+                    capabilityState("media")), qsTr("Wi-Fi: %1").arg(capabilityState("wifi")), qsTr(
+                    "Bluetooth: %1").arg(capabilityState("bluetooth")), qsTr(
+                    "Notifications: %1").arg(capabilityState("notifications")), qsTr(
+                    "Weather: %1").arg(capabilityState("weather"))].join("\n");
     }
 
     ColumnLayout {
@@ -43,7 +52,7 @@ Flickable {
         spacing: Theme.spacing.lg
 
         IslandText {
-            text: "About"
+            text: qsTr("About")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -51,14 +60,14 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Nagi Shell " + root.version
+            text: qsTr("Nagi Shell %1").arg(root.version)
             size: "body"
             font.weight: Theme.type.weightSemibold
         }
 
         IslandText {
             Layout.fillWidth: true
-            text: "A context-aware desktop island and Control Center for KDE Plasma."
+            text: qsTr("A context-aware desktop island and Control Center for KDE Plasma.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -76,7 +85,7 @@ Flickable {
                 spacing: Theme.spacing.sm
 
                 IslandText {
-                    text: "Links and licenses"
+                    text: qsTr("Links and licenses")
                     size: "body"
                     font.weight: Theme.type.weightSemibold
                     Accessible.role: Accessible.Heading
@@ -87,23 +96,24 @@ Flickable {
                     spacing: Theme.spacing.sm
 
                     IslandButton {
-                        label: "Project source"
+                        label: qsTr("Project source")
                         reducedMotion: root.reducedMotion
-                        Accessible.description: "Open the Nagi Shell project website"
+                        Accessible.description: qsTr("Open the Nagi Shell project website")
                         onClicked: Qt.openUrlExternally("https://github.com/Anthodev/nagi-shell")
                     }
 
                     IslandButton {
-                        label: "Quickshell"
+                        label: qsTr("Quickshell")
                         reducedMotion: root.reducedMotion
-                        Accessible.description: "Open the Quickshell website"
+                        Accessible.description: qsTr("Open the Quickshell website")
                         onClicked: Qt.openUrlExternally("https://quickshell.org/")
                     }
                 }
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Project license: no license file is bundled in this installation. Third-party components retain their own licenses."
+                    text: qsTr(
+                              "Project license: no license file is bundled in this installation. Third-party components retain their own licenses.")
                     size: "caption"
                     color: Theme.color.textSecondary
                     wrapMode: Text.Wrap
@@ -127,7 +137,7 @@ Flickable {
 
                     IslandText {
                         Layout.fillWidth: true
-                        text: "Safe diagnostic"
+                        text: qsTr("Safe diagnostic")
                         size: "body"
                         font.weight: Theme.type.weightSemibold
                         Accessible.role: Accessible.Heading
@@ -135,9 +145,9 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: "Copy diagnostic"
+                        label: qsTr("Copy diagnostic")
                         reducedMotion: root.reducedMotion
-                        Accessible.description: "Copy the allowlisted capability diagnostic"
+                        Accessible.description: qsTr("Copy the allowlisted capability diagnostic")
                         onClicked: {
                             diagnostic.selectAll();
                             diagnostic.copy();
@@ -147,7 +157,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Contains only version, schema, and fixed capability states. It excludes network names, device and screen identity, location, paths, notification content, secrets, process IDs, and executables."
+                    text: qsTr(
+                              "Contains only version, schema, and fixed capability states. It excludes network names, device and screen identity, location, paths, notification content, secrets, process IDs, and executables.")
                     size: "caption"
                     color: Theme.color.textSecondary
                     wrapMode: Text.Wrap
@@ -167,8 +178,8 @@ Flickable {
                     font.family: Theme.type.familyForItem(this)
                     font.pixelSize: Theme.type.sizeForItem(this, "caption")
                     wrapMode: TextEdit.NoWrap
-                    Accessible.name: "Safe diagnostic text"
-                    Accessible.description: "Read-only allowlisted diagnostic"
+                    Accessible.name: qsTr("Safe diagnostic text")
+                    Accessible.description: qsTr("Read-only allowlisted diagnostic")
 
                     background: IslandPanel {
                         color: Theme.color.controlFill

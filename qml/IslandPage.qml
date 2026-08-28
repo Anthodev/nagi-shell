@@ -25,8 +25,8 @@ Flickable {
             failureText = "";
             return true;
         }
-        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                          "The island change could not be applied.";
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                              "The island change could not be applied.");
         return false;
     }
 
@@ -38,7 +38,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Island"
+            text: qsTr("Island")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -46,21 +46,22 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Tune the shared compact metrics and adaptive expanded bounds. Content order and the screen-safe layout remain fixed."
+            text: qsTr(
+                      "Tune the shared compact metrics and adaptive expanded bounds. Content order and the screen-safe layout remain fixed.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
         }
         ControlCenterSectionHeading {
             objectName: "islandGeometrySection"
-            text: "Geometry"
+            text: qsTr("Geometry")
             separated: false
         }
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Compact height"
-            description: "Metrics-aware target between 44 and 48 logical pixels."
+            label: qsTr("Compact height")
+            description: qsTr("Metrics-aware target between 44 and 48 logical pixels.")
             value: root.settingsModel.snapshot.island.compactHeight
             from: 44
             to: 48
@@ -74,8 +75,8 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Compact padding"
-            description: "Side padding and group rhythm from 16 to 32 logical pixels."
+            label: qsTr("Compact padding")
+            description: qsTr("Side padding and group rhythm from 16 to 32 logical pixels.")
             value: root.settingsModel.snapshot.island.compactPadding
             from: 16
             to: 32
@@ -89,9 +90,9 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Expanded width limit"
-            description:
-            "Maximum fraction of the current screen; natural content may remain smaller."
+            label: qsTr("Expanded width limit")
+            description: qsTr(
+                             "Maximum fraction of the current screen; natural content may remain smaller.")
             value: root.settingsModel.snapshot.island.expandedWidthPercent
             from: 0.6
             to: 1
@@ -105,9 +106,9 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Expanded height limit"
-            description:
-            "Maximum fraction of the current screen with existing content bounds preserved."
+            label: qsTr("Expanded height limit")
+            description: qsTr(
+                             "Maximum fraction of the current screen with existing content bounds preserved.")
             value: root.settingsModel.snapshot.island.expandedHeightPercent
             from: 0.6
             to: 1
@@ -121,7 +122,7 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "islandFeedbackSection"
-            text: "Feedback"
+            text: qsTr("Feedback")
         }
 
         SettingToggleRow {
@@ -129,11 +130,11 @@ Flickable {
             objectName: "gamingPerformanceToggle"
 
             Layout.fillWidth: true
-            label: "Gaming performance indicator"
-            description: !value ? "Observer, feedback, and badge are disabled." :
-                                  root.gamingPerformanceAvailable
-                                  ? "Show passive system-status feedback and a static badge while GameMode clients or the performance power profile are active." :
-                                    "No supported Gaming Performance backend is currently available."
+            label: qsTr("Gaming performance indicator")
+            description: !value ? qsTr("Observer, feedback, and badge are disabled.") :
+                                  root.gamingPerformanceAvailable ? qsTr(
+                                                                        "Show passive system-status feedback and a static badge while GameMode clients or the performance power profile are active.") :
+                                                                    qsTr("No supported Gaming Performance backend is currently available.")
             value: root.settingsModel.snapshot.island.gamingIndicator
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -142,12 +143,13 @@ Flickable {
         }
         ControlCenterSectionHeading {
             objectName: "islandCompactContentSection"
-            text: "Compact content"
+            text: qsTr("Compact content")
         }
 
         IslandText {
             Layout.fillWidth: true
-            text: "Clock is always visible. Optional content keeps the fixed order Workspace → Gaming Performance → Clock → Weather → Media and collapses when unavailable."
+            text: qsTr(
+                      "Clock is always visible. Optional content keeps the fixed order Workspace → Gaming Performance → Clock → Weather → Media and collapses when unavailable.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -155,8 +157,8 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Workspace"
-            description: "Show the current two-digit workspace position before Clock."
+            label: qsTr("Workspace")
+            description: qsTr("Show the current two-digit workspace position before Clock.")
             value: root.settingsModel.snapshot.island.showWorkspace
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -166,9 +168,9 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Weather"
-            description:
-            "Show compact weather when the Weather integration is configured and enabled."
+            label: qsTr("Weather")
+            description: qsTr(
+                             "Show compact weather when the Weather integration is configured and enabled.")
             value: root.settingsModel.snapshot.island.showWeather
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({

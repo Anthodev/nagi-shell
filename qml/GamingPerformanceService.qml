@@ -86,26 +86,26 @@ Scope {
 
             if (!wasInitialized) {
                 if (candidate.sourceCount > 0) {
-                    publish("Gaming performance active");
+                    publish(qsTr("Gaming performance active"));
                 }
                 return;
             }
 
             if (candidate.event === "sourceUnavailable") {
-                publish("Gaming performance source unavailable");
+                publish(qsTr("Gaming performance source unavailable"));
                 return;
             }
             if (candidate.sourceCount === previous.sourceCount) {
                 return;
             }
             if (previous.sourceCount === 0 && candidate.sourceCount > 0) {
-                publish("Gaming performance active");
+                publish(qsTr("Gaming performance active"));
             } else if (candidate.sourceCount > previous.sourceCount) {
-                publish("Gaming performance requested");
+                publish(qsTr("Gaming performance requested"));
             } else if (candidate.sourceCount === 0) {
-                publish("Gaming performance inactive");
+                publish(qsTr("Gaming performance inactive"));
             } else {
-                publish("Gaming performance request ended");
+                publish(qsTr("Gaming performance request ended"));
             }
         }
 
@@ -114,7 +114,7 @@ Scope {
             presentation = {
                 "iconName": "gaming-performance-symbolic",
                 "primary": primary,
-                "detail": "System status",
+                "detail": qsTr("System status"),
                 "value": "",
                 "progress": -1
             };

@@ -50,7 +50,7 @@ Item {
     readonly property int weatherLabelGap: Theme.spacing.xs
     readonly property int clockDateGap: Theme.spacing.md
     readonly property int verticalPadding: Theme.spacing.sm
-    readonly property string gamingPerformanceTooltip: "Gaming performance active"
+    readonly property string gamingPerformanceTooltip: qsTr("Gaming performance active")
 
     // Height follows the tallest single-line text metric plus semantic vertical
     // padding, clamped to the 44–48 px contract. The published Theme token
@@ -135,44 +135,44 @@ Item {
             return "";
         }
 
-        let condition = "Unknown";
+        let condition = qsTr("Unknown");
         switch (weather.condition) {
         case "clear":
-            condition = "Clear";
+            condition = qsTr("Clear");
             break;
         case "mostlyClear":
-            condition = "Mostly clear";
+            condition = qsTr("Mostly clear");
             break;
         case "partlyCloudy":
-            condition = "Partly cloudy";
+            condition = qsTr("Partly cloudy");
             break;
         case "cloudy":
-            condition = "Cloudy";
+            condition = qsTr("Cloudy");
             break;
         case "fog":
-            condition = "Fog";
+            condition = qsTr("Fog");
             break;
         case "rain":
-            condition = "Rain";
+            condition = qsTr("Rain");
             break;
         case "sleet":
-            condition = "Sleet";
+            condition = qsTr("Sleet");
             break;
         case "snow":
-            condition = "Snow";
+            condition = qsTr("Snow");
             break;
         case "thunderstorm":
-            condition = "Thunderstorm";
+            condition = qsTr("Thunderstorm");
             break;
         }
 
-        let phase = "Day";
+        let phase = qsTr("Day");
         if (weather.dayPhase === "night") {
-            phase = "Night";
+            phase = qsTr("Night");
         } else if (weather.dayPhase === "polartwilight") {
-            phase = "Twilight";
+            phase = qsTr("Twilight");
         }
-        return condition + " · " + phase;
+        return qsTr("%1 · %2").arg(condition).arg(phase);
     }
 
     function composeMediaSummary() {
@@ -279,7 +279,8 @@ Item {
             width: gamingPerformanceIcon.implicitWidth
             height: gamingPerformanceIcon.implicitHeight
             Accessible.role: Accessible.StaticText
-            Accessible.name: "Gaming performance indicator active"
+            Accessible.name: qsTr("Gaming performance indicator active")
+            Accessible.description: qsTr("Passive status badge. No action is available.")
             ToolTip.visible: gamingPerformanceHover.hovered
             ToolTip.delay: 500
             ToolTip.text: idle.gamingPerformanceTooltip
@@ -359,8 +360,8 @@ Item {
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
             Accessible.role: Accessible.Button
-            Accessible.name: "Open detailed weather for " + idle.temperatureText + ", "
-                             + idle.weatherCaptionText
+            Accessible.name: qsTr("Open detailed weather for %1, %2").arg(idle.temperatureText).arg(
+                                 idle.weatherCaptionText)
             onClicked: idle.weatherRequested()
 
             WeatherGlyph {

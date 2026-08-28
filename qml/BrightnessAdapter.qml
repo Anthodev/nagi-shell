@@ -120,8 +120,8 @@ Scope {
                 "revision": revision,
                 "presentation": {
                     "iconName": "display-brightness-symbolic",
-                    "primary": display.label.length === 0 ? "Brightness" : display.label,
-                    "detail": "PowerDevil confirmed",
+                    "primary": display.label.length === 0 ? qsTr("Brightness") : display.label,
+                    "detail": qsTr("PowerDevil confirmed"),
                     "value": Math.round(display.ratio * 100) + "%",
                     "progress": display.ratio
                 }

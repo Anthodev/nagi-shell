@@ -15,7 +15,7 @@ Flickable {
     readonly property var playerChoices: {
         const result = [
             {
-                "label": "Automatic",
+                "label": qsTr("Automatic"),
                 "value": ""
             }
         ];
@@ -28,8 +28,8 @@ Flickable {
         }
         if (!selectedPresent) {
             result.push({
-                            "label": settingsModel.snapshot.media.preferredApplication
-                                     + " (inactive)",
+                            "label": qsTr("%1 (inactive)").arg(
+                                         settingsModel.snapshot.media.preferredApplication),
                             "value": settingsModel.snapshot.media.preferredApplication
                         });
         }
@@ -52,8 +52,8 @@ Flickable {
             failureText = "";
             return true;
         }
-        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                          "The media change could not be applied.";
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                              "The media change could not be applied.");
         return false;
     }
 
@@ -74,7 +74,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Media"
+            text: qsTr("Media")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -82,7 +82,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Choose where the one shared MPRIS selection appears. Disabling Media disconnects player observation and clears artwork and timing work."
+            text: qsTr(
+                      "Choose where the one shared MPRIS selection appears. Disabling Media disconnects player observation and clears artwork and timing work.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -90,14 +91,14 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "mediaVisibilitySection"
-            text: "Visibility"
+            text: qsTr("Visibility")
             separated: false
         }
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Media integration"
-            description: "Observe compatible MPRIS players for this session."
+            label: qsTr("Media integration")
+            description: qsTr("Observe compatible MPRIS players for this session.")
             value: root.settingsModel.snapshot.media.enabled
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -107,8 +108,8 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Compact media"
-            description: "Show the selected track in Idle when available."
+            label: qsTr("Compact media")
+            description: qsTr("Show the selected track in Idle when available.")
             value: root.settingsModel.snapshot.media.compactVisible
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -118,8 +119,8 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Dashboard media"
-            description: "Show artwork, metadata, timing, and controls in Expanded."
+            label: qsTr("Dashboard media")
+            description: qsTr("Show artwork, metadata, timing, and controls in Expanded.")
             value: root.settingsModel.snapshot.media.dashboardVisible
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -129,14 +130,14 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "mediaPlayerSelectionSection"
-            text: "Player selection"
+            text: qsTr("Player selection")
         }
 
         ControlCenterSettingRow {
             Layout.fillWidth: true
-            label: "Player policy"
-            description:
-            "Automatic keeps the newest-playing policy. A preferred application wins while relevant and otherwise falls back automatically."
+            label: qsTr("Player policy")
+            description: qsTr(
+                             "Automatic keeps the newest-playing policy. A preferred application wins while relevant and otherwise falls back automatically.")
 
             ComboBox {
                 id: playerPolicy
@@ -149,9 +150,9 @@ Flickable {
                 font.family: Theme.type.familyForItem(this)
                 font.pixelSize: Theme.type.sizeForItem(this, "body")
                 Accessible.role: Accessible.ComboBox
-                Accessible.name: "Media player policy"
-                Accessible.description:
-                "Automatic preserves recency; a relevant preferred application wins."
+                Accessible.name: qsTr("Media player policy")
+                Accessible.description: qsTr(
+                                            "Automatic preserves recency; a relevant preferred application wins.")
                 onActivated: index => {
                     const value = root.playerChoices[index].value;
                     root.request(value === "" ? {
@@ -167,7 +168,7 @@ Flickable {
         IslandText {
             Layout.fillWidth: true
             visible: !root.settingsModel.snapshot.media.enabled
-            text: "Player selection is unavailable while the integration is disabled."
+            text: qsTr("Player selection is unavailable while the integration is disabled.")
             size: "caption"
             tone: "muted"
             wrapMode: Text.Wrap

@@ -18,12 +18,16 @@ Control {
     readonly property real confirmedVolume: typeof volume === "number" && Number.isFinite(volume)
                                             ? Math.min(1, Math.max(0, volume)) : 0
     readonly property string percentageText: Math.round(confirmedVolume * 100) + "%"
-    readonly property string stateText: !available ? "Unavailable" : pendingVolume
-                                                     ? "Pending · confirmed " + percentageText :
-                                                       muted ? "Muted · " + percentageText :
-                                                               percentageText + (overamplified
-                                                                                 ? " · Amplified" :
-                                                                                   "")
+    readonly property string stateText: !available ? qsTr("Unavailable") : pendingVolume ? qsTr(
+                                                                                               "Pending · confirmed %1").arg(
+                                                                                               percentageText) :
+                                                                                           muted ? qsTr(
+                                                                                                       "Muted · %1").arg(
+                                                                                                       percentageText) :
+                                                                                                   overamplified
+                                                                                                   ? qsTr("%1 · Amplified").arg(
+                                                                                                         percentageText) :
+                                                                                                     percentageText
 
     implicitWidth: track.implicitWidth
     implicitHeight: track.implicitHeight

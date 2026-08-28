@@ -42,7 +42,7 @@ Flickable {
 
     function pairingDeviceName() {
         if (bluetooth === null) {
-            return "Bluetooth device";
+            return qsTr("Bluetooth device");
         }
         for (let index = 0; index < bluetooth.bluetoothDevices.length; index += 1) {
             const device = bluetooth.bluetoothDevices[index];
@@ -50,7 +50,7 @@ Flickable {
                 return device.name;
             }
         }
-        return "Bluetooth device";
+        return qsTr("Bluetooth device");
     }
 
     function clearPrivateState() {
@@ -98,23 +98,23 @@ Flickable {
         if (bluetooth === null)
             return "";
         if (bluetooth.bluetoothOperationFailure === "connection-failed")
-            return "Pairing succeeded, but the connection failed. You can retry Connect.";
+            return qsTr("Pairing succeeded, but the connection failed. You can retry Connect.");
         if (bluetooth.bluetoothOperationFailure === "trust-failed")
-            return "Pairing succeeded, but BlueZ could not trust the device.";
+            return qsTr("Pairing succeeded, but BlueZ could not trust the device.");
         if (bluetooth.bluetoothOperationFailure === "rejected")
-            return "The pairing request was rejected.";
+            return qsTr("The pairing request was rejected.");
         if (bluetooth.bluetoothOperationFailure === "timeout")
-            return "The Bluetooth operation timed out in BlueZ.";
+            return qsTr("The Bluetooth operation timed out in BlueZ.");
         if (bluetooth.bluetoothOperationFailure !== "none")
-            return "The Bluetooth operation could not be completed.";
+            return qsTr("The Bluetooth operation could not be completed.");
         if (bluetooth.bluetoothOperationResult === "paired-connected")
-            return "Paired and connected.";
+            return qsTr("Paired and connected.");
         if (bluetooth.bluetoothOperationResult === "connected")
-            return "Connected.";
+            return qsTr("Connected.");
         if (bluetooth.bluetoothOperationResult === "disconnected")
-            return "Disconnected.";
+            return qsTr("Disconnected.");
         if (bluetooth.bluetoothOperationResult === "unpaired")
-            return "Pairing removed.";
+            return qsTr("Pairing removed.");
         return "";
     }
 
@@ -162,7 +162,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Bluetooth"
+            text: qsTr("Bluetooth")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -183,7 +183,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Bluetooth management unavailable"
+                    text: qsTr("Bluetooth management unavailable")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -191,7 +191,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "BlueZ or a Bluetooth controller is unavailable. Use KDE System Settings to inspect the system service or hardware state."
+                    text: qsTr(
+                              "BlueZ or a Bluetooth controller is unavailable. Use KDE System Settings to inspect the system service or hardware state.")
                     textFormat: Text.PlainText
                     size: "body"
                     color: Theme.color.textSecondary
@@ -204,11 +205,11 @@ Flickable {
         SettingToggleRow {
             Layout.fillWidth: true
             visible: !root.backendUnavailable
-            label: "Bluetooth radio"
-            description: root.bluetooth.bluetoothControllerCount > 1
-                         ? "Backend-confirmed aggregate state across "
-                           + root.bluetooth.bluetoothControllerCount + " controllers." :
-                           "Backend-confirmed BlueZ state."
+            label: qsTr("Bluetooth radio")
+            description: root.bluetooth.bluetoothControllerCount > 1 ? qsTr(
+                                                                           "Backend-confirmed aggregate state across %1 controllers.").arg(
+                                                                           root.bluetooth.bluetoothControllerCount) :
+                                                                       qsTr("Backend-confirmed BlueZ state.")
             value: root.bluetooth.bluetoothEnabled
             writable: !root.operationPending
             onValueRequested: value => root.bluetooth.requestBluetoothEnabled(value)
@@ -222,19 +223,19 @@ Flickable {
 
             IslandButton {
                 objectName: "bluetoothScanButton"
-                label: root.bluetooth.bluetoothDiscovering ? "Stop scan" : "Scan"
+                label: root.bluetooth.bluetoothDiscovering ? qsTr("Stop scan") : qsTr("Scan")
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending
-                Accessible.description: root.bluetooth.bluetoothDiscovering
-                                        ? "Stop this Bluetooth discovery session" :
-                                          "Start one 30 second Bluetooth discovery session"
+                Accessible.description: root.bluetooth.bluetoothDiscovering ? qsTr(
+                                                                                  "Stop this Bluetooth discovery session") :
+                                                                              qsTr("Start one 30 second Bluetooth discovery session")
                 onClicked: root.bluetooth.bluetoothDiscovering ? root.bluetooth.stopBluetoothScan() :
                                                                  root.bluetooth.scanBluetooth()
             }
 
             IslandText {
                 visible: root.bluetooth.bluetoothDiscovering
-                text: "Discovery stops automatically after 30 seconds."
+                text: qsTr("Discovery stops automatically after 30 seconds.")
                 size: "caption"
                 color: Theme.color.textSecondary
                 Accessible.name: text
@@ -288,7 +289,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Unpair " + root.unpairName + "?"
+                    text: qsTr("Unpair %1?").arg(root.unpairName)
                     textFormat: Text.PlainText
                     size: "title"
                     wrapMode: Text.Wrap
@@ -298,7 +299,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "This removes only the local BlueZ pairing relationship."
+                    text: qsTr("This removes only the local BlueZ pairing relationship.")
                     size: "body"
                     color: Theme.color.textSecondary
                     wrapMode: Text.Wrap
@@ -309,7 +310,7 @@ Flickable {
                     spacing: Theme.spacing.sm
 
                     IslandButton {
-                        label: "Unpair"
+                        label: qsTr("Unpair")
                         variant: "danger"
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending
@@ -317,7 +318,7 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: "Cancel"
+                        label: qsTr("Cancel")
                         reducedMotion: root.reducedMotion
                         onClicked: {
                             root.unpairToken = 0;
@@ -335,7 +336,7 @@ Flickable {
             spacing: Theme.spacing.lg
 
             BluetoothDeviceGroup {
-                title: "Connected"
+                title: qsTr("Connected")
                 devices: root.connectedDevices
                 busy: root.operationPending
                 reducedMotion: root.reducedMotion
@@ -346,7 +347,7 @@ Flickable {
             }
 
             BluetoothDeviceGroup {
-                title: "Paired"
+                title: qsTr("Paired")
                 devices: root.pairedDevices
                 busy: root.operationPending
                 reducedMotion: root.reducedMotion
@@ -357,7 +358,7 @@ Flickable {
             }
 
             BluetoothDeviceGroup {
-                title: "Available"
+                title: qsTr("Available")
                 devices: root.availableDevices
                 busy: root.operationPending
                 reducedMotion: root.reducedMotion
@@ -371,7 +372,8 @@ Flickable {
                 Layout.fillWidth: true
                 visible: root.bluetooth.bluetoothDevices.length === 0 &&
                          !root.bluetooth.bluetoothDiscovering
-                text: "No paired or connected devices. Select Scan to discover nearby devices."
+                text: qsTr(
+                          "No paired or connected devices. Select Scan to discover nearby devices.")
                 size: "body"
                 color: Theme.color.textSecondary
                 wrapMode: Text.Wrap

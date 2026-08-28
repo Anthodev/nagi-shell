@@ -19,30 +19,28 @@ IslandPanel {
     implicitHeight: content.implicitHeight + Theme.spacing.lg * 2
     color: device.connected ? Theme.color.surfaceActive : Theme.color.controlFill
     Accessible.role: Accessible.ListItem
-    Accessible.name: device.name + ", " + statusText() + signalDescription()
+    Accessible.name: device.signal >= 0 ? qsTr("%1, %2, signal %3 percent").arg(device.name).arg(statusText(
+                                                                                                     )).arg(device.signal) :
+                                          qsTr("%1, %2").arg(device.name).arg(statusText())
 
     function typeLabel() {
         if (device.type === "audio")
-            return "Audio";
+            return qsTr("Audio");
         if (device.type === "input")
-            return "Input device";
+            return qsTr("Input device");
         if (device.type === "phone")
-            return "Phone";
+            return qsTr("Phone");
         if (device.type === "computer")
-            return "Computer";
-        return "Bluetooth device";
+            return qsTr("Computer");
+        return qsTr("Bluetooth device");
     }
 
     function statusText() {
         if (device.connected)
-            return "Connected";
+            return qsTr("Connected");
         if (device.paired)
-            return "Paired";
-        return "Available";
-    }
-
-    function signalDescription() {
-        return device.signal >= 0 ? ", signal " + device.signal + " percent" : "";
+            return qsTr("Paired");
+        return qsTr("Available");
     }
 
     ColumnLayout {
@@ -71,8 +69,8 @@ IslandPanel {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: root.typeLabel() + (root.device.signal >= 0 ? " · " + root.device.signal
-                                                                        + "%" : "")
+                    text: root.device.signal >= 0 ? qsTr("%1 · %2%").arg(root.typeLabel()).arg(
+                                                        root.device.signal) : root.typeLabel()
                     textFormat: Text.PlainText
                     size: "caption"
                     color: Theme.color.textSecondary
@@ -95,38 +93,39 @@ IslandPanel {
 
             IslandButton {
                 visible: root.device.pairable
-                label: "Pair"
+                label: qsTr("Pair")
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy
-                Accessible.description: "Pair with " + root.device.name
+                Accessible.description: qsTr("Pair with %1").arg(root.device.name)
                 onClicked: root.pairRequested(root.device.token)
             }
 
             IslandButton {
                 visible: root.device.connectable
-                label: "Connect"
+                label: qsTr("Connect")
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy
-                Accessible.description: "Connect " + root.device.name
+                Accessible.description: qsTr("Connect %1").arg(root.device.name)
                 onClicked: root.connectRequested(root.device.token)
             }
 
             IslandButton {
                 visible: root.device.disconnectable
-                label: "Disconnect"
+                label: qsTr("Disconnect")
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy
-                Accessible.description: "Disconnect " + root.device.name
+                Accessible.description: qsTr("Disconnect %1").arg(root.device.name)
                 onClicked: root.disconnectRequested(root.device.token)
             }
 
             IslandButton {
                 visible: root.device.unpairable
-                label: "Unpair"
+                label: qsTr("Unpair")
                 variant: "danger"
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy
-                Accessible.description: "Remove the local pairing for " + root.device.name
+                Accessible.description: qsTr("Remove the local pairing for %1").arg(
+                                            root.device.name)
                 onClicked: root.unpairRequested(root.device.token, root.device.name)
             }
 

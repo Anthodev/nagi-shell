@@ -14,22 +14,23 @@ FocusScope {
     readonly property bool outputWritable: audio !== null && audio.available
                                            && audio.outputAvailable
     readonly property bool inputWritable: audio !== null && audio.available && audio.inputAvailable
-    readonly property string outputDeviceName: audio === null ? "Unavailable" :
+    readonly property string outputDeviceName: audio === null ? qsTr("Unavailable") :
                                                                 audio.outputAvailable
                                                                 ? audio.outputLabel :
                                                                   audio.outputDisplayLabel !== ""
-                                                                  ? audio.outputDisplayLabel :
-                                                                    "Unavailable"
-    readonly property string inputDeviceName: audio === null ? "Unavailable" : audio.inputAvailable
+                                                                  ? audio.outputDisplayLabel : qsTr(
+                                                                        "Unavailable")
+    readonly property string inputDeviceName: audio === null ? qsTr("Unavailable") :
+                                                               audio.inputAvailable
                                                                ? audio.inputLabel :
                                                                  audio.inputDisplayLabel !== ""
-                                                                 ? audio.inputDisplayLabel :
-                                                                   "Unavailable"
+                                                                 ? audio.inputDisplayLabel : qsTr(
+                                                                       "Unavailable")
 
     implicitWidth: audioRow.implicitWidth
     implicitHeight: audioRow.implicitHeight
     Accessible.role: Accessible.Grouping
-    Accessible.name: "Audio"
+    Accessible.name: qsTr("Audio")
     signal deviceSelectionRequested
 
     function requestVolume(role, value, finalValue) {
@@ -106,7 +107,7 @@ FocusScope {
         required property bool pendingMute
         required property bool pendingSelection
 
-        readonly property string channelLabel: role === "output" ? "Output" : "Input"
+        readonly property string channelLabel: role === "output" ? qsTr("Output") : qsTr("Input")
         readonly property string muteMeaning: role === "input" ? (muted ? "microphoneMuted" :
                                                                           "microphone") : (muted
                                                                                            ? "volumeMuted" :
@@ -116,7 +117,7 @@ FocusScope {
 
         spacing: Theme.spacing.xs
         Accessible.role: Accessible.Grouping
-        Accessible.name: channelLabel + " audio"
+        Accessible.name: qsTr("%1 audio").arg(channelLabel)
 
         RowLayout {
             Layout.fillWidth: true
@@ -129,7 +130,7 @@ FocusScope {
                                                         "dashboardInputDeviceName"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                label: channel.channelLabel + " · " + channel.deviceName
+                label: qsTr("%1 · %2").arg(channel.channelLabel).arg(channel.deviceName)
                 pending: channel.pendingSelection
                 onClicked: root.deviceSelectionRequested()
             }
@@ -142,7 +143,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 tone: channel.pendingVolume || channel.pendingMute ? "secondary" : "muted"
                 size: "caption"
-                Accessible.name: channel.channelLabel + " confirmed volume " + text
+                Accessible.name: qsTr("%1 confirmed volume %2").arg(channel.channelLabel).arg(text)
             }
 
             AbstractButton {
@@ -156,8 +157,10 @@ FocusScope {
                 hoverEnabled: true
                 enabled: channel.writable && !channel.pendingMute
                 Accessible.role: Accessible.Button
-                Accessible.name: (channel.muted ? "Unmute " : "Mute ")
-                                 + channel.channelLabel.toLowerCase()
+                Accessible.name: channel.muted ? qsTr("Unmute %1").arg(
+                                                     channel.channelLabel.toLowerCase()) : qsTr(
+                                                     "Mute %1").arg(channel.channelLabel.toLowerCase(
+                                                                        ))
                 onClicked: root.toggleMute(channel.role)
 
                 background: Rectangle {
@@ -213,7 +216,7 @@ FocusScope {
         enabled: root.audio !== null && root.audio.available
         Accessible.role: Accessible.Button
         Accessible.name: label
-        Accessible.description: "Open audio device selection"
+        Accessible.description: qsTr("Open audio device selection")
 
         background: Rectangle {
             radius: Theme.radius.md

@@ -16,7 +16,7 @@ Flickable {
     contentHeight: content.implicitHeight
     boundsBehavior: Flickable.StopAtBounds
     Accessible.role: Accessible.Pane
-    Accessible.name: "Displays settings"
+    Accessible.name: qsTr("Displays settings")
     ScrollBar.vertical: ScrollBar {
         policy: root.contentHeight > root.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
     }
@@ -50,7 +50,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Displays"
+            text: qsTr("Displays")
             size: "title"
             font.weight: Theme.type.weightSemibold
             Accessible.role: Accessible.Heading
@@ -59,14 +59,15 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target."
+            text: qsTr(
+                      "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
         }
         ControlCenterSectionHeading {
             objectName: "displaysActiveSection"
-            text: "Active"
+            text: qsTr("Active")
             separated: false
         }
 
@@ -80,14 +81,15 @@ Flickable {
 
                 Layout.fillWidth: true
                 label: modelData.label
-                description: modelData.reliable ? "Remembered across sessions" :
-                                                  "Available for this session only"
+                description: modelData.reliable ? qsTr("Remembered across sessions") : qsTr(
+                                                      "Available for this session only")
 
                 RowLayout {
                     spacing: Theme.spacing.sm
 
                     IslandButton {
-                        label: activeRow.modelData.enabled ? "Disable island" : "Enable island"
+                        label: activeRow.modelData.enabled ? qsTr("Disable island") : qsTr(
+                                                                 "Enable island")
                         reducedMotion: root.reducedMotion
                         enabled: !activeRow.modelData.enabled
                                  || root.displayController.enabledDisplayCount > 1
@@ -96,7 +98,8 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: activeRow.modelData.fallback ? "Fallback" : "Make fallback"
+                        label: activeRow.modelData.fallback ? qsTr("Fallback") : qsTr(
+                                                                  "Make fallback")
                         reducedMotion: root.reducedMotion
                         variant: activeRow.modelData.fallback ? "accent" : "standard"
                         enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
@@ -119,13 +122,13 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "displaysRememberedSection"
-            text: "Remembered"
+            text: qsTr("Remembered")
         }
 
         IslandText {
             Layout.fillWidth: true
             visible: root.displayController.rememberedDisplays.length === 0
-            text: "No disconnected displays can be remembered reliably on this platform."
+            text: qsTr("No disconnected displays can be remembered reliably on this platform.")
             size: "body"
             tone: "muted"
             wrapMode: Text.Wrap
@@ -141,13 +144,14 @@ Flickable {
 
                 Layout.fillWidth: true
                 label: modelData.label
-                description: "Disconnected display"
+                description: qsTr("Disconnected display")
 
                 IslandButton {
-                    label: "Forget"
+                    label: qsTr("Forget")
                     reducedMotion: root.reducedMotion
                     variant: "danger"
-                    Accessible.description: "Forget this disconnected display after confirmation"
+                    Accessible.description: qsTr(
+                                                "Forget this disconnected display after confirmation")
                     onClicked: root.displayController.confirmForget(
                                    rememberedRow.modelData.identity)
                 }
