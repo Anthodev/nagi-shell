@@ -36,6 +36,10 @@ BRIGHTNESS_HELPER := $(BUILD_DIR)/nagi-brightness
 BRIGHTNESS_MOC := $(BUILD_DIR)/brightness/main.moc
 BRIGHTNESS_DBUS_TEST := $(BUILD_DIR)/brightness-dbus-test
 BRIGHTNESS_DBUS_TEST_MOC := $(BUILD_DIR)/brightness_dbus_test.moc
+GAMING_PERFORMANCE_HELPER := $(BUILD_DIR)/nagi-gaming-performance
+GAMING_PERFORMANCE_MOC := $(BUILD_DIR)/gaming-performance/main.moc
+GAMING_PERFORMANCE_DBUS_TEST := $(BUILD_DIR)/gaming-performance-dbus-test
+GAMING_PERFORMANCE_DBUS_TEST_MOC := $(BUILD_DIR)/gaming_performance_dbus_test.moc
 SESSION_HELPER := $(BUILD_DIR)/nagi-session
 SESSION_MOC := $(BUILD_DIR)/session/main.moc
 SESSION_DBUS_TEST := $(BUILD_DIR)/session-dbus-test
@@ -52,6 +56,7 @@ THEME_QML_SOURCES := qml/UserConfig.qml qml/Theme.qml
 CONNECTIVITY_TEST_DIR := $(BUILD_DIR)/connectivity-test
 CONNECTIVITY_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/connectivity-live-write-test
 BRIGHTNESS_TEST_DIR := $(BUILD_DIR)/brightness-test
+GAMING_PERFORMANCE_TEST_DIR := $(BUILD_DIR)/gaming-performance-test
 BRIGHTNESS_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/brightness-live-write-test
 SESSION_TEST_DIR := $(BUILD_DIR)/session-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
@@ -134,7 +139,7 @@ QUICKSHELL_CHANNEL := stable
 FEDORA_QUICKSHELL_COPR := errornointernet/quickshell
 FEDORA_QUICKSHELL_PACKAGE := quickshell
 
-.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-platform-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-surface-state test-ui-primitives test-dashboard test-idle test-polkit-ui test-theme-config test-onboarding test-icons test-subview-frame test-typography test-settings-helper check-nondisplay check format format-check lint-advisory launch diagnose instances logs logs-follow stop clean
+.PHONY: help requirements prepare check-quickshell check-helper-toolchain check-audio-toolchain check-application-toolchain check-global-shortcut-toolchain check-notification-toolchain check-platform-toolchain check-tray-toolchain helper audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-brightness-dbus test-brightness test-brightness-live-write test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-audio-live test-audio-live-write test-connectivity test-connectivity-live-write test-tray test-tray-live test-ui-primitives test-surface-state launch diagnose instances logs logs-follow stop format format-check lint-advisory check clean
 .PHONY: test-dashboard
 .PHONY: test-polkit-ui
 .PHONY: test-theme-config
@@ -154,6 +159,8 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-bluez-contract
 .PHONY: test-bluetooth-manager-dbus
 .PHONY: test-gaming-power-contract
+.PHONY: test-gaming-performance-dbus
+.PHONY: test-gaming-performance
 .PHONY: test-wallpaper-write-contract
 
 help:
@@ -163,6 +170,7 @@ help:
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
 		'make brightness-helper  Build the PowerDevil brightness bridge' \
+		'make gaming-performance-helper  Build the passive gaming status observer' \
 		'make session-helper  Build the KDE session action bridge' \
 		'make application-helper  Build desktop-entry and persistence bridge' \
 		'make settings-helper  Build the private atomic settings writer' \
@@ -177,11 +185,13 @@ help:
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-bluetooth-manager-dbus  Test scoped Bluetooth discovery and pairing' \
 		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
+		'make test-gaming-performance-dbus  Test passive gaming aggregate lifecycle' \
 		'make test-wallpaper-dbus  Test wallpaper observation and helper lifecycle' \
 		'make test-wallpaper-service  Test mixed/readback/apply in virtual KWin' \
 		'make test-wallpaper   Test bounded library, cache, and QML service' \
 		'make test-wallpaper-live  Probe the live wallpaper read-only (not in check)' \
 		'make test-brightness  Test normalized brightness adapter state' \
+		'make test-gaming-performance  Test normalized gaming feedback state' \
 		'make test-brightness-live-write  Change and restore live PowerDevil brightness' \
 		'make test-session-dbus  Test KDE session dispatch, denial, and cleanup' \
 		'make test-session   Test session service and interaction state' \
@@ -303,6 +313,10 @@ $(CONNECTIVITY_MOC): src/connectivity/main.cpp | $(BUILD_DIR)
 $(BRIGHTNESS_MOC): src/brightness/main.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(MOC) $< -o $@
+$(GAMING_PERFORMANCE_MOC): src/gaming-performance/main.cpp | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(MOC) $< -o $@
+
 
 $(SESSION_MOC): src/session/main.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
@@ -313,6 +327,9 @@ $(CONNECTIVITY_DBUS_TEST_MOC): tests/connectivity_dbus_test.cpp | $(BUILD_DIR)
 
 $(BRIGHTNESS_DBUS_TEST_MOC): tests/brightness_dbus_test.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
+$(GAMING_PERFORMANCE_DBUS_TEST_MOC): tests/gaming_performance_dbus_test.cpp | $(BUILD_DIR)
+	$(MOC) $< -o $@
+
 
 $(SESSION_DBUS_TEST_MOC): tests/session_dbus_test.cpp | $(BUILD_DIR)
 	$(MOC) $< -o $@
@@ -358,6 +375,9 @@ $(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_
 
 $(BRIGHTNESS_HELPER): src/brightness/main.cpp $(BRIGHTNESS_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(BRIGHTNESS_MOC)) src/brightness/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+$(GAMING_PERFORMANCE_HELPER): src/gaming-performance/main.cpp $(GAMING_PERFORMANCE_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(GAMING_PERFORMANCE_MOC)) src/gaming-performance/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 
 $(SESSION_HELPER): src/session/main.cpp $(SESSION_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(SESSION_MOC)) src/session/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
@@ -367,6 +387,9 @@ $(CONNECTIVITY_DBUS_TEST): tests/connectivity_dbus_test.cpp $(CONNECTIVITY_DBUS_
 
 $(BRIGHTNESS_DBUS_TEST): tests/brightness_dbus_test.cpp $(BRIGHTNESS_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/brightness_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+$(GAMING_PERFORMANCE_DBUS_TEST): tests/gaming_performance_dbus_test.cpp $(GAMING_PERFORMANCE_DBUS_TEST_MOC) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/gaming_performance_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 
 $(SESSION_DBUS_TEST): tests/session_dbus_test.cpp $(SESSION_DBUS_TEST_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) tests/session_dbus_test.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
@@ -417,6 +440,8 @@ audio-helper: check-audio-toolchain $(AUDIO_HELPER)
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
 
 brightness-helper: check-helper-toolchain $(BRIGHTNESS_HELPER)
+gaming-performance-helper: check-helper-toolchain $(GAMING_PERFORMANCE_HELPER)
+
 
 session-helper: check-helper-toolchain $(SESSION_HELPER)
 
@@ -490,6 +515,10 @@ test-bluetooth-manager-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER)
 test-brightness-dbus: check-helper-toolchain $(BRIGHTNESS_HELPER) $(BRIGHTNESS_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(BRIGHTNESS_DBUS_TEST) $(abspath $(BRIGHTNESS_HELPER))
+test-gaming-performance-dbus: check-helper-toolchain $(GAMING_PERFORMANCE_HELPER) $(GAMING_PERFORMANCE_DBUS_TEST)
+	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
+	$(DBUS_RUN_SESSION) -- $(GAMING_PERFORMANCE_DBUS_TEST) $(abspath $(GAMING_PERFORMANCE_HELPER))
+
 
 test-session-dbus: check-helper-toolchain $(SESSION_HELPER) $(SESSION_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
@@ -513,6 +542,13 @@ test-brightness: check-quickshell | $(BUILD_DIR)
 	cp tests/brightness/shell.qml $(BRIGHTNESS_TEST_DIR)/shell.qml
 	cp qml/BrightnessBridge.qml qml/BrightnessAdapter.qml $(BRIGHTNESS_TEST_DIR)/qml/
 	$(QS) -p $(BRIGHTNESS_TEST_DIR) --no-duplicate
+test-gaming-performance: check-quickshell | $(BUILD_DIR)
+	rm -rf $(GAMING_PERFORMANCE_TEST_DIR)
+	mkdir -p $(GAMING_PERFORMANCE_TEST_DIR)/qml
+	cp tests/gaming-performance/shell.qml $(GAMING_PERFORMANCE_TEST_DIR)/shell.qml
+	cp qml/GamingPerformanceBridge.qml qml/GamingPerformanceService.qml $(GAMING_PERFORMANCE_TEST_DIR)/qml/
+	$(QS) -p $(GAMING_PERFORMANCE_TEST_DIR) --no-duplicate
+
 
 test-coordinator: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(COORDINATOR_TEST_DIR)/qml
@@ -722,9 +758,11 @@ test-dashboard: check-quickshell | $(BUILD_DIR)
 	QT_QPA_PLATFORM='offscreen' $(QS) -p $(DASHBOARD_TEST_DIR) --no-duplicate
 
 test-idle: check-quickshell | $(BUILD_DIR)
-	mkdir -p $(IDLE_TEST_DIR)/qml
+	rm -rf $(IDLE_TEST_DIR)
+	mkdir -p $(IDLE_TEST_DIR)/qml $(IDLE_TEST_DIR)/assets/icons/nagi
 	cp tests/idle/shell.qml $(IDLE_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/KdeAppearanceAdapter.qml $(IDLE_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IconResolver.qml qml/IslandIcon.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/KdeAppearanceAdapter.qml $(IDLE_TEST_DIR)/qml/
+	cp assets/icons/nagi/*.svg $(IDLE_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(IDLE_TEST_DIR) --no-duplicate
 
 test-typography: check-quickshell | $(BUILD_DIR)
@@ -802,10 +840,10 @@ check-quickshell: $(SETTINGS_HELPER)
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -852,7 +890,7 @@ lint-advisory:
 
 check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -31,6 +31,8 @@ Singleton {
                                                             "microphoneMuted":
                                                             "microphone-muted.svg",
                                                             "brightness": "brightness.svg",
+                                                            "gamingPerformance":
+                                                            "gaming-performance.svg",
                                                             "notification": "notification.svg",
                                                             "mediaPrevious": "media-previous.svg",
                                                             "mediaPlay": "media-play.svg",
@@ -61,6 +63,8 @@ Singleton {
                                                      "microphone": "Microphone",
                                                      "microphoneMuted": "Muted microphone",
                                                      "brightness": "Brightness",
+                                                     "gamingPerformance":
+                                                     "Gaming performance indicator",
                                                      "notification": "Notification",
                                                      "mediaPrevious": "Previous track",
                                                      "mediaPlay": "Play",

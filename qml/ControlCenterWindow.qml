@@ -478,6 +478,7 @@ FloatingWindow {
 
         IslandPage {
             settingsModel: root.settingsModel
+            gamingPerformanceAvailable: root.capabilities.gamingPerformance === true
             reducedMotion: root.reducedMotion
         }
     }

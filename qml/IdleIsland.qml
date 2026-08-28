@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 
-// Compact Idle composition: workspace, time, optional weather, optional
-// active media, in that order.
+// Compact Idle composition: workspace, gaming status, time, optional weather,
+// optional active media, in that order.
 //
 // Every block consumes only normalized adapter state and collapses
 // completely when unavailable, so the width always follows the visible
@@ -18,6 +18,7 @@ import QtQuick.Controls
 // Adapter inputs are duck-typed on their normalized public contracts:
 //   - virtualDesktops: available, currentPosition
 //   - clock: text
+//   - gamingPerformance: active
 //   - weather: available, stale, temperatureC, condition, dayPhase
 //   - media: available, artist, title
 // Null inputs mean the integration is absent and the block stays collapsed.
@@ -30,6 +31,7 @@ Item {
     property var clock: null
     property var weather: null
     property var media: null
+    property var gamingPerformance: null
     property bool reducedMotion: false
     property bool showWorkspace: true
     property bool showWeather: true
@@ -47,6 +49,7 @@ Item {
     readonly property int weatherLabelGap: Theme.spacing.xs
     readonly property int clockDateGap: Theme.spacing.md
     readonly property int verticalPadding: Theme.spacing.sm
+    readonly property string gamingPerformanceTooltip: "Gaming performance active"
 
     // Height formula: caption + body tight bounds, their semantic gap, and
     // two vertical paddings, clamped to the 44–48 px contract. This covers the
@@ -81,6 +84,8 @@ Item {
     readonly property bool idleDateVisible: clockVisible && clock.showIdleDate === true
                                             && typeof clock.dateText === "string" && clock.dateText
                                             !== ""
+    readonly property bool gamingPerformanceVisible: gamingPerformance !== null
+                                                     && gamingPerformance.active === true
     readonly property bool weatherAvailable: showWeather && weather !== null && weather.available
                                              === true
     readonly property string temperatureText: weatherAvailable ? Math.round(weather.temperatureC)
@@ -97,6 +102,9 @@ Item {
     readonly property alias workspaceBlock: workspaceIndicator
     readonly property alias workspaceLabelItem: workspaceLabel
     readonly property alias workspaceBoundary: workspaceSeparator
+    readonly property alias gamingPerformanceBlock: gamingPerformanceBadge
+    readonly property alias gamingBadgeIcon: gamingPerformanceIcon
+    readonly property alias gamingPerformanceBoundary: gamingPerformanceSeparator
     readonly property alias clockBlock: clockLabel
     readonly property alias clockGroupBlock: clockGroup
     readonly property alias clockDateBlock: clockDateLabel
@@ -220,8 +228,10 @@ Item {
         id: contentRow
         x: idle.contentPadding
 
-        implicitWidth: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup,
-                                         clockSeparator, weatherGroup, weatherSeparator, mediaText])
+        implicitWidth: idle.offsetAfter([workspaceIndicator, workspaceSeparator,
+                                         gamingPerformanceBadge, gamingPerformanceSeparator,
+                                         clockGroup, clockSeparator, weatherGroup, weatherSeparator,
+                                         mediaText])
         implicitHeight: idle.implicitHeight
 
         Item {
@@ -254,14 +264,51 @@ Item {
             id: workspaceSeparator
 
             x: idle.offsetAfter([workspaceIndicator])
-            visible: workspaceIndicator.visible && (clockGroup.visible || weatherGroup.visible
+            visible: workspaceIndicator.visible && (gamingPerformanceBadge.visible
+                                                    || clockGroup.visible || weatherGroup.visible
                                                     || mediaText.visible)
+        }
+
+        Item {
+            id: gamingPerformanceBadge
+
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator])
+            anchors.verticalCenter: parent.verticalCenter
+            visible: idle.gamingPerformanceVisible
+            width: gamingPerformanceIcon.implicitWidth
+            height: gamingPerformanceIcon.implicitHeight
+            Accessible.role: Accessible.StaticText
+            Accessible.name: "Gaming performance indicator active"
+            ToolTip.visible: gamingPerformanceHover.hovered
+            ToolTip.delay: 500
+            ToolTip.text: idle.gamingPerformanceTooltip
+            IslandIcon {
+                id: gamingPerformanceIcon
+
+                anchors.centerIn: parent
+                meaning: "gamingPerformance"
+                semanticState: "active"
+                size: "md"
+            }
+
+            HoverHandler {
+                id: gamingPerformanceHover
+            }
+        }
+
+        GroupSeparator {
+            id: gamingPerformanceSeparator
+
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge])
+            visible: gamingPerformanceBadge.visible && (clockGroup.visible || weatherGroup.visible
+                                                        || mediaText.visible)
         }
 
         Item {
             id: clockGroup
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator])
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.clockVisible
             implicitWidth: clockLabel.implicitWidth + (clockDateLabel.visible ? idle.clockDateGap
@@ -293,15 +340,16 @@ Item {
         GroupSeparator {
             id: clockSeparator
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup])
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, clockGroup])
             visible: clockGroup.visible && (weatherGroup.visible || mediaText.visible)
         }
 
         AbstractButton {
             id: weatherGroup
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup,
-                                 clockSeparator])
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, clockGroup, clockSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.weatherAvailable
             implicitWidth: weatherGlyph.implicitWidth + idle.weatherGap
@@ -363,7 +411,8 @@ Item {
         GroupSeparator {
             id: weatherSeparator
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup, clockSeparator,
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, clockGroup, clockSeparator,
                                  weatherGroup])
             visible: weatherGroup.visible && mediaText.visible
         }
@@ -371,7 +420,8 @@ Item {
         IdleMediaText {
             id: mediaText
 
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, clockGroup, clockSeparator,
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, clockGroup, clockSeparator,
                                  weatherGroup, weatherSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.mediaAvailable && idle.mediaSummary !== ""

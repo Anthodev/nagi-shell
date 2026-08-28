@@ -93,6 +93,19 @@ ShellRoot {
         require(islandFull.weatherIcon.Accessible.ignored,
                 "the restrained weather glyph stays decorative");
         requireDisplayOnly(islandFull);
+        require(islandGaming.gamingPerformanceBlock.visible
+                && islandGaming.gamingBadgeIcon.meaning === "gamingPerformance"
+                && islandGaming.gamingPerformanceBlock.Accessible.name
+                === "Gaming performance indicator active"
+                && islandGaming.gamingPerformanceTooltip === "Gaming performance active"
+                && !islandGaming.gamingPerformanceBlock.focus
+                && !("clicked" in islandGaming.gamingPerformanceBlock),
+                "active gaming state renders one static accessible badge without an action");
+        require(!islandNoGaming.gamingPerformanceBlock.visible
+                && !islandNoGaming.gamingPerformanceBoundary.visible
+                && islandGaming.implicitWidth - islandNoGaming.implicitWidth
+                === islandGaming.gamingPerformanceBlock.width + islandGaming.boundaryWidth,
+                "inactive gaming state removes its badge and one separator exactly");
         require(islandFull.workspaceBlock.visible, "workspace renders when available");
         require(islandFull.workspaceText === "02" && islandFull.workspaceLabelItem.text === "02"
                 && islandFull.workspaceLabelItem.text !== fullDesktops.currentName,
@@ -378,6 +391,10 @@ ShellRoot {
         property string title: "Track"
     }
 
+    component FakeGamingPerformance: QtObject {
+        property bool active: true
+    }
+
     KdeAppearanceAdapter {
         id: motion
 
@@ -425,6 +442,24 @@ ShellRoot {
         weather: islandFullWeather
         media: FakeMedia {}
         onWeatherRequested: test.weatherRequests += 1
+    }
+
+    IdleIsland {
+        id: islandGaming
+
+        virtualDesktops: fullDesktops
+        gamingPerformance: FakeGamingPerformance {}
+        clock: FakeClock {}
+    }
+
+    IdleIsland {
+        id: islandNoGaming
+
+        virtualDesktops: fullDesktops
+        gamingPerformance: FakeGamingPerformance {
+            active: false
+        }
+        clock: FakeClock {}
     }
 
     IdleIsland {

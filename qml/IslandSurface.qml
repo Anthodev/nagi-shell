@@ -18,6 +18,7 @@ PanelWindow {
     property var clock: null
     property var weather: null
     property var media: null
+    property var gamingPerformance: null
     property bool reducedMotion: false
     property var sessionService: null
     property var polkitController: null
@@ -82,6 +83,7 @@ PanelWindow {
     readonly property bool transientOwner: ownerKind === coordinator.ownerWorkspace || ownerKind
                                            === coordinator.ownerBrightness || ownerKind
                                            === coordinator.ownerVolume || ownerKind
+                                           === coordinator.ownerGamingPerformance || ownerKind
                                            === coordinator.ownerNotification
     readonly property bool notificationTransient: ownerKind === coordinator.ownerNotification
     readonly property bool largeContent: expanded || launcher || history || tray || audio
@@ -149,6 +151,8 @@ PanelWindow {
     readonly property int interactiveExitDuration: reducedMotion ? 0 : Theme.motion.durationNormal
     readonly property int idleContentWidth: idleContent.visible ? idleContent.implicitWidth :
                                                                   Theme.size.islandIdleWidth
+    readonly property bool gamingPerformanceBadgeVisible: idleContent.visible
+                                                          && idleContent.gamingPerformanceBlock.visible
     readonly property bool transientCommitted: transientLoader.item !== null
                                                && transientLoader.item.committed
     readonly property bool transientEntryAnimationRunning: transientLoader.item !== null
@@ -305,6 +309,9 @@ PanelWindow {
         }
         if (kind === coordinator.ownerVolume) {
             return volumeTransientSource;
+        }
+        if (kind === coordinator.ownerGamingPerformance) {
+            return gamingPerformance;
         }
         if (kind === coordinator.ownerNotification) {
             return notificationTransientSource;
@@ -780,6 +787,7 @@ PanelWindow {
         visible: surface.ownerKind === surface.coordinator.ownerIdle
         virtualDesktops: surface.virtualDesktops
         clock: surface.clock
+        gamingPerformance: surface.gamingPerformance
         weather: surface.weather
         media: surface.media
         reducedMotion: surface.reducedMotion

@@ -42,6 +42,11 @@ ShellRoot {
         require(brightnessView.iconMeaning === "brightness" && brightnessView.showProgress
                 && brightnessView.showValue && brightnessView.progressValue === 0.8,
                 "confirmed brightness projection renders semantic icon, progress, and percentage");
+        require(gamingView.iconMeaning === "gamingPerformance" && !gamingView.showProgress
+                && !gamingView.showValue
+                && gamingView.Accessible.name
+                === "Gaming performance active, System status",
+                "gaming feedback uses one generic semantic status projection");
         require(Theme.size.islandTransientCompactMinimumWidth === 288
                 && Theme.size.islandTransientCompactWidth === 340,
                 "compact transients use the 288 px optical floor and retain the 340 px cap");
@@ -146,6 +151,22 @@ ShellRoot {
                 && snapshot().ownerSourceRevision === 20,
                 "input confirmation cannot create an output-volume event");
 
+        gaming.feedbackRequested("gaming-performance", 1, 1);
+        require(snapshot().ownerName === "gamingPerformance"
+                && snapshot().restorationDepth === 1
+                && coordinator.pendingTransientCount === 2,
+                "gaming feedback preempts volume independently from DND");
+        const gamingEpoch = snapshot().ownerEpoch;
+        for (let revision = 2; revision <= 20; revision += 1) {
+            gaming.feedbackRequested("gaming-performance", 1, revision);
+        }
+        require(snapshot().ownerEpoch === gamingEpoch && snapshot().ownerSourceRevision === 20
+                && coordinator.pendingTransientCount === 2,
+                "gaming burst replaces one shared token generation");
+        gaming.feedbackInvalidated("gaming-performance", 1);
+        require(snapshot().ownerName === "volume" && coordinator.pendingTransientCount === 1,
+                "gaming invalidation restores suspended volume");
+
         notifications.transientRequested("notification-1", 1, 1);
         require(snapshot().ownerName === "notification" && snapshot().restorationDepth === 1
                 && coordinator.pendingTransientCount === 2,
@@ -218,6 +239,14 @@ ShellRoot {
     }
 
     QtObject {
+        id: gaming
+
+        property bool doNotDisturb: true
+        signal feedbackRequested(string sourceToken, int sourceGeneration, int revision)
+        signal feedbackInvalidated(string sourceToken, int sourceGeneration)
+    }
+
+    QtObject {
         id: notifications
 
         signal transientRequested(string sourceToken, int sourceGeneration, int revision)
@@ -235,6 +264,7 @@ ShellRoot {
         workspaceSource: workspace
         brightnessSource: brightness
         audioSource: audio
+        gamingPerformanceSource: gaming
         notificationSource: notifications
     }
 
@@ -284,6 +314,23 @@ ShellRoot {
                            "primary": "Brightness",
                            "progress": 0.8,
                            "value": "80%"
+                       })
+        surfaceGeneration: 1
+        ownerEpoch: 1
+        ownerRevision: 1
+    }
+
+    TransientView {
+        id: gamingView
+
+        active: true
+        reducedMotion: true
+        kind: "gamingPerformance"
+        presentation: ({
+                           "detail": "System status",
+                           "primary": "Gaming performance active",
+                           "progress": -1,
+                           "value": ""
                        })
         surfaceGeneration: 1
         ownerEpoch: 1

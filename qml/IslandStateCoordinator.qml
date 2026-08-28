@@ -5,7 +5,7 @@ Scope {
     id: root
 
     readonly property int maximumPendingTransients: 8
-    readonly property int maximumRestorationDepth: 8
+    readonly property int maximumRestorationDepth: 9
     readonly property int maximumSourceVersion: 2147483647
 
     readonly property int ownerNone: 0
@@ -22,6 +22,7 @@ Scope {
     readonly property int ownerTray: 11
     readonly property int ownerAudio: 12
     readonly property int ownerWeather: 13
+    readonly property int ownerGamingPerformance: 14
 
     readonly property int focusNone: 0
     readonly property int focusLauncherSearch: 1
@@ -120,6 +121,12 @@ Scope {
     function requestNotification(sourceToken, sourceGeneration, sourceRevision,
                                  initiatingSurfaceToken) {
         return state.requestTransient(root.ownerNotification, sourceToken, sourceGeneration,
+                                      sourceRevision, initiatingSurfaceToken, true);
+    }
+
+    function requestGamingPerformance(sourceToken, sourceGeneration, sourceRevision,
+                                      initiatingSurfaceToken) {
+        return state.requestTransient(root.ownerGamingPerformance, sourceToken, sourceGeneration,
                                       sourceRevision, initiatingSurfaceToken, true);
     }
 
@@ -404,6 +411,9 @@ Scope {
             if (kind === root.ownerNotification) {
                 return 6000;
             }
+            if (kind === root.ownerGamingPerformance) {
+                return 4500;
+            }
             if (kind === root.ownerVolume || kind === root.ownerBrightness) {
                 return 3000;
             }
@@ -414,6 +424,8 @@ Scope {
             let baseline = 0;
             if (kind === root.ownerNotification) {
                 baseline = 3000;
+            } else if (kind === root.ownerGamingPerformance) {
+                baseline = 2400;
             } else if (kind === root.ownerVolume || kind === root.ownerBrightness) {
                 baseline = 1800;
             } else if (kind === root.ownerWorkspace) {
@@ -486,7 +498,7 @@ Scope {
 
         function isTransient(kind) {
             return kind === root.ownerWorkspace || kind === root.ownerBrightness || kind === root.ownerVolume || kind
-                    === root.ownerNotification;
+                    === root.ownerGamingPerformance || kind === root.ownerNotification;
         }
 
         function openInteractive(kind, initiatingSurfaceToken) {
@@ -535,6 +547,8 @@ Scope {
                 return "brightness";
             if (kind === root.ownerVolume)
                 return "volume";
+            if (kind === root.ownerGamingPerformance)
+                return "gamingPerformance";
             if (kind === root.ownerNotification)
                 return "notification";
             if (kind === root.ownerExpanded)
@@ -625,17 +639,19 @@ Scope {
                 return 2;
             if (kind === root.ownerVolume)
                 return 3;
-            if (kind === root.ownerNotification)
+            if (kind === root.ownerGamingPerformance)
                 return 4;
-            if (kind === root.ownerExpanded)
+            if (kind === root.ownerNotification)
                 return 5;
+            if (kind === root.ownerExpanded)
+                return 6;
             if (kind === root.ownerLauncher || kind === root.ownerHistory || kind === root.ownerTray
                     || kind === root.ownerAudio || kind === root.ownerWeather)
-                return 6;
-            if (kind === root.ownerSession)
                 return 7;
-            if (kind === root.ownerPolkitModal)
+            if (kind === root.ownerSession)
                 return 8;
+            if (kind === root.ownerPolkitModal)
+                return 9;
             return -1;
         }
 
