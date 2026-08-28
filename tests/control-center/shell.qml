@@ -22,6 +22,7 @@ ShellRoot {
     readonly property string islandCapturePath: Quickshell.env("NAGI_ISLAND_CAPTURE") ?? ""
     readonly property string wifiCapturePath: Quickshell.env("NAGI_WIFI_CAPTURE") ?? ""
     readonly property string bluetoothCapturePath: Quickshell.env("NAGI_BLUETOOTH_CAPTURE") ?? ""
+    readonly property string wallpaperCapturePath: Quickshell.env("NAGI_WALLPAPER_CAPTURE") ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
@@ -153,7 +154,7 @@ ShellRoot {
                 && controlCenter.title === "Nagi Control Center"
                 && controlCenter.parentWindow === null,
                 "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 10
+        require(routeNamesExact() && controlCenter.availableRoutes.length === 11
                 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
                 && controlCenter.availableRoutes[2].id === "clock-date"
@@ -162,8 +163,9 @@ ShellRoot {
                 && controlCenter.availableRoutes[5].id === "notifications"
                 && controlCenter.availableRoutes[6].id === "wifi"
                 && controlCenter.availableRoutes[7].id === "bluetooth"
-                && controlCenter.availableRoutes[8].id === "displays"
-                && controlCenter.availableRoutes[9].id === "about",
+                && controlCenter.availableRoutes[8].id === "wallpaper"
+                && controlCenter.availableRoutes[9].id === "displays"
+                && controlCenter.availableRoutes[10].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
         createControls();
         exerciseControls();
@@ -329,17 +331,57 @@ ShellRoot {
             require(test.bluetoothCapturePath !== ""
                     && result.saveToFile(test.bluetoothCapturePath),
                     "real Control Center Bluetooth capture is saved");
-            require(controlCenter.open("displays", tokenB)
-                    && controlCenter.currentPageId === "displays",
-                    "leaving Bluetooth loads Displays through the same singleton");
-            stage = "displays-after-bluetooth";
+            require(controlCenter.open("wallpaper", tokenB)
+                    && controlCenter.currentPageId === "wallpaper",
+                    "Wallpaper joins the shared responsive page viewport");
+            stage = "wallpaper";
             settle.restart();
         });
     }
 
-    function displaysAfterBluetoothStage() {
-        require(!fakeWifi.bluetoothManagerOpen,
-                "leaving Bluetooth stops discovery interest and clears its owning flow");
+    function wallpaperStage() {
+        const page = controlCenter.loadedPageItem;
+        require(page !== null && fakeWallpaper.pageOpen
+                && page.currentDirectory().breadcrumb === "Wallpapers"
+                && page.childDirectories().length === 1 && page.filteredImages().length === 1,
+                "Wallpaper opens lazy interest with bounded breadcrumb navigation and filtering");
+        const filter = findObject(page, "wallpaperFilterInput");
+        require(filter !== null, "Wallpaper exposes a keyboard-focusable image filter");
+        filter.forceActiveFocus(Qt.TabFocusReason);
+        filter.text = "missing";
+        require(filter.activeFocus && page.filteredImages().length === 0,
+                "keyboard filter focus updates the bounded image projection");
+        filter.text = "";
+        page.currentDirectoryId = fakeWallpaper.directories[1].id;
+        require(page.currentDirectory().breadcrumb === "Wallpapers / Landscapes"
+                && page.filteredImages().length === 1,
+                "directory navigation updates breadcrumb and local image scope");
+        page.currentDirectoryId = fakeWallpaper.directories[0].id;
+        require(page.selectImage(fakeWallpaper.images[0])
+                && fakeWallpaper.preview !== null && fakeWallpaper.preview.status === "ready",
+                "wallpaper selection previews one opaque library image");
+        const applyButton = findObject(page, "wallpaperApplyButton");
+        require(applyButton !== null && applyButton.enabled,
+                "validated preview enables the accessible all-display action");
+        require(!page.requestApply() && page.applyWarningVisible,
+                "unsupported current plugins require a warned Apply");
+        require(page.requestApply() && fakeWallpaper.applySuccess,
+                "confirmed Apply targets every active display through the shared service");
+        controlCenter.contentItem.children[0].grabToImage(function (result) {
+            require(test.wallpaperCapturePath !== ""
+                    && result.saveToFile(test.wallpaperCapturePath),
+                    "real Control Center Wallpaper capture is saved");
+            require(controlCenter.open("displays", tokenB)
+                    && controlCenter.currentPageId === "displays",
+                    "leaving Wallpaper loads Displays through the same singleton");
+            stage = "displays-after-wallpaper";
+            settle.restart();
+        });
+    }
+
+    function displaysAfterWallpaperStage() {
+        require(!fakeWifi.bluetoothManagerOpen && !fakeWallpaper.pageOpen,
+                "leaving managed pages stops Bluetooth and wallpaper page interest");
         controlCenter.closeWindow();
         stage = "closed";
         settle.restart();
@@ -459,8 +501,11 @@ ShellRoot {
         case "bluetooth":
             bluetoothStage();
             break;
-        case "displays-after-bluetooth":
-            displaysAfterBluetoothStage();
+        case "wallpaper":
+            wallpaperStage();
+            break;
+        case "displays-after-wallpaper":
+            displaysAfterWallpaperStage();
             break;
         case "closed":
             closedStage();
@@ -779,6 +824,118 @@ ShellRoot {
     }
 
     QtObject {
+        id: fakeWallpaper
+
+        property bool pageOpen: false
+        property string status: "Multiple"
+        property bool available: false
+        property bool multiple: true
+        property bool unsupported: true
+        property var screens: [{
+                "label": "Display 1",
+                "status": "Ready",
+                "supported": true
+            }, {
+                "label": "Display 2",
+                "status": "UnsupportedPlugin",
+                "supported": false
+            }]
+        property int libraryGeneration: 1
+        property string libraryStatus: "ready"
+        property bool libraryScanning: false
+        property bool libraryTruncated: false
+        property int libraryVisited: 3
+        property var directories: [{
+                "id": "d000000000000000000000000",
+                "parentId": "",
+                "rootId": "d000000000000000000000000",
+                "name": "Wallpapers",
+                "breadcrumb": "Wallpapers"
+            }, {
+                "id": "d111111111111111111111111",
+                "parentId": "d000000000000000000000000",
+                "rootId": "d000000000000000000000000",
+                "name": "Landscapes",
+                "breadcrumb": "Wallpapers / Landscapes"
+            }]
+        property var images: [{
+                "id": "i000000000000000000000000",
+                "directoryId": "d000000000000000000000000",
+                "name": "calm-water.png",
+                "byteSize": 4096,
+                "modifiedMs": 1,
+                "width": 1920,
+                "height": 1080
+            }, {
+                "id": "i111111111111111111111111",
+                "directoryId": "d111111111111111111111111",
+                "name": "mountains.png",
+                "byteSize": 8192,
+                "modifiedMs": 2,
+                "width": 2560,
+                "height": 1440
+            }]
+        property int thumbnailRevision: 1
+        property var preview: null
+        property int previewGeneration: 0
+        property string applyStatus: "idle"
+        property bool applySuccess: false
+        property bool applyPartial: false
+        property var applyResults: []
+
+        function setPageOpen(open, roots) {
+            pageOpen = open;
+            return true;
+        }
+        function refreshLibrary(roots) {
+            libraryGeneration += 1;
+            return pageOpen;
+        }
+        function requestThumbnail(identity) {
+            return pageOpen;
+        }
+        function thumbnailFor(identity) {
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        }
+        function previewImage(identity) {
+            preview = {
+                "status": "ready",
+                "id": "c000000000000000000000000",
+                "name": "calm-water.png",
+                "thumbnail": thumbnailFor(identity),
+                "accent": "#5B6FF5",
+                "width": 1920,
+                "height": 1080,
+                "byteSize": 4096,
+                "outsideLibrary": false
+            };
+            previewGeneration += 1;
+            return true;
+        }
+        function previewExternal(selectedFile) {
+            return false;
+        }
+        function applyPreview() {
+            applySuccess = true;
+            applyPartial = false;
+            applyResults = [{
+                "label": "Display 1",
+                "status": "success"
+            }, {
+                "label": "Display 2",
+                "status": "success"
+            }];
+            applyStatus = "success";
+            return true;
+        }
+        function cancelPreview() {
+            preview = null;
+            previewGeneration += 1;
+            return true;
+        }
+    }
+
+    QtObject {
         id: fakeNotifications
         property int historyCount: 1
         function clearHistory() {
@@ -797,6 +954,7 @@ ShellRoot {
         weather: fakeWeather
         locationSearch: fakeLocationSearch
         wifi: fakeWifi
+        wallpaper: fakeWallpaper
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,

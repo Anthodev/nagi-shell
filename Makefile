@@ -79,6 +79,7 @@ TYPOGRAPHY_SOURCE_SANS_FONT ?= $(HOME)/.local/share/fonts/nagi-typography/Source
 WALLPAPER_BUILD_DIR := $(BUILD_DIR)/wallpaper
 WALLPAPER_HELPER := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper
 WALLPAPER_ANALYZER_TEST := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper-analyzer-test
+WALLPAPER_LIBRARY_TEST := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper-library-test
 WALLPAPER_DBUS_TEST := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper-dbus-test
 WALLPAPER_LIVE_TEST := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper-live-test
 WALLPAPER_TEST_DIR := $(BUILD_DIR)/wallpaper-test
@@ -141,7 +142,7 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-icons
 .PHONY: test-subview-frame
 .PHONY: test-control-center
-.PHONY: check-wallpaper-toolchain wallpaper-helper test-wallpaper test-wallpaper-dbus test-wallpaper-live
+.PHONY: check-wallpaper-toolchain wallpaper-helper test-wallpaper test-wallpaper-dbus test-wallpaper-service test-wallpaper-live
 .PHONY: test-typography
 .PHONY: test-global-shortcut-live
 .PHONY: test-multi-surface
@@ -168,7 +169,7 @@ help:
 		'make global-shortcut-helper  Build the KF6 KGlobalAccel global shortcut helper' \
 		'make notification-plugin  Build the process-scoped notification runtime' \
 		'make platform-plugin  Build the pointer-to-live-surface routing bridge' \
-		'make wallpaper-helper  Build the read-only Plasma wallpaper palette helper' \
+		'make wallpaper-helper  Build the Plasma wallpaper service helper' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
@@ -176,8 +177,9 @@ help:
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-bluetooth-manager-dbus  Test scoped Bluetooth discovery and pairing' \
 		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
-		'make test-wallpaper-dbus  Test wallpaper observation and service lifecycle' \
-		'make test-wallpaper   Test bounded analysis and the QML palette bridge' \
+		'make test-wallpaper-dbus  Test wallpaper observation and helper lifecycle' \
+		'make test-wallpaper-service  Test mixed/readback/apply in virtual KWin' \
+		'make test-wallpaper   Test bounded library, cache, and QML service' \
 		'make test-wallpaper-live  Probe the live wallpaper read-only (not in check)' \
 		'make test-brightness  Test normalized brightness adapter state' \
 		'make test-brightness-live-write  Change and restore live PowerDevil brightness' \
@@ -633,14 +635,19 @@ test-polkit-ui: check-quickshell | $(BUILD_DIR)
 test-wallpaper-dbus: wallpaper-helper
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper-dbus-test
 	$(DBUS_RUN_SESSION) -- '$(WALLPAPER_DBUS_TEST)' '$(abspath $(WALLPAPER_HELPER))' '$(abspath tests/wallpaper-fixtures)'
+test-wallpaper-service: wallpaper-helper
+	$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 2 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- env QT_ACCESSIBILITY=0 bash '$(CURDIR)/tests/wallpaper-service/run.sh' '$(abspath $(WALLPAPER_HELPER))' '$(abspath tests/wallpaper-fixtures/colorful.png)'
+
 
 test-wallpaper: check-quickshell wallpaper-helper | $(BUILD_DIR)
 	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper-analyzer-test
 	'$(WALLPAPER_ANALYZER_TEST)' '$(abspath $(WALLPAPER_HELPER))' '$(abspath tests/wallpaper-fixtures)'
+	$(CMAKE) --build '$(WALLPAPER_BUILD_DIR)' --target nagi-wallpaper-library-test
+	'$(WALLPAPER_LIBRARY_TEST)' '$(abspath tests/wallpaper-fixtures)'
 	rm -rf $(WALLPAPER_TEST_DIR)
 	mkdir -p $(WALLPAPER_TEST_DIR)/qml $(WALLPAPER_TEST_DIR)/config/nagi-shell
 	cp tests/wallpaper/shell.qml $(WALLPAPER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/WallpaperPaletteBridge.qml $(WALLPAPER_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/WallpaperService.qml $(WALLPAPER_TEST_DIR)/qml/
 	cp packaging/settings.conf $(WALLPAPER_TEST_DIR)/config/nagi-shell/settings.conf
 	sed -i 's/custom_accent=#5B6FF5/custom_accent=#FF8A00/' $(WALLPAPER_TEST_DIR)/config/nagi-shell/settings.conf
 	QT_QPA_PLATFORM='offscreen' XDG_CONFIG_HOME='$(abspath $(WALLPAPER_TEST_DIR))/config' NAGI_WALLPAPER_HELPER='$(abspath tests/wallpaper_stub_helper.py)' $(QS) -p $(WALLPAPER_TEST_DIR) --no-duplicate
@@ -737,8 +744,8 @@ test-control-center: check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
 	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
 	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
-	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' NAGI_WIFI_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wifi.png' NAGI_BLUETOOTH_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/bluetooth.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/WallpaperPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 NAGI_CONTROL_CENTER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/about.png' NAGI_APPEARANCE_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/appearance.png' NAGI_ISLAND_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/island.png' NAGI_WIFI_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wifi.png' NAGI_BLUETOOTH_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/bluetooth.png' NAGI_WALLPAPER_CAPTURE='$(abspath $(CONTROL_CENTER_TEST_DIR))/wallpaper.png' QT_ACCESSIBILITY=1 $(QS) -p $(abspath $(CONTROL_CENTER_TEST_DIR)) --no-duplicate
 	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
 
 # Issue #70 gate: one PanelWindow per connected screen, independent
@@ -843,7 +850,7 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract
+check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
 
 check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-brightness test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
 

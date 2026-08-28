@@ -20,7 +20,8 @@ ShellRoot {
         helperPath: Quickshell.shellPath("build/nagi-kwin-virtual-desktops")
     }
 
-    WallpaperPaletteBridge {
+    WallpaperService {
+        id: wallpaperService
         helperPath: Quickshell.env("NAGI_WALLPAPER_HELPER") ?? Quickshell.shellPath(
                         "build/wallpaper/nagi-wallpaper")
     }
@@ -162,6 +163,7 @@ ShellRoot {
         weather: weather
         locationSearch: weatherLocationSearch
         wifi: connectivityAdapter
+        wallpaper: wallpaperService
         reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": islandHost.liveSurfaceCount > 0,
@@ -180,8 +182,8 @@ ShellRoot {
         function activate(reason: string): bool {
             if (reason !== "control-center" && reason !== "island" && reason !== "appearance" && reason
                     !== "clock-date" && reason !== "media" && reason !== "weather" && reason
-                    !== "notifications" && reason !== "wifi" && reason !== "displays" && reason
-                    !== "about") {
+                    !== "notifications" && reason !== "wifi" && reason !== "wallpaper" && reason
+                    !== "displays" && reason !== "about") {
                 return false;
             }
             return openControlCenter(reason, null);

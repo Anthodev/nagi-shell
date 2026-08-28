@@ -15,6 +15,7 @@ FloatingWindow {
     required property var weather
     required property var locationSearch
     required property var wifi
+    required property var wallpaper
     required property var capabilities
     property bool reducedMotion: false
     property string version: "0.1.0"
@@ -57,6 +58,10 @@ FloatingWindow {
                                                                  "name": "Bluetooth"
                                                              },
                                                              {
+                                                                 "id": "wallpaper",
+                                                                 "name": "Wallpaper"
+                                                             },
+                                                             {
                                                                  "id": "displays",
                                                                  "name": "Displays"
                                                              },
@@ -92,8 +97,8 @@ FloatingWindow {
     function routeAvailable(routeId) {
         return routeId === "island" || routeId === "appearance" || routeId === "clock-date"
                 || routeId === "media" || routeId === "weather" || routeId === "notifications"
-                || routeId === "wifi" || routeId === "bluetooth" || routeId === "displays"
-                || routeId === "about";
+                || routeId === "wifi" || routeId === "bluetooth" || routeId === "wallpaper"
+                || routeId === "displays" || routeId === "about";
     }
 
     function routeName(routeId) {
@@ -455,9 +460,12 @@ FloatingWindow {
                                                                                        === "bluetooth"
                                                                                        ? bluetoothPageComponent :
                                                                                          root.currentPageId
-                                                                                         === "displays"
-                                                                                         ? displaysPageComponent :
-                                                                                           aboutPageComponent
+                                                                                         === "wallpaper"
+                                                                                         ? wallpaperPageComponent :
+                                                                                           root.currentPageId
+                                                                                           === "displays"
+                                                                                           ? displaysPageComponent :
+                                                                                             aboutPageComponent
                         onLoaded: Qt.callLater(root.focusCurrentContext)
                     }
                 }
@@ -537,6 +545,16 @@ FloatingWindow {
 
         BluetoothPage {
             bluetooth: root.wifi
+            reducedMotion: root.reducedMotion
+        }
+    }
+
+    Component {
+        id: wallpaperPageComponent
+
+        WallpaperPage {
+            settingsModel: root.settingsModel
+            wallpaper: root.wallpaper
             reducedMotion: root.reducedMotion
         }
     }
