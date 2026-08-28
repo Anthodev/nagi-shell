@@ -28,6 +28,8 @@ OWNER_TEST_MOC := $(BUILD_DIR)/kwin_owner_lifecycle_test.moc
 AUDIO_HELPER := $(BUILD_DIR)/nagi-pipewire-audio
 AUDIO_PROTOCOL_TEST := $(BUILD_DIR)/pipewire-audio-protocol-test
 AUDIO_VOLUME_TEST := $(BUILD_DIR)/pipewire-audio-volume-test
+EASYEFFECTS_STATUS_HELPER := $(BUILD_DIR)/nagi-easyeffects-status
+EASYEFFECTS_STATUS_PROTOCOL_TEST := $(BUILD_DIR)/easyeffects-status-protocol-test
 CONNECTIVITY_HELPER := $(BUILD_DIR)/nagi-connectivity
 CONNECTIVITY_MOC := $(BUILD_DIR)/connectivity/main.moc
 CONNECTIVITY_DBUS_TEST := $(BUILD_DIR)/connectivity-dbus-test
@@ -78,9 +80,9 @@ ICON_TEST_DIR := $(BUILD_DIR)/icon-test
 SUBVIEW_FRAME_TEST_DIR := $(BUILD_DIR)/subview-frame-test
 TYPOGRAPHY_TEST_DIR := $(BUILD_DIR)/typography-test
 CONTROL_CENTER_TEST_DIR := $(BUILD_DIR)/control-center-test
-TYPOGRAPHY_INTER_FONT ?= $(HOME)/.local/share/fonts/nagi-typography/Inter-Regular.ttf
+TYPOGRAPHY_INTER_FONT ?= $(shell fc-match -f '%{file}' ':family=Inter:style=Regular')
 TYPOGRAPHY_NOTO_SANS_FONT ?= $(shell fc-match -f '%{file}' ':family=Noto Sans:style=Regular')
-TYPOGRAPHY_SOURCE_SANS_FONT ?= $(HOME)/.local/share/fonts/nagi-typography/SourceSans3-Regular.ttf
+TYPOGRAPHY_SOURCE_SANS_FONT ?= $(shell fc-match -f '%{file}' ':family=Source Sans 3:style=Regular')
 WALLPAPER_BUILD_DIR := $(BUILD_DIR)/wallpaper
 WALLPAPER_HELPER := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper
 WALLPAPER_ANALYZER_TEST := $(WALLPAPER_BUILD_DIR)/nagi-wallpaper-analyzer-test
@@ -114,6 +116,8 @@ HELPER_SOURCES := src/kwin-virtual-desktops/main.cpp src/kwin-virtual-desktops/d
 HELPER_HEADERS := src/kwin-virtual-desktops/desktop_snapshot.h
 AUDIO_HELPER_SOURCES := src/pipewire-audio/main.cpp src/pipewire-audio/protocol.cpp src/pipewire-audio/volume.cpp
 AUDIO_HELPER_HEADERS := src/pipewire-audio/protocol.h src/pipewire-audio/volume.h
+EASYEFFECTS_STATUS_SOURCES := src/easyeffects-status/main.cpp src/easyeffects-status/protocol.cpp
+EASYEFFECTS_STATUS_HEADERS := src/easyeffects-status/protocol.h
 APPLICATION_HELPER_SOURCE := src/applications/main.cpp
 SETTINGS_HELPER_SOURCE := src/settings/main.cpp
 NOTIFICATION_SOURCES := src/notifications/runtime.cpp src/notifications/notification_text.cpp
@@ -163,12 +167,14 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-gaming-performance
 .PHONY: test-wallpaper-write-contract
 .PHONY: test-easyeffects-contract
+.PHONY: easyeffects-status-helper test-easyeffects-status test-easyeffects-status-protocol
 
 help:
 	@printf '%s\n' \
 		'make requirements    Show and verify runtime/build dependencies' \
 		'make helper          Build the KWin virtual desktop helper' \
 		'make audio-helper    Build the confirmed PipeWire audio bridge' \
+		'make easyeffects-status-helper  Build the bounded EasyEffects status reader' \
 		'make connectivity-helper  Build the Wi-Fi and Bluetooth bridge' \
 		'make brightness-helper  Build the PowerDevil brightness bridge' \
 		'make gaming-performance-helper  Build the passive gaming status observer' \
@@ -186,6 +192,7 @@ help:
 		'make test-easyeffects-contract  Test EasyEffects capability and lifecycle contracts' \
 		'make test-connectivity-dbus  Test D-Bus state, denial, and lifecycle' \
 		'make test-bluetooth-manager-dbus  Test scoped Bluetooth discovery and pairing' \
+		'make test-easyeffects-status  Test EasyEffects status readback and lifecycle' \
 		'make test-brightness-dbus  Test PowerDevil state, writes, and lifecycle' \
 		'make test-gaming-performance-dbus  Test passive gaming aggregate lifecycle' \
 		'make test-wallpaper-dbus  Test wallpaper observation and helper lifecycle' \
@@ -242,7 +249,7 @@ help:
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
 	@printf 'Fedora 44 source: COPR %s, package %s (never quickshell-git)\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
-	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s rsms-inter-fonts pipewire-devel glib2-devel kf6-kglobalaccel-devel qt6-qtbase-devel qt6-qtdeclarative-devel python3-dbus-next cmake\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
+	@printf 'Install: sudo dnf copr enable %s && sudo dnf install %s rsms-inter-fonts google-noto-sans-fonts adobe-source-sans-pro-fonts pipewire-devel glib2-devel kf6-kglobalaccel-devel qt6-qtbase-devel qt6-qtdeclarative-devel python3-dbus-next cmake\n' '$(FEDORA_QUICKSHELL_COPR)' '$(FEDORA_QUICKSHELL_PACKAGE)'
 	@printf 'Native builds: C++20, Qt 6 Core/DBus/GUI/Widgets/QML, KF6 GlobalAccel, libpipewire 0.3, and GIO Unix development files; private D-Bus fixtures use python3-dbus-next\n'
 	@$(MAKE) --no-print-directory check-quickshell
 	@$(MAKE) --no-print-directory check-helper-toolchain
@@ -371,6 +378,12 @@ $(AUDIO_PROTOCOL_TEST): tests/pipewire_audio_protocol_test.cpp src/pipewire-audi
 
 $(AUDIO_VOLUME_TEST): tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp src/pipewire-audio/volume.h | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) -Isrc/pipewire-audio tests/pipewire_audio_volume_test.cpp src/pipewire-audio/volume.cpp -o $@ $(LDFLAGS)
+$(EASYEFFECTS_STATUS_HELPER): $(EASYEFFECTS_STATUS_SOURCES) $(EASYEFFECTS_STATUS_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) $(QT_CFLAGS) -Isrc/easyeffects-status $(EASYEFFECTS_STATUS_SOURCES) -o $@ $(LDFLAGS) $(QT_LIBS)
+
+$(EASYEFFECTS_STATUS_PROTOCOL_TEST): tests/easyeffects_status_protocol_test.cpp src/easyeffects-status/protocol.cpp $(EASYEFFECTS_STATUS_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(AUDIO_NATIVE_CXXFLAGS) $(QT_CFLAGS) -Isrc/easyeffects-status tests/easyeffects_status_protocol_test.cpp src/easyeffects-status/protocol.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
+
 
 $(CONNECTIVITY_HELPER): src/connectivity/main.cpp $(CONNECTIVITY_MOC) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(dir $(CONNECTIVITY_MOC)) src/connectivity/main.cpp -o $@ $(LDFLAGS) $(QT_LIBS)
@@ -438,6 +451,8 @@ $(TRAY_LIVE_TEST): tests/tray_live_test.cpp | $(BUILD_DIR)
 helper: check-helper-toolchain $(HELPER)
 
 audio-helper: check-audio-toolchain $(AUDIO_HELPER)
+easyeffects-status-helper: check-helper-toolchain $(EASYEFFECTS_STATUS_HELPER)
+
 
 connectivity-helper: check-helper-toolchain $(CONNECTIVITY_HELPER)
 
@@ -500,6 +515,12 @@ test-audio-protocol: check-audio-toolchain $(AUDIO_PROTOCOL_TEST)
 
 test-audio-volume: $(AUDIO_VOLUME_TEST)
 	$(AUDIO_VOLUME_TEST)
+test-easyeffects-status-protocol: check-helper-toolchain $(EASYEFFECTS_STATUS_PROTOCOL_TEST)
+	$(EASYEFFECTS_STATUS_PROTOCOL_TEST)
+
+test-easyeffects-status: check-helper-toolchain $(EASYEFFECTS_STATUS_HELPER) test-easyeffects-status-protocol
+	$(PYTHON) tests/easyeffects_status_helper_test.py $(abspath $(EASYEFFECTS_STATUS_HELPER))
+
 
 test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
@@ -580,7 +601,7 @@ test-media: check-quickshell | $(BUILD_DIR)
 test-audio: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(AUDIO_TEST_DIR)/qml $(AUDIO_TEST_DIR)/assets/icons/nagi
 	cp tests/audio/shell.qml $(AUDIO_TEST_DIR)/shell.qml
-	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml qml/AudioSelectionView.qml $(THEME_QML_SOURCES) qml/SubviewFrame.qml qml/IslandText.qml qml/IslandIcon.qml qml/IconResolver.qml qml/IslandFocusRing.qml $(AUDIO_TEST_DIR)/qml/
+	cp qml/AudioAdapter.qml qml/PipeWireAudioBridge.qml qml/EasyEffectsStatusService.qml qml/AudioSelectionView.qml $(THEME_QML_SOURCES) qml/SubviewFrame.qml qml/IslandText.qml qml/IslandIcon.qml qml/IconResolver.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandPanel.qml $(AUDIO_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(AUDIO_TEST_DIR)/assets/icons/nagi/
 	$(QS) -p $(AUDIO_TEST_DIR) --no-duplicate
 
@@ -770,6 +791,9 @@ test-idle: check-quickshell | $(BUILD_DIR)
 test-typography: check-quickshell | $(BUILD_DIR)
 	rm -rf $(TYPOGRAPHY_TEST_DIR)
 	mkdir -p $(TYPOGRAPHY_TEST_DIR)/qml $(TYPOGRAPHY_TEST_DIR)/fonts
+	test "$(shell fc-match -f '%{family[0]}' ':family=Inter:style=Regular')" = Inter
+	test "$(shell fc-match -f '%{family[0]}' ':family=Noto Sans:style=Regular')" = 'Noto Sans'
+	test "$(shell fc-match -f '%{family[0]}' ':family=Source Sans 3:style=Regular')" = 'Source Sans 3'
 	test -f '$(TYPOGRAPHY_INTER_FONT)'
 	test -f '$(TYPOGRAPHY_NOTO_SANS_FONT)'
 	test -f '$(TYPOGRAPHY_SOURCE_SANS_FONT)'
@@ -778,7 +802,7 @@ test-typography: check-quickshell | $(BUILD_DIR)
 	cp '$(TYPOGRAPHY_INTER_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/Inter-Regular.ttf
 	cp '$(TYPOGRAPHY_NOTO_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/NotoSans-Regular.ttf
 	cp '$(TYPOGRAPHY_SOURCE_SANS_FONT)' $(TYPOGRAPHY_TEST_DIR)/fonts/SourceSans3-Regular.ttf
-	NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
+	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_TYPOGRAPHY_HOLD='$(NAGI_TYPOGRAPHY_HOLD)' $(QS) -p $(TYPOGRAPHY_TEST_DIR) --no-duplicate
 
 test-control-center: check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
@@ -847,10 +871,10 @@ check-quickshell: $(SETTINGS_HELPER)
 	fi; \
 	printf 'Quickshell %s satisfies the >= %s requirement.\n' "$$version" '$(QUICKSHELL_MIN_VERSION)'
 
-launch: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+launch: check-quickshell prepare helper audio-helper easyeffects-status-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate
 
-diagnose: check-quickshell prepare helper audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
+diagnose: check-quickshell prepare helper audio-helper easyeffects-status-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin
 	QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p . --no-duplicate -vv --log-times
 
 instances:
@@ -895,9 +919,9 @@ lint-advisory:
 		exit 0; \
 	}
 
-check: check-nondisplay test-surface-state test-ui-primitives test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
+check: check-nondisplay test-surface-state test-ui-primitives test-typography test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
 
-check-nondisplay: check-quickshell format-check audio-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-easyeffects-contract test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-wallpaper-dbus test-wallpaper test-idle test-dashboard test-polkit-ui
+check-nondisplay: check-quickshell format-check audio-helper easyeffects-status-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-easyeffects-status test-easyeffects-contract test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-polkit-ui test-dashboard test-idle
 
 clean:
 	rm -rf $(BUILD_DIR)

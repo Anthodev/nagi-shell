@@ -81,6 +81,11 @@ ShellRoot {
         id: audioAdapter
         bridgePath: Quickshell.shellPath("build/nagi-pipewire-audio")
     }
+    EasyEffectsStatusService {
+        id: easyEffectsStatus
+        helperPath: Quickshell.env("NAGI_EASYEFFECTS_STATUS_HELPER") ?? Quickshell.shellPath(
+                        "build/nagi-easyeffects-status")
+    }
     BrightnessAdapter {
         id: brightness
         helperPath: Quickshell.shellPath("build/nagi-brightness")
@@ -151,6 +156,7 @@ ShellRoot {
         applicationModel: applicationModel
         trayAdapter: trayAdapter
         audioAdapter: audioAdapter
+        easyEffectsStatusService: easyEffectsStatus
         workspaceTransientSource: virtualDesktops
         brightnessTransientSource: brightness
         volumeTransientSource: audioAdapter

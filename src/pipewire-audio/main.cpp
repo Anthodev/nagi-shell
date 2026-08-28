@@ -48,6 +48,12 @@ struct Request {
     bool final = false;
 };
 
+struct KnownNode {
+    std::uint32_t version = 0;
+    nagi::audio::EasyEffectsInternalRole easyEffectsRole =
+        nagi::audio::EasyEffectsInternalRole::None;
+};
+
 class PipeWireBridge;
 
 struct NodeBinding {
@@ -215,6 +221,35 @@ private:
         });
     }
 
+    void postNodeMetadata(
+        std::uint32_t nodeId,
+        nagi::audio::EasyEffectsInternalRole role)
+    {
+        if (role == nagi::audio::EasyEffectsInternalRole::None) {
+            postNodeRemoved(nodeId);
+            return;
+        }
+        QString normalizedRole = QStringLiteral("none");
+        if (role == nagi::audio::EasyEffectsInternalRole::Output) {
+            normalizedRole = QStringLiteral("output");
+        } else if (role == nagi::audio::EasyEffectsInternalRole::Input) {
+            normalizedRole = QStringLiteral("input");
+        }
+        post(QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("node-metadata")},
+            {QStringLiteral("nodeId"), static_cast<qint64>(nodeId)},
+            {QStringLiteral("easyEffectsRole"), normalizedRole},
+        });
+    }
+
+    void postNodeRemoved(std::uint32_t nodeId)
+    {
+        post(QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("node-removed")},
+            {QStringLiteral("nodeId"), static_cast<qint64>(nodeId)},
+        });
+    }
+
     void postState(const RoleState &role, const NodeBinding &binding, const Request *request)
     {
         if (!binding.hasVolumes || !binding.hasMute || binding.visualVolumes.empty()) {
@@ -295,20 +330,32 @@ private:
         std::uint32_t,
         const char *type,
         std::uint32_t version,
-        const spa_dict *)
+        const spa_dict *properties)
     {
         auto *bridge = static_cast<PipeWireBridge *>(data);
         if (std::strcmp(type, PW_TYPE_INTERFACE_Node) != 0) {
             return;
         }
-        bridge->knownNodes[id] = version;
+        const auto property = [properties](const char *name) {
+            const char *value = properties == nullptr ? nullptr : spa_dict_lookup(properties, name);
+            return value == nullptr ? QByteArray() : QByteArray(value);
+        };
+        const auto role = nagi::audio::classifyEasyEffectsNode(
+            property(PW_KEY_NODE_NAME),
+            property(PW_KEY_APP_ID),
+            property(PW_KEY_NODE_VIRTUAL),
+            property(PW_KEY_MEDIA_CLASS));
+        bridge->knownNodes[id] = KnownNode{.version = version, .easyEffectsRole = role};
+        bridge->postNodeMetadata(id, role);
         bridge->ensureTrackedBindings();
     }
 
     static void onRegistryGlobalRemove(void *data, std::uint32_t id)
     {
         auto *bridge = static_cast<PipeWireBridge *>(data);
-        bridge->knownNodes.erase(id);
+        if (bridge->knownNodes.erase(id) > 0) {
+            bridge->postNodeRemoved(id);
+        }
         bridge->removeBinding(id);
     }
 
@@ -452,7 +499,7 @@ private:
             registry,
             id,
             PW_TYPE_INTERFACE_Node,
-            std::min(version->second, static_cast<std::uint32_t>(PW_VERSION_NODE)),
+            std::min(version->second.version, static_cast<std::uint32_t>(PW_VERSION_NODE)),
             0));
         if (binding->node == nullptr) {
             return nullptr;
@@ -791,7 +838,7 @@ private:
     QSocketNotifier *stdinNotifier = nullptr;
     QByteArray commandBuffer;
     std::array<RoleState, 2> roles{};
-    std::unordered_map<std::uint32_t, std::uint32_t> knownNodes;
+    std::unordered_map<std::uint32_t, KnownNode> knownNodes;
     std::unordered_map<std::uint32_t, std::unique_ptr<NodeBinding>> bindings;
     std::unordered_map<int, Request> syncRequests;
     std::unordered_map<int, Request> readbackRequests;

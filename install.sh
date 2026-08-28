@@ -432,7 +432,7 @@ log_info "Building native helpers in the checkout..."
         export PATH
     fi
     # shellcheck disable=SC2086
-    make -s helper audio-helper connectivity-helper brightness-helper \
+    make -s helper audio-helper easyeffects-status-helper connectivity-helper brightness-helper \
         gaming-performance-helper session-helper application-helper settings-helper \
         global-shortcut-helper \
         wallpaper-helper notification-plugin platform-plugin
@@ -443,6 +443,7 @@ log_info "Building native helpers in the checkout..."
 ARTIFACTS="
 build/nagi-kwin-virtual-desktops
 build/nagi-pipewire-audio
+build/nagi-easyeffects-status
 build/nagi-brightness
 build/nagi-gaming-performance
 build/nagi-connectivity

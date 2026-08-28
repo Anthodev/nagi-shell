@@ -45,7 +45,8 @@ Singleton {
                                                           "suspend": "system-suspend",
                                                           "logout": "system-log-out",
                                                           "restart": "system-reboot",
-                                                          "powerOff": "system-shutdown"
+                                                          "powerOff": "system-shutdown",
+                                                          "dropdown": "arrow-down"
                                                       })
     readonly property var _labels: Object.freeze({
                                                      "back": "Back",
@@ -74,7 +75,8 @@ Singleton {
                                                      "suspend": "Suspend",
                                                      "logout": "Log out",
                                                      "restart": "Restart",
-                                                     "powerOff": "Power off"
+                                                     "powerOff": "Power off",
+                                                     "dropdown": "Open device choices"
                                                  })
     readonly property var _applicationMeanings: Object.freeze({
                                                                   "application": true,

@@ -20,6 +20,8 @@ int main()
     using nagi::audio::Operation;
     using nagi::audio::Role;
     using nagi::audio::parseCommand;
+    using nagi::audio::EasyEffectsInternalRole;
+    using nagi::audio::classifyEasyEffectsNode;
 
     const auto track = parseCommand(
         R"({"op":"track","role":"output","nodeId":42,"generation":7})");
@@ -62,6 +64,47 @@ int main()
     require(
         !parseCommand(QByteArray(nagi::audio::MaximumCommandBytes + 1, 'x')),
         "oversized commands are rejected");
+
+    require(
+        classifyEasyEffectsNode(
+            "easyeffects_sink",
+            "com.github.wwmm.easyeffects",
+            "true",
+            "Audio/Sink")
+            == EasyEffectsInternalRole::Output,
+        "exact EasyEffects output properties are classified");
+    require(
+        classifyEasyEffectsNode(
+            "easyeffects_source",
+            "com.github.wwmm.easyeffects",
+            "true",
+            "Audio/Source/Virtual")
+            == EasyEffectsInternalRole::Input,
+        "exact EasyEffects input properties are classified");
+    require(
+        classifyEasyEffectsNode(
+            "easyeffects_sink",
+            "com.github.wwmm.easyeffects",
+            "true",
+            "EE/Audio/Sink")
+            == EasyEffectsInternalRole::None,
+        "EasyEffects model classes are not graph media classes");
+    require(
+        classifyEasyEffectsNode(
+            "easyeffects_sink",
+            "com.github.wwmm.easyeffects",
+            "false",
+            "Audio/Sink")
+            == EasyEffectsInternalRole::None,
+        "node name and application ID alone do not classify a node");
+    require(
+        classifyEasyEffectsNode(
+            "unrelated_virtual_sink",
+            "com.github.wwmm.easyeffects",
+            "true",
+            "Audio/Sink")
+            == EasyEffectsInternalRole::None,
+        "unrelated virtual devices are retained");
 
     std::puts("pipewire audio protocol tests passed");
     return 0;

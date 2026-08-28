@@ -26,6 +26,7 @@ PanelWindow {
     property var applicationModel: null
     property var trayAdapter: null
     property var audioAdapter: null
+    property var easyEffectsStatusService: null
     // Each source resolves only its own normalized payload for an exact opaque
     // token, source generation, and backend-confirmed revision.
     property var workspaceTransientSource: null
@@ -972,6 +973,11 @@ PanelWindow {
             AudioSelectionView {
                 active: audioLoader.visible
                 adapter: surface.audioAdapter
+                applicationModel: surface.applicationModel
+                easyEffectsStatus: surface.easyEffectsStatusService
+                maximumAvailableWidth: surface.screen === null ? Number.POSITIVE_INFINITY : Math.max(
+                                                                     0, surface.screen.width
+                                                                     - surface.edgeInset * 2)
                 ownerEpoch: surface.ownerEpoch
                 reducedMotion: surface.reducedMotion
                 onCancelled: epoch => surface.coordinator.cancelInteractive(epoch)

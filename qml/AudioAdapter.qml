@@ -62,6 +62,8 @@ Scope {
     // Candidate entries contain only endpointKey, label, and isDefault.
     readonly property var outputCandidates: engine.outputPublicCandidates
     readonly property var inputCandidates: engine.inputPublicCandidates
+    readonly property bool outputEasyEffectsInternalDefault: engine.outputInternalDefault
+    readonly property bool inputEasyEffectsInternalDefault: engine.inputInternalDefault
 
     readonly property bool pendingOutputVolume: engine.pendingOutputVolume
     readonly property bool pendingInputVolume: engine.pendingInputVolume
@@ -239,6 +241,10 @@ Scope {
 
         function onFatalFailure() {
             engine.handleBridgeFatal();
+        }
+
+        function onNodeMetadataChanged() {
+            engine.scheduleSynchronize();
         }
     }
 
@@ -468,6 +474,8 @@ Scope {
         property var inputCandidateRecords: []
         property var outputPublicCandidates: []
         property var inputPublicCandidates: []
+        property bool outputInternalDefault: false
+        property bool inputInternalDefault: false
         property var trackedObjects: []
 
         property var queuedOutputVolume: null
@@ -578,6 +586,32 @@ Scope {
             return role + "|" + name.length + ":" + name + "|" + identifier;
         }
 
+        function easyEffectsInternalRole(node) {
+            const identifier = nodeId(node);
+            if (identifier < 0 || currentBridge === null || typeof currentBridge.internalRole
+                    !== "function") {
+                return "none";
+            }
+            try {
+                const role = currentBridge.internalRole(identifier);
+                return role === "output" || role === "input" ? role : "none";
+            } catch (error) {
+                return "none";
+            }
+        }
+
+        function isEasyEffectsInternal(role, node) {
+            return easyEffectsInternalRole(node) === role;
+        }
+
+        function setInternalDefault(role, value) {
+            if (role === "output") {
+                outputInternalDefault = value;
+            } else {
+                inputInternalDefault = value;
+            }
+        }
+
         function nextRecord(role, node) {
             generationCounter += 1;
             return {
@@ -624,7 +658,7 @@ Scope {
             const records = [];
             for (let index = 0; index < values.length; ++index) {
                 const node = values[index];
-                if (!isCandidate(role, node)) {
+                if (!isCandidate(role, node) || isEasyEffectsInternal(role, node)) {
                     continue;
                 }
                 records.push({
@@ -693,10 +727,12 @@ Scope {
 
         function updateTrackedObjects() {
             const objects = [];
-            if (serviceReady && outputNode !== null) {
+            if (serviceReady && outputNode !== null && !isEasyEffectsInternal("output",
+                                                                              outputNode)) {
                 objects.push(outputNode);
             }
-            if (serviceReady && inputNode !== null && inputNode !== outputNode) {
+            if (serviceReady && inputNode !== null && inputNode !== outputNode &&
+                    !isEasyEffectsInternal("input", inputNode)) {
                 objects.push(inputNode);
             }
             trackedObjects = objects;
@@ -771,10 +807,12 @@ Scope {
             invalidateRole(role);
             clearRoleRequests(role);
             setRoleBridgeState(role, null);
+            const internalDefault = node !== null && isEasyEffectsInternal(role, node);
+            setInternalDefault(role, internalDefault);
             if (role === "output") {
                 outputNode = node;
                 outputAudio = null;
-                outputRecord = node === null ? null : nextRecord(role, node);
+                outputRecord = node === null || internalDefault ? null : nextRecord(role, node);
                 if (node !== null && reconnectName !== "" && nodeName(node) !== reconnectName) {
                     lastOutputLabel = "";
                     lastOutputMatchName = "";
@@ -783,14 +821,16 @@ Scope {
             } else {
                 inputNode = node;
                 inputAudio = null;
-                inputRecord = node === null ? null : nextRecord(role, node);
+                inputRecord = node === null || internalDefault ? null : nextRecord(role, node);
                 if (node !== null && reconnectName !== "" && nodeName(node) !== reconnectName) {
                     lastInputLabel = "";
                     lastInputMatchName = "";
                     inputLabelTimer.stop();
                 }
             }
-            trackRole(role);
+            if (!internalDefault) {
+                trackRole(role);
+            }
         }
 
         function roleNode(role) {
@@ -1010,6 +1050,17 @@ Scope {
             }
 
             const node = roleNode(role);
+            if (isEasyEffectsInternal(role, node)) {
+                setInternalDefault(role, true);
+                untrackRole(role);
+                setRoleRecord(role, null);
+                setRoleAudio(role, null);
+                setRoleBridgeState(role, null);
+                invalidateRole(role);
+                updateSyncState();
+                return;
+            }
+            setInternalDefault(role, false);
             if (node === null || !truthy(safeRead(node, "ready", false))) {
                 setRoleAudio(role, null);
                 invalidateRole(role);
@@ -1387,6 +1438,9 @@ Scope {
                 setFailure(serviceReady ? "invalid-request" : "unavailable");
                 return false;
             }
+            if (outputSelectionTarget !== null || inputSelectionTarget !== null) {
+                return false;
+            }
 
             const candidate = candidateForKey(role, key);
             if (candidate === null) {
@@ -1581,6 +1635,8 @@ Scope {
             trackedObjects = [];
             output = emptyEndpoint();
             input = emptyEndpoint();
+            outputInternalDefault = false;
+            inputInternalDefault = false;
             outputPublishedInSession = false;
             inputPublishedInSession = false;
             if (!preserveLabels) {
