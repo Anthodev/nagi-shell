@@ -141,21 +141,21 @@ Flickable {
         if (wifi === null)
             return "";
         if (wifi.wifiOperationFailure === "wrong-secret")
-            return "The password was not accepted. Re-enter it and try again.";
+            return qsTr("The password was not accepted. Re-enter it and try again.");
         if (wifi.wifiOperationFailure === "denied")
-            return "NetworkManager denied the requested Wi-Fi change.";
+            return qsTr("NetworkManager denied the requested Wi-Fi change.");
         if (wifi.wifiOperationFailure === "cooldown")
-            return "Wait briefly before requesting another scan.";
+            return qsTr("Wait briefly before requesting another scan.");
         if (wifi.wifiOperationFailure === "timeout")
-            return "The Wi-Fi operation timed out.";
+            return qsTr("The Wi-Fi operation timed out.");
         if (wifi.wifiOperationFailure !== "none")
-            return "The Wi-Fi operation could not be completed.";
+            return qsTr("The Wi-Fi operation could not be completed.");
         if (wifi.wifiOperationResult === "connected")
-            return "Connection completed.";
+            return qsTr("Connection completed.");
         if (wifi.wifiOperationResult === "disconnected")
-            return "Disconnected.";
+            return qsTr("Disconnected.");
         if (wifi.wifiOperationResult === "forgotten")
-            return "Personal profile forgotten.";
+            return qsTr("Personal profile forgotten.");
         return "";
     }
 
@@ -207,7 +207,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Wi-Fi"
+            text: qsTr("Wi-Fi")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -228,7 +228,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Wi-Fi management unavailable"
+                    text: qsTr("Wi-Fi management unavailable")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -236,7 +236,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "NetworkManager or a Wi-Fi device is unavailable. Use KDE System Settings to inspect the system service or hardware state."
+                    text: qsTr(
+                              "NetworkManager or a Wi-Fi device is unavailable. Use KDE System Settings to inspect the system service or hardware state.")
                     textFormat: Text.PlainText
                     size: "body"
                     color: Theme.color.textSecondary
@@ -249,9 +250,10 @@ Flickable {
         SettingToggleRow {
             Layout.fillWidth: true
             visible: !root.backendUnavailable
-            label: "Wi-Fi radio"
-            description: root.wifi.wifiHardwareEnabled ? "Backend-confirmed NetworkManager state." :
-                                                         "The hardware radio is disabled."
+            label: qsTr("Wi-Fi radio")
+            description: root.wifi.wifiHardwareEnabled ? qsTr(
+                                                             "Backend-confirmed NetworkManager state.") :
+                                                         qsTr("The hardware radio is disabled.")
             value: root.wifi.wifiEnabled
             writable: root.wifi.wifiHardwareEnabled && !root.operationPending
             onValueRequested: value => root.wifi.requestWifiEnabled(value)
@@ -264,19 +266,19 @@ Flickable {
 
             IslandButton {
                 objectName: "wifiRefreshButton"
-                label: root.wifi.wifiScanning ? "Scanning…" : "Refresh"
+                label: root.wifi.wifiScanning ? qsTr("Scanning…") : qsTr("Refresh")
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending
-                Accessible.description: "Request one NetworkManager Wi-Fi scan"
+                Accessible.description: qsTr("Request one NetworkManager Wi-Fi scan")
                 onClicked: root.wifi.refreshWifi()
             }
 
             IslandButton {
                 objectName: "wifiHiddenButton"
-                label: "Hidden network"
+                label: qsTr("Hidden network")
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending
-                Accessible.description: "Connect to an explicit hidden SSID"
+                Accessible.description: qsTr("Connect to an explicit hidden SSID")
                 onClicked: {
                     root.clearPrivateState();
                     root.mode = "hidden";
@@ -306,7 +308,7 @@ Flickable {
             Layout.fillWidth: true
             visible: !root.backendUnavailable && root.wifi.wifiEnabled && root.mode === "list" &&
                      !root.wifi.wifiScanning && root.wifi.wifiNetworks.length === 0
-            text: "No networks are currently available. Refresh to request one bounded scan."
+            text: qsTr("No networks are currently available. Refresh to request one bounded scan.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -318,7 +320,7 @@ Flickable {
             visible: !root.backendUnavailable && root.wifi.wifiEnabled && root.mode === "list"
             spacing: Theme.spacing.sm
             Accessible.role: Accessible.List
-            Accessible.name: "Connected and available Wi-Fi networks"
+            Accessible.name: qsTr("Connected and available Wi-Fi networks")
 
             Repeater {
                 model: root.wifi === null ? [] : root.wifi.wifiNetworks
@@ -351,7 +353,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Connect to " + root.selectedLabel
+                    text: qsTr("Connect to %1").arg(root.selectedLabel)
                     textFormat: Text.PlainText
                     size: "title"
                     elide: Text.ElideRight
@@ -368,8 +370,8 @@ Flickable {
 
                 SettingToggleRow {
                     Layout.fillWidth: true
-                    label: "Remember"
-                    description: "Delegate user-scoped credential storage to NetworkManager."
+                    label: qsTr("Remember")
+                    description: qsTr("Delegate user-scoped credential storage to NetworkManager.")
                     value: root.rememberConnection
                     writable: !root.operationPending
                     onValueRequested: value => root.rememberConnection = value
@@ -381,7 +383,7 @@ Flickable {
 
                     IslandButton {
                         objectName: "wifiPasswordSubmit"
-                        label: "Connect"
+                        label: qsTr("Connect")
                         variant: "accent"
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending && secretField.acceptable
@@ -389,7 +391,7 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: "Cancel"
+                        label: qsTr("Cancel")
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending
                         onClicked: root.clearPrivateState()
@@ -412,7 +414,7 @@ Flickable {
                 spacing: Theme.spacing.md
 
                 IslandText {
-                    text: "Hidden network"
+                    text: qsTr("Hidden network")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -420,7 +422,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Open and WPA Personal networks only. Enterprise, EAP, certificates, hotspots, and profile editing remain in KDE."
+                    text: qsTr(
+                              "Open and WPA Personal networks only. Enterprise, EAP, certificates, hotspots, and profile editing remain in KDE.")
                     textFormat: Text.PlainText
                     size: "caption"
                     color: Theme.color.textSecondary
@@ -437,7 +440,7 @@ Flickable {
                     border.color: hiddenSsid.activeFocus ? Theme.snapshot.focusRing :
                                                            Theme.color.surfaceBorder
                     Accessible.role: Accessible.EditableText
-                    Accessible.name: "Hidden network name"
+                    Accessible.name: qsTr("Hidden network name")
                     Accessible.focused: hiddenSsid.activeFocus
 
                     TextInput {
@@ -464,17 +467,17 @@ Flickable {
 
                 SettingChoiceRow {
                     Layout.fillWidth: true
-                    label: "Security"
-                    description: "Choose Open or WPA Personal."
+                    label: qsTr("Security")
+                    description: qsTr("Choose Open or WPA Personal.")
                     value: root.hiddenSecurity
                     choices: [
                         {
                             "value": "open",
-                            "label": "Open"
+                            "label": qsTr("Open")
                         },
                         {
                             "value": "wpa-personal",
-                            "label": "WPA Personal"
+                            "label": qsTr("WPA Personal")
                         }
                     ]
                     writable: !root.operationPending
@@ -497,8 +500,8 @@ Flickable {
 
                 SettingToggleRow {
                     Layout.fillWidth: true
-                    label: "Remember"
-                    description: "Delegate user-scoped credential storage to NetworkManager."
+                    label: qsTr("Remember")
+                    description: qsTr("Delegate user-scoped credential storage to NetworkManager.")
                     value: root.rememberConnection
                     writable: !root.operationPending
                     onValueRequested: value => root.rememberConnection = value
@@ -510,7 +513,7 @@ Flickable {
 
                     IslandButton {
                         objectName: "wifiHiddenSubmit"
-                        label: "Connect"
+                        label: qsTr("Connect")
                         variant: "accent"
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending && hiddenSsid.text.trim() !== "" && (root.hiddenSecurity
@@ -520,7 +523,7 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: "Cancel"
+                        label: qsTr("Cancel")
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending
                         onClicked: root.clearPrivateState()
@@ -544,7 +547,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Forget " + root.forgetLabel + "?"
+                    text: qsTr("Forget %1?").arg(root.forgetLabel)
                     textFormat: Text.PlainText
                     size: "title"
                     elide: Text.ElideRight
@@ -554,7 +557,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "This removes only the proven user-owned NetworkManager profile and its NetworkManager-managed credential."
+                    text: qsTr(
+                              "This removes only the proven user-owned NetworkManager profile and its NetworkManager-managed credential.")
                     textFormat: Text.PlainText
                     size: "body"
                     wrapMode: Text.Wrap
@@ -567,7 +571,7 @@ Flickable {
 
                     IslandButton {
                         objectName: "wifiForgetConfirm"
-                        label: "Forget"
+                        label: qsTr("Forget")
                         variant: "danger"
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending
@@ -575,7 +579,7 @@ Flickable {
                     }
 
                     IslandButton {
-                        label: "Cancel"
+                        label: qsTr("Cancel")
                         reducedMotion: root.reducedMotion
                         enabled: !root.operationPending
                         onClicked: root.clearPrivateState()

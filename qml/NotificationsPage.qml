@@ -25,8 +25,8 @@ Flickable {
             failureText = "";
             return true;
         }
-        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                          "The notification change could not be applied.";
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                              "The notification change could not be applied.");
         return false;
     }
     function resetPageSettings() {
@@ -36,8 +36,8 @@ Flickable {
                                                                               "feedbackDuration":
                                                                               defaults.island.feedbackDuration
                                                                           }, false)) {
-            failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                              "The notification defaults could not be restored.";
+            failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                                  "The notification defaults could not be restored.");
             return false;
         }
         failureText = "";
@@ -52,7 +52,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Notifications"
+            text: qsTr("Notifications")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -60,7 +60,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Popup policy is separate from the bounded, memory-only history. Do Not Disturb never suppresses volume, brightness, workspace, or other system feedback."
+            text: qsTr(
+                      "Popup policy is separate from the bounded, memory-only history. Do Not Disturb never suppresses volume, brightness, workspace, or other system feedback.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -68,14 +69,14 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "notificationsPopupPolicySection"
-            text: "Popup policy"
+            text: qsTr("Popup policy")
             separated: false
         }
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Notification popups"
-            description: "Allow notification transients on every eligible island."
+            label: qsTr("Notification popups")
+            description: qsTr("Allow notification transients on every eligible island.")
             value: root.settingsModel.snapshot.notifications.popupsEnabled
             writable: root.settingsModel.writable
             onValueRequested: value => root.request("notifications", {
@@ -85,9 +86,9 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Do Not Disturb"
-            description:
-            "Suppress normal and low-urgency notification popups while retaining eligible history."
+            label: qsTr("Do Not Disturb")
+            description: qsTr(
+                             "Suppress normal and low-urgency notification popups while retaining eligible history.")
             value: root.settingsModel.snapshot.notifications.doNotDisturb
             writable: root.settingsModel.writable
             onValueRequested: value => root.request("notifications", {
@@ -97,17 +98,17 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Critical notifications"
-            description:
-            "Let critical notifications bypass Do Not Disturb, or request total notification silence."
+            label: qsTr("Critical notifications")
+            description: qsTr(
+                             "Let critical notifications bypass Do Not Disturb, or request total notification silence.")
             value: root.settingsModel.snapshot.notifications.criticalMode
             choices: [
                 {
-                    "label": "Bypass DND",
+                    "label": qsTr("Bypass DND"),
                     "value": "bypass"
                 },
                 {
-                    "label": "Total silence",
+                    "label": qsTr("Total silence"),
                     "value": "silence"
                 }
             ]
@@ -120,26 +121,26 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "notificationsFeedbackSection"
-            text: "Feedback"
+            text: qsTr("Feedback")
         }
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Feedback duration"
-            description:
-            "Scale visible feedback holds without changing freshness, queue, or retention limits."
+            label: qsTr("Feedback duration")
+            description: qsTr(
+                             "Scale visible feedback holds without changing freshness, queue, or retention limits.")
             value: root.settingsModel.snapshot.island.feedbackDuration
             choices: [
                 {
-                    "label": "Short",
+                    "label": qsTr("Short"),
                     "value": "short"
                 },
                 {
-                    "label": "Normal",
+                    "label": qsTr("Normal"),
                     "value": "normal"
                 },
                 {
-                    "label": "Long",
+                    "label": qsTr("Long"),
                     "value": "long"
                 }
             ]
@@ -152,13 +153,13 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "notificationsIslandContentSection"
-            text: "Island content"
+            text: qsTr("Island content")
         }
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Dashboard recents"
-            description: "Show the fixed bounded recent subset in Expanded."
+            label: qsTr("Dashboard recents")
+            description: qsTr("Show the fixed bounded recent subset in Expanded.")
             value: root.settingsModel.snapshot.notifications.dashboardVisible
             writable: root.settingsModel.writable
             onValueRequested: value => root.request("notifications", {
@@ -168,8 +169,8 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "History"
-            description: "Show the session-only notification history route in the island."
+            label: qsTr("History")
+            description: qsTr("Show the session-only notification history route in the island.")
             value: root.settingsModel.snapshot.notifications.historyVisible
             writable: root.settingsModel.writable
             onValueRequested: value => root.request("notifications", {
@@ -179,15 +180,16 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "notificationsHistorySection"
-            text: "History"
+            text: qsTr("History")
         }
 
         SettingActionRow {
             Layout.fillWidth: true
-            label: "Clear history"
-            description:
-            "Forget every retained snapshot without closing live protocol notifications or writing to disk."
-            actionLabel: root.notificationService.historyCount === 0 ? "History empty" : "Clear"
+            label: qsTr("Clear history")
+            description: qsTr(
+                             "Forget every retained snapshot without closing live protocol notifications or writing to disk.")
+            actionLabel: root.notificationService.historyCount === 0 ? qsTr("History empty") : qsTr(
+                                                                           "Clear")
             actionVariant: "danger"
             writable: root.notificationService.historyCount > 0
             reducedMotion: root.reducedMotion
@@ -196,7 +198,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime."
+            text: qsTr(
+                      "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime.")
             size: "caption"
             tone: "muted"
             wrapMode: Text.Wrap

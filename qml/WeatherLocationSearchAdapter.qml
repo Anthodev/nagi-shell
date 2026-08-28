@@ -55,7 +55,7 @@ Scope {
         property bool inFlight: false
         property var results: root.emptyResults
         property string failure: "none"
-        property string attribution: "Location data by GeoNames via Open-Meteo · CC BY 4.0"
+        property string attribution: qsTr("Location data by GeoNames via Open-Meteo · CC BY 4.0")
         property int requestCount: 0
         property int serial: 0
         property var activeRequest: null
@@ -99,7 +99,7 @@ Scope {
             }
             results = root.emptyResults;
             failure = "none";
-            attribution = "Location data by GeoNames via Open-Meteo · CC BY 4.0";
+            attribution = qsTr("Location data by GeoNames via Open-Meteo · CC BY 4.0");
             activeEncodedQuery = encodeURIComponent(value);
             start("openmeteo", "https://geocoding-api.open-meteo.com/v1/search?name="
                   + activeEncodedQuery + "&count=5&format=json&language=en");
@@ -222,7 +222,7 @@ Scope {
                 return;
             }
             lastNominatimAt = now;
-            attribution = "Location data © OpenStreetMap contributors · ODbL";
+            attribution = qsTr("Location data © OpenStreetMap contributors · ODbL");
             start("nominatim", endpoint + "/search?format=jsonv2&limit=5&addressdetails=1&q="
                   + activeEncodedQuery);
         }

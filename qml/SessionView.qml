@@ -22,43 +22,43 @@ FocusScope {
     readonly property var actions: [
         {
             "action": "lock",
-            "description": "Lock this KDE session",
-            "label": "Lock",
+            "description": qsTr("Lock this KDE session"),
+            "label": qsTr("Lock"),
             "meaning": "lock",
             "danger": false
         },
         {
             "action": "suspend",
-            "description": "Suspend this computer",
-            "label": "Suspend",
+            "description": qsTr("Suspend this computer"),
+            "label": qsTr("Suspend"),
             "meaning": "suspend",
             "danger": false
         },
         {
             "action": "restartShell",
-            "description": "Reload Nagi Shell without restarting this computer",
-            "label": "Restart shell",
+            "description": qsTr("Reload Nagi Shell without restarting this computer"),
+            "label": qsTr("Restart shell"),
             "meaning": "restartShell",
             "danger": false
         },
         {
             "action": "logout",
-            "description": "Open KDE confirmation to end the current session",
-            "label": "Log out",
+            "description": qsTr("Open KDE confirmation to end the current session"),
+            "label": qsTr("Log out"),
             "meaning": "logout",
             "danger": true
         },
         {
             "action": "reboot",
-            "description": "Open KDE confirmation to restart this computer",
-            "label": "Restart",
+            "description": qsTr("Open KDE confirmation to restart this computer"),
+            "label": qsTr("Restart"),
             "meaning": "restart",
             "danger": true
         },
         {
             "action": "powerOff",
-            "description": "Open KDE confirmation to power off this computer",
-            "label": "Power off",
+            "description": qsTr("Open KDE confirmation to power off this computer"),
+            "label": qsTr("Power off"),
             "meaning": "powerOff",
             "danger": true
         }
@@ -72,19 +72,19 @@ FocusScope {
 
     function failureText(failure) {
         if (failure === "busy") {
-            return "Another session action is still pending.";
+            return qsTr("Another session action is still pending.");
         }
         if (failure === "denied") {
-            return "Permission denied. Check the KDE session policy and try again.";
+            return qsTr("Permission denied. Check the KDE session policy and try again.");
         }
         if (failure === "unavailable") {
-            return "This action is unavailable in the current KDE session.";
+            return qsTr("This action is unavailable in the current KDE session.");
         }
         if (failure === "timeout") {
-            return "The KDE session service did not respond. Try again.";
+            return qsTr("The KDE session service did not respond. Try again.");
         }
         if (failure === "backend") {
-            return "The session action failed. Try again or use KDE's session controls.";
+            return qsTr("The session action failed. Try again or use KDE's session controls.");
         }
         return "";
     }
@@ -103,24 +103,24 @@ FocusScope {
 
     function pendingLabel(action) {
         if (action === "lock") {
-            return "Locking…";
+            return qsTr("Locking…");
         }
         if (action === "suspend") {
-            return "Suspending…";
+            return qsTr("Suspending…");
         }
         if (action === "logout") {
-            return "Opening logout confirmation…";
+            return qsTr("Opening logout confirmation…");
         }
         if (action === "restartShell") {
-            return "Restarting shell…";
+            return qsTr("Restarting shell…");
         }
         if (action === "reboot") {
-            return "Opening restart confirmation…";
+            return qsTr("Opening restart confirmation…");
         }
         if (action === "powerOff") {
-            return "Opening power-off confirmation…";
+            return qsTr("Opening power-off confirmation…");
         }
-        return "Working…";
+        return qsTr("Working…");
     }
 
     function requestAction(action) {
@@ -141,7 +141,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.active
-        title: "Session"
+        title: qsTr("Session")
         reducedMotion: view.reducedMotion
         initialFocusItem: actionRepeater.itemAt(0)
         onBackRequested: {
@@ -267,7 +267,7 @@ FocusScope {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Session controls unavailable"
+                    text: qsTr("Session controls unavailable")
                     visible: view.service === null || (!view.service.backendReady &&
                                                        !view.service.shellRestartReady)
                     textFormat: Text.PlainText

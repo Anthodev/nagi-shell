@@ -110,7 +110,7 @@ Scope {
     FloatingWindow {
         id: onboarding
 
-        title: "Welcome to Nagi Shell"
+        title: qsTr("Welcome to Nagi Shell")
         visible: root.stateResolved && !root.dismissed
         implicitWidth: Theme.size.onboardingWidth
         implicitHeight: onboardingContent.implicitHeight + Theme.spacing.xl * 2
@@ -153,7 +153,7 @@ Scope {
 
             IslandText {
                 Layout.fillWidth: true
-                text: "Welcome to Nagi Shell"
+                text: qsTr("Welcome to Nagi Shell")
                 size: "title"
                 font.weight: Theme.type.weightSemibold
                 Accessible.role: Accessible.Heading
@@ -161,21 +161,24 @@ Scope {
 
             IslandText {
                 Layout.fillWidth: true
-                text: "Nagi stores preferences in a private versioned settings.conf. Use the Control Center to manage every completed Nagi settings page."
+                text: qsTr(
+                          "Nagi stores preferences in a private versioned settings.conf. Use the Control Center to manage every completed Nagi settings page.")
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }
 
             IslandText {
                 Layout.fillWidth: true
-                text: "KDE System Settings remains the place for Nagi Shell shortcuts. Open Launcher prefers Meta+Space, but Nagi never replaces KRunner's shortcut when it conflicts."
+                text: qsTr(
+                          "KDE System Settings remains the place for Nagi Shell shortcuts. Open Launcher prefers Meta+Space, but Nagi never replaces KRunner's shortcut when it conflicts.")
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }
 
             IslandText {
                 Layout.fillWidth: true
-                text: "The Control Center opens in this Nagi process and shares the same settings and services as every island."
+                text: qsTr(
+                          "The Control Center opens in this Nagi process and shares the same settings and services as every island.")
                 tone: "secondary"
                 wrapMode: Text.Wrap
             }
@@ -188,7 +191,7 @@ Scope {
                     id: settingsButton
 
                     objectName: "onboardingSettings"
-                    label: "Open Control Center"
+                    label: qsTr("Open Control Center")
                     implicitHeight: Theme.size.controlHeightLg
                     leftPadding: Theme.spacing.lg
                     rightPadding: Theme.spacing.lg
@@ -199,8 +202,8 @@ Scope {
                     id: closeButton
 
                     objectName: "onboardingClose"
-                    label: "Get started"
-                    Accessible.name: "Close onboarding"
+                    label: qsTr("Get started")
+                    Accessible.name: qsTr("Close onboarding")
                     implicitHeight: Theme.size.controlHeightLg
                     leftPadding: Theme.spacing.lg
                     rightPadding: Theme.spacing.lg

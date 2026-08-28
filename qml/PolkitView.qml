@@ -47,11 +47,13 @@ FocusScope {
     readonly property int selectedIdentityIndex: selectedIdentity === null ? -1 : identities.indexOf(
                                                                                  selectedIdentity)
     readonly property string requestMessage: boundedText(controllerAvailable ? controller.message :
-                                                                               "", 512, "Authentication is required.")
+                                                                               "", 512, qsTr(
+                                                             "Authentication is required."))
     readonly property string actionId: boundedText(controllerAvailable ? controller.actionId : "",
                                                    256, "")
     readonly property string inputPrompt: boundedText(controllerAvailable ? controller.inputPrompt :
-                                                                            "", 256, "Authentication response")
+                                                                            "", 256, qsTr(
+                                                          "Authentication response"))
     readonly property string supplementaryMessage: boundedText(controllerAvailable
                                                                ? controller.supplementaryMessage :
                                                                  "", 512, "")
@@ -119,11 +121,11 @@ FocusScope {
 
     function identityLabel(identity) {
         if (!identityIsNormalized(identity)) {
-            return "Unknown identity";
+            return qsTr("Unknown identity");
         }
         const base = identity.displayName !== "" ? identity.displayName : identity.string !== ""
                                                    ? identity.string : identity.id;
-        return identity.isGroup ? base + " (group)" : base;
+        return identity.isGroup ? qsTr("%1 (group)").arg(base) : base;
     }
 
     function normalizedIconName(value) {
@@ -319,7 +321,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.visible
-        title: "Authentication required"
+        title: qsTr("Authentication required")
         reducedMotion: view.reducedMotion
         initialFocusItem: view.identityCount > 1 ? identityList.currentItem :
                                                    view.responseFieldVisible ? responseInput :
@@ -365,7 +367,7 @@ FocusScope {
                     spacing: Theme.spacing.sm
 
                     IslandText {
-                        text: view.identityCount > 1 ? "Identity" : "Selected identity"
+                        text: view.identityCount > 1 ? qsTr("Identity") : qsTr("Selected identity")
                         textFormat: Text.PlainText
                         tone: "secondary"
                         size: "caption"
@@ -386,7 +388,7 @@ FocusScope {
                         model: view.identities
                         visible: view.identityCount > 1
                         Accessible.role: Accessible.List
-                        Accessible.name: "Authentication identities"
+                        Accessible.name: qsTr("Authentication identities")
 
                         delegate: IslandButton {
                             id: identityButton
@@ -399,9 +401,9 @@ FocusScope {
                             variant: modelData === view.selectedIdentity ? "accent" : "standard"
                             enabled: view.controllerAvailable && !view.terminal &&
                                      !view.operationPending
-                            Accessible.description: modelData === view.selectedIdentity
-                                                    ? "Selected authentication identity" :
-                                                      "Select this authentication identity"
+                            Accessible.description: modelData === view.selectedIdentity ? qsTr(
+                                                                                              "Selected authentication identity") :
+                                                                                          qsTr("Select this authentication identity")
                             onClicked: view.requestIdentity(modelData)
 
                             Keys.onLeftPressed: event => {
@@ -430,7 +432,8 @@ FocusScope {
                     IslandText {
                         Layout.fillWidth: true
                         visible: view.identityCount === 1
-                        text: view.selectedIdentity === null ? "No supported identity selected" :
+                        text: view.selectedIdentity === null ? qsTr(
+                                                                   "No supported identity selected") :
                                                                view.identityLabel(
                                                                    view.selectedIdentity)
                         textFormat: Text.PlainText
@@ -458,8 +461,9 @@ FocusScope {
                     IslandPanel {
                         objectName: "polkitResponseField"
                         Accessible.role: Accessible.EditableText
-                        Accessible.name: "Authentication response"
-                        Accessible.description: "Enter the response requested for authentication"
+                        Accessible.name: qsTr("Authentication response")
+                        Accessible.description: qsTr(
+                                                    "Enter the response requested for authentication")
                         Accessible.passwordEdit: true
                         Accessible.selectableText: false
                         Accessible.focusable: true
@@ -542,9 +546,9 @@ FocusScope {
                         Layout.fillWidth: true
                         visible: !view.responseFieldVisible && view.controllerAvailable &&
                                  !view.terminal
-                        text: view.identityCount === 0
-                              ? "No supported authentication identity is available." :
-                                "Waiting for an authentication prompt…"
+                        text: view.identityCount === 0 ? qsTr(
+                                                             "No supported authentication identity is available.") :
+                                                         qsTr("Waiting for an authentication prompt…")
                         textFormat: Text.PlainText
                         tone: "secondary"
                         wrapMode: Text.Wrap
@@ -556,10 +560,12 @@ FocusScope {
                 IslandText {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: view.controllerCancellationPending || state.cancelDispatched
-                          ? "Cancelling…" : view.controllerSubmissionPending
-                            || state.submitDispatched ? "Authenticating…" :
-                                                        view.supplementaryMessage
+                    text: view.controllerCancellationPending || state.cancelDispatched ? qsTr(
+                                                                                             "Cancelling…") :
+                                                                                         view.controllerSubmissionPending
+                                                                                         || state.submitDispatched
+                                                                                         ? qsTr("Authenticating…") :
+                                                                                           view.supplementaryMessage
                     textFormat: Text.PlainText
                     color: view.supplementaryIsError ? Theme.color.danger :
                                                        Theme.color.textSecondary
@@ -579,10 +585,10 @@ FocusScope {
                         id: authenticateButton
 
                         objectName: "polkitAuthenticateButton"
-                        label: "Authenticate"
+                        label: qsTr("Authenticate")
                         variant: "accent"
                         enabled: view.authenticateEnabled
-                        Accessible.description: "Submit the current authentication response"
+                        Accessible.description: qsTr("Submit the current authentication response")
                         onClicked: view.submitCurrentResponse()
                     }
                 }

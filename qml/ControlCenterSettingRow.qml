@@ -14,7 +14,11 @@ Item {
     implicitHeight: contentLayout.implicitHeight + Theme.spacing.sm * 2
     Accessible.role: Accessible.Grouping
     Accessible.name: label
-    Accessible.description: errorText !== "" ? description + ". Error: " + errorText : description
+    Accessible.description: errorText !== "" ? description === "" ? qsTr("Error: %1").arg(
+                                                                        errorText) : qsTr(
+                                                                        "%1 Error: %2").arg(
+                                                                        description).arg(errorText) :
+                                                                    description
 
     ColumnLayout {
         id: contentLayout

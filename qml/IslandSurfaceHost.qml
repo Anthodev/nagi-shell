@@ -167,8 +167,8 @@ Scope {
     }
 
     function confirmForget(identity) {
-        failureText
-                = "Disconnected displays cannot be remembered without a stable platform identity.";
+        failureText = qsTr(
+                    "Disconnected displays cannot be remembered without a stable platform identity.");
         return false;
     }
 
@@ -289,18 +289,18 @@ Scope {
         failureText = "";
         const entry = entryForScreen(screen);
         if (entry === null) {
-            failureText = "The display is no longer connected.";
+            failureText = qsTr("The display is no longer connected.");
             return false;
         }
         if (!enabled && entry.surfaceToken !== null && !coordinator.prepareSurfaceDisable(
                     entry.surfaceToken)) {
-            failureText = coordinator.modalHostToken === entry.surfaceToken
-                    ? "Authentication must finish before this island can be disabled." :
-                      "The active task could not be transferred safely.";
+            failureText = coordinator.modalHostToken === entry.surfaceToken ? qsTr(
+                                                                                  "Authentication must finish before this island can be disabled.") :
+                                                                              qsTr("The active task could not be transferred safely.");
             return false;
         }
         if (!displays.requestEnabled(screen, enabled)) {
-            failureText = "At least one island must remain enabled.";
+            failureText = qsTr("At least one island must remain enabled.");
             return false;
         }
         registryRevision += 1;
@@ -310,7 +310,7 @@ Scope {
     function setFallback(screen) {
         failureText = "";
         if (!displays.requestFallback(screen)) {
-            failureText = "The fallback must be an active enabled display.";
+            failureText = qsTr("The fallback must be an active enabled display.");
             return false;
         }
         registryRevision += 1;

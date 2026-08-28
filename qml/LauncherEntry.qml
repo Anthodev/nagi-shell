@@ -9,12 +9,12 @@ IslandButton {
 
     signal openRequested
 
-    readonly property string shortcutStatus: !shortcutAvailable ? "Shortcut unavailable" :
+    readonly property string shortcutStatus: !shortcutAvailable ? qsTr("Shortcut unavailable") :
                                                                   activeShortcut !== ""
-                                                                  ? activeShortcut :
-                                                                    "Shortcut unbound"
+                                                                  ? activeShortcut : qsTr(
+                                                                        "Shortcut unbound")
 
-    label: "Launcher · " + shortcutStatus
-    Accessible.description: "Open the application launcher. " + shortcutStatus
+    label: qsTr("Launcher · %1").arg(shortcutStatus)
+    Accessible.description: qsTr("Open the application launcher. %1").arg(shortcutStatus)
     onClicked: openRequested()
 }

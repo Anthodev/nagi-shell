@@ -17,7 +17,7 @@ FocusScope {
     implicitWidth: Theme.spacing.xxl * 18 + Theme.spacing.lg
     implicitHeight: notificationsColumn.implicitHeight
     Accessible.role: Accessible.Grouping
-    Accessible.name: "Recent notifications"
+    Accessible.name: qsTr("Recent notifications")
 
     ColumnLayout {
         id: notificationsColumn
@@ -40,7 +40,7 @@ FocusScope {
                 reuseItems: true
                 model: root.service === null ? null : root.service.dashboardModel
                 Accessible.role: Accessible.List
-                Accessible.name: "Recent notifications"
+                Accessible.name: qsTr("Recent notifications")
 
                 delegate: RowLayout {
                     id: row
@@ -78,7 +78,7 @@ FocusScope {
             IslandText {
                 anchors.centerIn: parent
                 visible: root.empty
-                text: "No notifications"
+                text: qsTr("No notifications")
                 textFormat: Text.PlainText
                 tone: "muted"
                 size: "caption"

@@ -5,7 +5,7 @@ IslandButton {
 
     signal openRequested
 
-    label: "History"
-    Accessible.description: "Open notification history"
+    label: qsTr("History")
+    Accessible.description: qsTr("Open notification history")
     onClicked: openRequested()
 }

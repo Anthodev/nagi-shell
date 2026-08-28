@@ -24,24 +24,24 @@ FocusScope {
 
     function conditionText(condition) {
         if (condition === "clear")
-            return "Clear";
+            return qsTr("Clear");
         if (condition === "mostlyClear")
-            return "Mostly clear";
+            return qsTr("Mostly clear");
         if (condition === "partlyCloudy")
-            return "Partly cloudy";
+            return qsTr("Partly cloudy");
         if (condition === "cloudy")
-            return "Cloudy";
+            return qsTr("Cloudy");
         if (condition === "fog")
-            return "Fog";
+            return qsTr("Fog");
         if (condition === "rain")
-            return "Rain";
+            return qsTr("Rain");
         if (condition === "sleet")
-            return "Sleet";
+            return qsTr("Sleet");
         if (condition === "snow")
-            return "Snow";
+            return qsTr("Snow");
         if (condition === "thunderstorm")
-            return "Thunderstorm";
-        return "Unknown conditions";
+            return qsTr("Thunderstorm");
+        return qsTr("Unknown conditions");
     }
 
     function temperatureSuffix(unit) {
@@ -58,28 +58,32 @@ FocusScope {
 
     function ageText() {
         if (adapter === null || !Number.isFinite(adapter.lastUpdatedAgeMs)) {
-            return "Update time unavailable";
+            return qsTr("Update time unavailable");
         }
         const minutes = Math.max(0, Math.floor(adapter.lastUpdatedAgeMs / 60000));
         if (minutes < 1)
-            return "Updated just now";
+            return qsTr("Updated just now");
+        if (minutes === 1)
+            return qsTr("Updated 1 minute ago");
         if (minutes < 60)
-            return "Updated " + minutes + " min ago";
-        return "Updated " + Math.floor(minutes / 60) + " h ago";
+            return qsTr("Updated %1 minutes ago").arg(minutes);
+        const hours = Math.floor(minutes / 60);
+        return hours === 1 ? qsTr("Updated 1 hour ago") : qsTr("Updated %1 hours ago").arg(hours);
     }
 
     function failureText() {
         if (adapter === null || adapter.failure === "unconfigured")
-            return "Configure Weather in the Control Center.";
+            return qsTr("Configure Weather in the Control Center.");
         if (adapter.failure === "throttled")
-            return "The provider is limiting requests. Nagi will retry later.";
+            return qsTr("The provider is limiting requests. Nagi will retry later.");
         if (adapter.failure === "permanent")
-            return "This location is unavailable. Confirm another location in the Control Center.";
+            return qsTr(
+                        "This location is unavailable. Confirm another location in the Control Center.");
         if (adapter.failure === "transient")
-            return "Weather could not refresh. Cached data remains available when safe.";
+            return qsTr("Weather could not refresh. Cached data remains available when safe.");
         if (adapter.failure === "stale")
-            return "Cached weather expired. Try again later or confirm the location.";
-        return "Weather is temporarily unavailable.";
+            return qsTr("Cached weather expired. Try again later or confirm the location.");
+        return qsTr("Weather is temporarily unavailable.");
     }
 
     function focusInitialControl() {
@@ -96,7 +100,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.active
-        title: view.hasModel ? view.adapter.model.location : "Weather"
+        title: view.hasModel ? view.adapter.model.location : qsTr("Weather")
         reducedMotion: view.reducedMotion
         initialFocusItem: refreshButton.visible && refreshButton.enabled ? refreshButton : null
         onBackRequested: view.cancelled(view.ownerEpoch)
@@ -147,7 +151,7 @@ FocusScope {
                                                               + view.temperatureSuffix(
                                                                   view.current.temperatureUnit)
                                 size: "display"
-                                Accessible.name: "Current temperature " + text
+                                Accessible.name: qsTr("Current temperature: %1").arg(text)
                             }
 
                             IslandText {
@@ -174,29 +178,30 @@ FocusScope {
                             spacing: Theme.spacing.xs
 
                             IslandText {
-                                text: view.current === null ? "" : "Feels like " + Math.round(
-                                                                  view.current.feelsLike)
-                                                              + view.temperatureSuffix(
-                                                                  view.current.temperatureUnit)
-                                                              + " (calculated)"
+                                text: view.current === null ? "" : qsTr(
+                                                                  "Feels like %1 (calculated)").arg(
+                                                                  Math.round(
+                                                                      view.current.feelsLike)
+                                                                  + view.temperatureSuffix(
+                                                                      view.current.temperatureUnit))
                                 size: "caption"
                                 color: Theme.color.textSecondary
                                 Accessible.name: text
                             }
 
                             IslandText {
-                                text: view.current === null ? "" : "Humidity " + Math.round(
-                                                                  view.current.humidity) + "%"
+                                text: view.current === null ? "" : qsTr("Humidity %1%").arg(
+                                                                  Math.round(view.current.humidity))
                                 size: "caption"
                                 color: Theme.color.textSecondary
                                 Accessible.name: text
                             }
 
                             IslandText {
-                                text: view.current === null ? "" : "Wind " + Math.round(
-                                                                  view.current.wind) + " "
-                                                              + view.windSuffix(
-                                                                  view.current.windUnit)
+                                text: view.current === null ? "" : qsTr("Wind %1 %2").arg(Math.round(
+                                                                                              view.current.wind)).arg(
+                                                                  view.windSuffix(
+                                                                      view.current.windUnit))
                                 size: "caption"
                                 color: Theme.color.textSecondary
                                 Accessible.name: text
@@ -222,7 +227,7 @@ FocusScope {
 
                     IslandText {
                         Layout.fillWidth: true
-                        text: "Next 12 hours"
+                        text: qsTr("Next 12 hours")
                         size: "title"
                         Accessible.role: Accessible.Heading
                         Accessible.name: text
@@ -233,11 +238,12 @@ FocusScope {
 
                         visible: view.adapter !== null
                         enabled: view.adapter !== null && view.adapter.manualRefreshAvailable
-                        label: view.adapter !== null && view.adapter.refreshInFlight
-                               ? "Refreshing…" : "Refresh"
+                        label: view.adapter !== null && view.adapter.refreshInFlight ? qsTr(
+                                                                                           "Refreshing…") :
+                                                                                       qsTr("Refresh")
                         reducedMotion: view.reducedMotion
-                        Accessible.description: enabled ? "Refresh weather now" :
-                                                          "Refresh is cooling down"
+                        Accessible.description: enabled ? qsTr("Refresh weather now") : qsTr(
+                                                              "Refresh is cooling down")
                         onClicked: view.adapter.manualRefresh()
                     }
                 }
@@ -248,7 +254,7 @@ FocusScope {
                     visible: view.hourly.length > 0
                     spacing: Theme.spacing.sm
                     Accessible.role: Accessible.List
-                    Accessible.name: "Hourly forecast"
+                    Accessible.name: qsTr("Hourly forecast")
 
                     Repeater {
                         model: view.hourly
@@ -268,14 +274,14 @@ FocusScope {
                 IslandText {
                     Layout.fillWidth: true
                     visible: view.hourly.length === 0
-                    text: "Hourly forecast unavailable"
+                    text: qsTr("Hourly forecast unavailable")
                     size: "caption"
                     tone: "muted"
                 }
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Next 5 days"
+                    text: qsTr("Next 5 days")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -287,7 +293,7 @@ FocusScope {
                     visible: view.daily.length > 0
                     spacing: Theme.spacing.sm
                     Accessible.role: Accessible.List
-                    Accessible.name: "Daily forecast"
+                    Accessible.name: qsTr("Daily forecast")
 
                     Repeater {
                         model: view.daily
@@ -308,14 +314,14 @@ FocusScope {
                 IslandText {
                     Layout.fillWidth: true
                     visible: view.daily.length === 0
-                    text: "Daily forecast unavailable"
+                    text: qsTr("Daily forecast unavailable")
                     size: "caption"
                     tone: "muted"
                 }
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Weather data from MET Norway · NLOD 2.0 / CC BY 4.0"
+                    text: qsTr("Weather data from MET Norway · NLOD 2.0 / CC BY 4.0")
                     size: "caption"
                     tone: "muted"
                     wrapMode: Text.Wrap
@@ -337,7 +343,8 @@ FocusScope {
         implicitHeight: cardContent.implicitHeight + Theme.spacing.md * 2
         color: Theme.color.controlFill
         Accessible.role: Accessible.ListItem
-        Accessible.name: heading + ", " + view.conditionText(condition) + ", " + temperature
+        Accessible.name: qsTr("%1, %2, %3").arg(heading).arg(view.conditionText(condition)).arg(
+                             temperature)
 
         ColumnLayout {
             id: cardContent

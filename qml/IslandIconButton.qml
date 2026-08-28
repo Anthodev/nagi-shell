@@ -12,6 +12,8 @@ AbstractButton {
     property string source: ""
     property string size: "md"
     property string label: ""
+    property bool reducedMotion: false
+    readonly property string tooltipText: ToolTip.text
 
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
@@ -23,6 +25,7 @@ AbstractButton {
     scale: pressed ? 0.95 : 1
 
     Behavior on scale {
+        enabled: !control.reducedMotion
         NumberAnimation {
             duration: Theme.motion.durationFast
             easing.type: Theme.motion.easingStandard
@@ -70,6 +73,10 @@ AbstractButton {
         hoverEnabled: true
         enabled: control.enabled
     }
+
+    ToolTip.delay: control.visualFocus ? 0 : Theme.motion.durationSlow
+    ToolTip.visible: control.hovered || control.visualFocus
+    ToolTip.text: control.label
 
     Keys.onTabPressed: {
         const next = control.nextItemInFocusChain(true);

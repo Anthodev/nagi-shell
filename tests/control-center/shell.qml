@@ -451,9 +451,18 @@ ShellRoot {
         require(page.openNetwork(fakeWifi.wifiNetworks[2]) && page.mode === "password",
                 "protected visible network opens the dedicated password flow");
         const passwordInput = findObject(page, "wifiPasswordInput");
-        require(passwordInput !== null && passwordInput.echoMode === TextInput.NoEcho,
-                "protected input starts hidden and is excluded from normal text projection");
+        require(passwordInput !== null,
+                "protected input mounts one explicit accessibility boundary");
+        require(passwordInput.echoMode === TextInput.NoEcho
+                && passwordInput.Accessible.passwordEdit,
+                "protected input starts hidden with the password-edit semantic");
+        const passwordBoundary = passwordInput.parent.parent;
+        require(passwordBoundary.semanticName === "Wi-Fi password",
+                "protected input exposes a purpose-only accessible name");
         passwordInput.text = "fixture-password";
+        require(passwordBoundary.semanticName.indexOf(passwordInput.text) === -1
+                && passwordBoundary.semanticDescription.indexOf(passwordInput.text) === -1,
+                "Wi-Fi secret bytes never enter accessibility metadata");
         page.rememberConnection = true;
         require(page.submitVisibleNetwork() && passwordInput.text === "" && fakeWifi.lastOperation
                 === "connect" && fakeWifi.lastToken === 3 && fakeWifi.lastSecretLength === 16
@@ -493,13 +502,19 @@ ShellRoot {
                 "pairing replaces discovery and opens the owning prompt");
         const pairingPanel = findObject(page, "bluetoothPairingPanel");
         const pairingInput = findObject(page, "bluetoothPairingInput");
-        require(pairingPanel !== null && pairingInput !== null,
-                "Bluetooth pairing controls are mounted only for the owning flow");
+        const pairingBoundary = pairingInput === null ? null : pairingInput.parent.parent;
+        require(pairingPanel !== null && pairingInput !== null
+                && pairingInput.Accessible.passwordEdit && pairingBoundary !== null
+                && pairingBoundary.semanticName === "Bluetooth PIN",
+                "Bluetooth pairing mounts one redacted password-edit boundary");
         pairingPanel.focusInput();
         require(pairingInput.echoMode === TextInput.NoEcho && pairingInput.activeFocus &&
-                !pairingInput.parent.parent.clipboardEnabled,
+                !pairingBoundary.clipboardEnabled,
                 "Bluetooth PIN starts hidden, receives focus, and blocks clipboard export");
         pairingInput.text = "1234";
+        require(pairingBoundary.semanticName.indexOf(pairingInput.text) === -1
+                && pairingBoundary.semanticDescription.indexOf(pairingInput.text) === -1,
+                "Bluetooth pairing codes never enter accessibility metadata");
         require(pairingPanel.submitInput() && pairingInput.text === "" && fakeWifi.lastSecretLength
                 === 4 && fakeWifi.bluetoothOperationResult === "paired-connected",
                 "PIN submits once as an argument, clears immediately, and completes pairing");
@@ -612,6 +627,23 @@ ShellRoot {
     }
 
     function aboutStage() {
+        const aboutRoute = findObject(controlCenter.contentItem, "controlCenterSidebarRoute-about");
+        const displaysRoute = findObject(controlCenter.contentItem,
+                                         "controlCenterSidebarRoute-displays");
+        const islandRoute = findObject(controlCenter.contentItem, "controlCenterSidebarRoute-island");
+        require(aboutRoute !== null && displaysRoute !== null && islandRoute !== null
+                && aboutRoute.activeFocus && aboutRoute.Accessible.name === "About"
+                && aboutRoute.Accessible.description === "Open About",
+                "deep links focus the active sidebar route with stable accessibility metadata");
+        require(aboutRoute.focusRelativeRoute(-1) && displaysRoute.activeFocus,
+                "sidebar Up navigation moves to the preceding route");
+        require(displaysRoute.focusRelativeRoute(1) && aboutRoute.activeFocus
+                && aboutRoute.focusRelativeRoute(1) && islandRoute.activeFocus,
+                "sidebar Down navigation advances and wraps at the final route");
+        require(islandRoute.focusRouteAt(controlCenter.availableRoutes.length - 1)
+                && aboutRoute.activeFocus && aboutRoute.focusRouteAt(0) && islandRoute.activeFocus,
+                "sidebar Home and End navigation reach deterministic route boundaries");
+        aboutRoute.forceActiveFocus(Qt.TabFocusReason);
         require(controlCenter.pageLoaded, "About page remains available with unavailable services");
         const diagnostic = controlCenter.diagnosticText;
         require(diagnostic.indexOf("Nagi Shell 0.1.0") === 0 && diagnostic.indexOf(
@@ -635,8 +667,12 @@ ShellRoot {
         require(controlCenter.layoutMode === "compact",
                 "below the breakpoint uses compact replacement navigation");
         controlCenter.compactNavigationVisible = true;
-        require(controlCenter.loadedPageCount === 0,
-                "compact navigation replaces and unloads page content");
+        controlCenter.focusCurrentContext();
+        const compactAboutRoute = findObject(controlCenter.contentItem,
+                                             "controlCenterCompactRoute-about");
+        require(controlCenter.loadedPageCount === 0 && compactAboutRoute !== null
+                && compactAboutRoute.activeFocus,
+                "compact navigation replaces unloaded page content and focuses the active route");
         captureCurrent("compact-navigation", function () {
             controlCenter.closeWindow();
             controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
@@ -680,15 +716,24 @@ ShellRoot {
                     && controlCenter.settingsRecoveryConfirmationVisible && !resetButton.visible
                     && cancelButton.visible && confirmButton.visible,
                     "default recovery requires explicit confirmation before writing");
-            cancelButton.clicked();
-            require(UserConfig.recoveryRequired &&
-                    !controlCenter.settingsRecoveryConfirmationVisible && resetButton.visible,
-                    "recovery confirmation can be cancelled without changing settings");
-            resetButton.clicked();
-            captureCurrent("sidebar-settings-recovery-confirmation", function () {
-                confirmButton.clicked();
-                test.stage = "settings-recovered";
-                settle.restart();
+            Qt.callLater(function () {
+                require(confirmButton.activeFocus,
+                        "recovery confirmation receives deterministic initial focus");
+                cancelButton.clicked();
+                Qt.callLater(function () {
+                    require(UserConfig.recoveryRequired
+                            && !controlCenter.settingsRecoveryConfirmationVisible
+                            && resetButton.visible && resetButton.activeFocus,
+                            "cancel returns focus without changing invalid settings");
+                    resetButton.clicked();
+                    captureCurrent("sidebar-settings-recovery-confirmation", function () {
+                        require(confirmButton.activeFocus,
+                                "reopened recovery confirmation receives focus");
+                        confirmButton.clicked();
+                        test.stage = "settings-recovered";
+                        settle.restart();
+                    });
+                });
             });
         });
     }
@@ -709,6 +754,17 @@ ShellRoot {
         controlCenter.rehomeAfterDisplayLoss();
         require(controlCenter.screen === Quickshell.screens[0],
                 "invalid Qt screen rehomes through pointer or fallback routing");
+        stage = "rehomed";
+        settle.restart();
+    }
+
+    function rehomedStage() {
+        const routePrefix = controlCenter.layoutMode === "sidebar" ? "controlCenterSidebarRoute-" :
+                                                                         "controlCenterCompactRoute-";
+        const activeRoute = findObject(controlCenter.contentItem,
+                                       routePrefix + controlCenter.currentPageId);
+        require(activeRoute !== null && activeRoute.visible && activeRoute.activeFocus,
+                "display loss restores one visible valid Control Center focus target");
         controlCenter.closeWindow();
         controlCenter.open("removed-page", null);
         stage = "fallback";
@@ -785,6 +841,9 @@ ShellRoot {
             break;
         case "settings-recovered":
             settingsRecoveredStage();
+            break;
+        case "rehomed":
+            rehomedStage();
             break;
         case "fallback":
             fallbackStage();

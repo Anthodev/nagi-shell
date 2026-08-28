@@ -72,7 +72,7 @@ FocusScope {
                 focusPolicy: Qt.StrongFocus
                 hoverEnabled: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Back"
+                Accessible.name: qsTr("Back")
                 onClicked: frame.backRequested()
 
                 background: Rectangle {
@@ -96,7 +96,7 @@ FocusScope {
 
                 ToolTip.delay: Theme.motion.durationSlow
                 ToolTip.visible: hovered || visualFocus
-                ToolTip.text: "Back"
+                ToolTip.text: qsTr("Back")
                 KeyNavigation.tab: frame.initialFocusItem
             }
 

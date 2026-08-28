@@ -73,8 +73,9 @@ FocusScope {
                 }
 
                 IslandText {
-                    text: record !== null && record !== undefined && record.state === "expired"
-                          ? "Expired" : "Recent"
+                    text: record !== null && record !== undefined && record.state === "expired" ? qsTr(
+                                                                                                      "Expired") :
+                                                                                                  qsTr("Recent")
                     textFormat: Text.PlainText
                     tone: "muted"
                     size: "caption"
@@ -109,11 +110,11 @@ FocusScope {
         }
 
         IslandButton {
-            label: "Dismiss"
+            label: qsTr("Dismiss")
             opacity: actionExposed ? 1 : 0
             enabled: actionExposed
             Accessible.ignored: !actionExposed
-            Accessible.description: "Dismiss this notification"
+            Accessible.description: qsTr("Dismiss this notification")
             Layout.alignment: Qt.AlignTop
             onClicked: dismissRequested()
         }
@@ -218,7 +219,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.active
-        title: "Notification history"
+        title: qsTr("Notification history")
         reducedMotion: view.reducedMotion
         initialFocusItem: historyList.currentItem
         onBackRequested: view.requestBack()
@@ -241,7 +242,7 @@ FocusScope {
                 keyNavigationEnabled: false
                 model: view.service === null ? null : view.service.historyModel
                 Accessible.role: Accessible.List
-                Accessible.name: "Notification history"
+                Accessible.name: qsTr("Notification history")
 
                 delegate: FocusScope {
                     id: row
@@ -338,8 +339,9 @@ FocusScope {
 
                 anchors.centerIn: parent
                 visible: historyList.count === 0
-                text: view.service !== null && !view.service.serverOwned
-                      ? "Notification history unavailable" : "No notifications yet"
+                text: view.service !== null && !view.service.serverOwned ? qsTr(
+                                                                               "Notification history unavailable") :
+                                                                           qsTr("No notifications yet")
                 textFormat: Text.PlainText
                 tone: "secondary"
             }

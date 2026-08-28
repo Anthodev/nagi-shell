@@ -419,7 +419,7 @@ Scope {
                 label = normalizeText(safeRead(item, "id", ""), root.maximumIdentityCharacters);
             }
             if (label === "") {
-                label = "Tray item";
+                label = qsTr("Tray item");
             }
 
             const description = normalizeText(safeRead(item, "tooltipDescription", ""),

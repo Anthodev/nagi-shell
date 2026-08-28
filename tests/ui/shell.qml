@@ -109,6 +109,10 @@ ShellRoot {
                 "keyboard traversal reaches the accent button");
         require(traversalReaches(accentButton, iconButton),
                 "keyboard traversal reaches the icon button");
+        iconButton.forceActiveFocus(Qt.TabFocusReason);
+        require(iconButton.visualFocus && iconButton.tooltipText === "Example action"
+                && iconButton.Accessible.name === "Example action",
+                "keyboard-focused icon controls expose matching accessible and tooltip names");
 
         determinateProgress.value = 1.7;
         require(determinateProgress.effectiveValue === 1, "progress clamps above the range");

@@ -44,7 +44,8 @@ Item {
                                                                                         )
     readonly property bool workspaceUsesCustomName: workspace && workspacePosition === 0
                                                     && workspaceProjectedPosition === 0
-                                                    && workspaceDisplayText !== "Workspace"
+                                                    && primaryText !== "" && !/^Desktop\s+\d+$/.test(
+                                                        primaryText)
     readonly property string iconMeaning: notification ? "notificationApplication" : kind
                                                          === "brightness" ? "brightness" : kind
                                                                             === "gamingPerformance"
@@ -194,9 +195,9 @@ Item {
 
     function workspaceFallbackName() {
         if (!workspace || primaryText === "") {
-            return "Workspace";
+            return qsTr("Workspace");
         }
-        return /^Desktop\s+\d+$/.test(primaryText) ? "Workspace" : primaryText;
+        return /^Desktop\s+\d+$/.test(primaryText) ? qsTr("Workspace") : primaryText;
     }
 
     onActiveChanged: beginEntry()

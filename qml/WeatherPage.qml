@@ -39,21 +39,21 @@ Flickable {
             failureText = "";
             return true;
         }
-        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                          "The Weather change could not be applied.";
+        failureText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                              "The Weather change could not be applied.");
         return false;
     }
 
     function search() {
         failureText = "";
         if (!privacyAccepted) {
-            failureText = "Accept the privacy notice before searching.";
+            failureText = qsTr("Accept the privacy notice before searching.");
             return false;
         }
         if (!locationSearch.search(searchInput.text)) {
-            failureText = locationSearch.failure === "invalid-query"
-                    ? "Enter at least two city or postal characters." :
-                      "Location search is currently unavailable.";
+            failureText = locationSearch.failure === "invalid-query" ? qsTr(
+                                                                           "Enter at least two city or postal characters.") :
+                                                                       qsTr("Location search is currently unavailable.");
             return false;
         }
         return true;
@@ -95,13 +95,13 @@ Flickable {
 
     function lookupFailureText() {
         if (locationSearch.failure === "no-results")
-            return "No matching city or postal location was found.";
+            return qsTr("No matching city or postal location was found.");
         if (locationSearch.failure === "throttled" || locationSearch.failure === "rate-limited")
-            return "Location search is rate limited. Wait before trying again.";
+            return qsTr("Location search is rate limited. Wait before trying again.");
         if (locationSearch.failure === "timeout")
-            return "Location search timed out. Try again.";
+            return qsTr("Location search timed out. Try again.");
         if (locationSearch.failure !== "none")
-            return "Location search is unavailable. Try again later.";
+            return qsTr("Location search is unavailable. Try again later.");
         return "";
     }
 
@@ -113,7 +113,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Weather"
+            text: qsTr("Weather")
             size: "title"
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -133,7 +133,7 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "Privacy before configuration"
+                    text: qsTr("Privacy before configuration")
                     size: "title"
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -141,7 +141,8 @@ Flickable {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: "A manual search sends the submitted city or postal text and your IP address to Open-Meteo. If that service is unavailable, Nagi may send the same submitted search to the configured Nominatim endpoint. After confirmation, forecasts send your IP address and four-decimal coordinates directly to MET Norway. Nagi stores only the confirmed label and coordinates; it keeps no search history and never uses IP geolocation or automatic location tracking."
+                    text: qsTr(
+                              "A manual search sends the submitted city or postal text and your IP address to Open-Meteo. If that service is unavailable, Nagi may send the same submitted search to the configured Nominatim endpoint. After confirmation, forecasts send your IP address and four-decimal coordinates directly to MET Norway. Nagi stores only the confirmed label and coordinates; it keeps no search history and never uses IP geolocation or automatic location tracking.")
                     textFormat: Text.PlainText
                     size: "body"
                     color: Theme.color.textSecondary
@@ -153,9 +154,9 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "I understand the Weather privacy disclosure"
-            description:
-            "Required before a manual city or postal search. This choice is saved only with a confirmed location."
+            label: qsTr("I understand the Weather privacy disclosure")
+            description: qsTr(
+                             "Required before a manual city or postal search. This choice is saved only with a confirmed location.")
             value: root.privacyAccepted
             writable: root.settingsModel.writable
             onValueRequested: value => {
@@ -184,7 +185,7 @@ Flickable {
                     text: root.settingsModel.snapshot.weather.locationLabel
                     size: "title"
                     wrapMode: Text.Wrap
-                    Accessible.name: "Confirmed Weather location " + text
+                    Accessible.name: qsTr("Confirmed Weather location: %1").arg(text)
                 }
 
                 IslandText {
@@ -197,19 +198,19 @@ Flickable {
                                                                                 root.weather.stale
                                                                                 ? " · stale" :
                                                                                   " · current") :
-                                                                            "Forecast unavailable"
+                                                                            qsTr("Forecast unavailable")
                     size: "body"
                     color: Theme.color.textSecondary
-                    Accessible.name: "Weather preview " + text
+                    Accessible.name: qsTr("Weather preview: %1").arg(text)
                 }
 
                 IslandButton {
-                    label: "Disable and clear Weather"
+                    label: qsTr("Disable and clear Weather")
                     variant: "danger"
                     reducedMotion: root.reducedMotion
                     enabled: root.settingsModel.writable
-                    Accessible.description:
-                    "Stop requests and clear the confirmed location and cache"
+                    Accessible.description: qsTr(
+                                                "Stop requests and clear the confirmed location and cache")
                     onClicked: root.disableWeather()
                 }
             }
@@ -218,7 +219,7 @@ Flickable {
         ControlCenterSectionHeading {
             objectName: "weatherLocationSection"
             Layout.fillWidth: true
-            text: root.configured ? "Replace location" : "Choose a location"
+            text: root.configured ? qsTr("Replace location") : qsTr("Choose a location")
         }
 
         RowLayout {
@@ -238,7 +239,7 @@ Flickable {
                 IslandText {
                     anchors.fill: parent
                     anchors.leftMargin: Theme.spacing.md
-                    text: "City or postal code"
+                    text: qsTr("City or postal code")
                     tone: "muted"
                     verticalAlignment: Text.AlignVCenter
                     visible: searchInput.text === ""
@@ -262,7 +263,7 @@ Flickable {
                     inputMethodHints: Qt.ImhNoPredictiveText
                     maximumLength: 128
                     Accessible.role: Accessible.EditableText
-                    Accessible.name: "City or postal location"
+                    Accessible.name: qsTr("City or postal location")
                     Keys.onReturnPressed: event => {
                         root.search();
                         event.accepted = true;
@@ -275,7 +276,7 @@ Flickable {
             }
 
             IslandButton {
-                label: root.locationSearch.inFlight ? "Searching…" : "Search"
+                label: root.locationSearch.inFlight ? qsTr("Searching…") : qsTr("Search")
                 reducedMotion: root.reducedMotion
                 enabled: root.lookupAllowed && !root.locationSearch.inFlight
                          && searchInput.text.trim().length >= 2
@@ -288,7 +289,7 @@ Flickable {
             visible: root.locationSearch.results.length > 0
             spacing: Theme.spacing.sm
             Accessible.role: Accessible.List
-            Accessible.name: "Location search results"
+            Accessible.name: qsTr("Location search results")
 
             Repeater {
                 model: root.visible ? root.locationSearch.results : []
@@ -300,7 +301,7 @@ Flickable {
                     label: modelData.label
                     reducedMotion: root.reducedMotion
                     Accessible.role: Accessible.ListItem
-                    Accessible.description: "Use this location and enable Weather"
+                    Accessible.description: qsTr("Use this location and enable Weather")
                     onClicked: root.confirm(modelData)
                 }
             }
@@ -328,25 +329,25 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "weatherForecastPreferencesSection"
-            text: "Forecast preferences"
+            text: qsTr("Forecast preferences")
         }
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Temperature"
-            description: "Follow the locale or override temperature independently."
+            label: qsTr("Temperature")
+            description: qsTr("Follow the locale or override temperature independently.")
             value: root.settingsModel.snapshot.weather.temperatureUnit
             choices: [
                 {
-                    "label": "Locale",
+                    "label": qsTr("Locale"),
                     "value": "auto"
                 },
                 {
-                    "label": "Celsius",
+                    "label": qsTr("Celsius"),
                     "value": "celsius"
                 },
                 {
-                    "label": "Fahrenheit",
+                    "label": qsTr("Fahrenheit"),
                     "value": "fahrenheit"
                 }
             ]
@@ -359,12 +360,12 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Wind speed"
-            description: "Follow the locale or override wind independently."
+            label: qsTr("Wind speed")
+            description: qsTr("Follow the locale or override wind independently.")
             value: root.settingsModel.snapshot.weather.windUnit
             choices: [
                 {
-                    "label": "Locale",
+                    "label": qsTr("Locale"),
                     "value": "auto"
                 },
                 {
@@ -389,9 +390,9 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Refresh preference"
-            description:
-            "Provider cache expiry, minimum gaps, throttling, Retry-After, and backoff always take precedence."
+            label: qsTr("Refresh preference")
+            description: qsTr(
+                             "Provider cache expiry, minimum gaps, throttling, Retry-After, and backoff always take precedence.")
             value: root.settingsModel.snapshot.weather.refreshPreset
             choices: [
                 {
@@ -452,7 +453,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Forecasts: MET Norway (NLOD 2.0 / CC BY 4.0). Search: GeoNames/Open-Meteo (CC BY 4.0), or OpenStreetMap contributors (ODbL) when the Nominatim fallback is active."
+            text: qsTr(
+                      "Forecasts: MET Norway (NLOD 2.0 / CC BY 4.0). Search: GeoNames/Open-Meteo (CC BY 4.0), or OpenStreetMap contributors (ODbL) when the Nominatim fallback is active.")
             size: "caption"
             tone: "muted"
             wrapMode: Text.Wrap

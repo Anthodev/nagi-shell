@@ -111,9 +111,12 @@ ShellRoot {
         requireDisplayOnly(islandFull);
         require(islandGaming.gamingPerformanceBlock.visible && islandGaming.gamingBadgeIcon.meaning
                 === "gamingPerformance" && islandGaming.gamingPerformanceBlock.Accessible.name
-                === "Gaming performance indicator active" && islandGaming.gamingPerformanceTooltip
-                === "Gaming performance active" && !islandGaming.gamingPerformanceBlock.focus && !(
-                    "clicked" in islandGaming.gamingPerformanceBlock),
+                === "Gaming performance indicator active"
+                && islandGaming.gamingPerformanceBlock.Accessible.description
+                === "Passive status badge. No action is available."
+                && islandGaming.gamingPerformanceTooltip === "Gaming performance active"
+                && !islandGaming.gamingPerformanceBlock.focus && !("clicked"
+                                                                   in islandGaming.gamingPerformanceBlock),
                 "active gaming state renders one static accessible badge without an action");
         require(!islandNoGaming.gamingPerformanceBlock.visible &&
                 !islandNoGaming.gamingPerformanceBoundary.visible && islandGaming.implicitWidth

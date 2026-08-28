@@ -104,7 +104,7 @@ Scope {
             "appIconName": normalized.appIconName,
             "body": normalized.body,
             "detail": normalized.summary,
-            "primary": normalized.appName !== "" ? normalized.appName : "Notification",
+            "primary": normalized.appName !== "" ? normalized.appName : qsTr("Notification"),
             "value": ""
         };
     }

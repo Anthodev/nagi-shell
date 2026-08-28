@@ -50,35 +50,36 @@ Singleton {
                                                           "dropdown": "arrow-down"
                                                       })
     readonly property var _labels: Object.freeze({
-                                                     "back": "Back",
-                                                     "launcher": "Launcher",
-                                                     "history": "Notification history",
-                                                     "tray": "System tray",
-                                                     "session": "Session",
-                                                     "settings": "Nagi Control Center",
-                                                     "systemSettings": "KDE Plasma System Settings",
-                                                     "restartShell": "Restart shell",
-                                                     "wifi": "Wi-Fi",
-                                                     "bluetooth": "Bluetooth",
-                                                     "volumeHigh": "Volume",
-                                                     "volumeLow": "Volume",
-                                                     "volumeMuted": "Muted volume",
-                                                     "microphone": "Microphone",
-                                                     "microphoneMuted": "Muted microphone",
-                                                     "brightness": "Brightness",
-                                                     "gamingPerformance":
-                                                     "Gaming performance indicator",
-                                                     "notification": "Notification",
-                                                     "mediaPrevious": "Previous track",
-                                                     "mediaPlay": "Play",
-                                                     "mediaPause": "Pause",
-                                                     "mediaNext": "Next track",
-                                                     "lock": "Lock",
-                                                     "suspend": "Suspend",
-                                                     "logout": "Log out",
-                                                     "restart": "Restart",
-                                                     "powerOff": "Power off",
-                                                     "dropdown": "Open device choices"
+                                                     "back": qsTr("Back"),
+                                                     "launcher": qsTr("Launcher"),
+                                                     "history": qsTr("Notification history"),
+                                                     "tray": qsTr("System tray"),
+                                                     "session": qsTr("Session"),
+                                                     "settings": qsTr("Nagi Control Center"),
+                                                     "systemSettings": qsTr(
+                                                                           "KDE Plasma System Settings"),
+                                                     "restartShell": qsTr("Restart shell"),
+                                                     "wifi": qsTr("Wi-Fi"),
+                                                     "bluetooth": qsTr("Bluetooth"),
+                                                     "volumeHigh": qsTr("Volume"),
+                                                     "volumeLow": qsTr("Volume"),
+                                                     "volumeMuted": qsTr("Muted volume"),
+                                                     "microphone": qsTr("Microphone"),
+                                                     "microphoneMuted": qsTr("Muted microphone"),
+                                                     "brightness": qsTr("Brightness"),
+                                                     "gamingPerformance": qsTr(
+                                                                              "Gaming performance indicator"),
+                                                     "notification": qsTr("Notification"),
+                                                     "mediaPrevious": qsTr("Previous track"),
+                                                     "mediaPlay": qsTr("Play"),
+                                                     "mediaPause": qsTr("Pause"),
+                                                     "mediaNext": qsTr("Next track"),
+                                                     "lock": qsTr("Lock"),
+                                                     "suspend": qsTr("Suspend"),
+                                                     "logout": qsTr("Log out"),
+                                                     "restart": qsTr("Restart"),
+                                                     "powerOff": qsTr("Power off"),
+                                                     "dropdown": qsTr("Open device choices")
                                                  })
     readonly property var _applicationMeanings: Object.freeze({
                                                                   "application": true,
@@ -169,7 +170,7 @@ Singleton {
                                  "tintable": true,
                                  "attention": false,
                                  "disabled": state === "disabled",
-                                 "accessibleName": "Icon"
+                                 "accessibleName": qsTr("Icon")
                              });
     }
 
@@ -196,7 +197,7 @@ Singleton {
                                      "disabled": requestedState === "disabled",
                                      "accessibleName": typeof applicationName === "string"
                                                        && applicationName !== "" ? applicationName :
-                                                                                   "Application"
+                                                                                   qsTr("Application")
                                  });
         }
 

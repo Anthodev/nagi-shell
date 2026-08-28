@@ -18,15 +18,18 @@ IslandPanel {
     implicitHeight: content.implicitHeight + Theme.spacing.lg * 2
     color: network.connected ? Theme.color.surfaceActive : Theme.color.controlFill
     Accessible.role: Accessible.ListItem
-    Accessible.name: network.ssid + ", " + securityLabel() + ", signal " + network.strength
-                     + " percent" + (network.connected ? ", connected" : "")
+    Accessible.name: network.connected ? qsTr("%1, %2, signal %3 percent, connected").arg(
+                                             network.ssid).arg(securityLabel()).arg(
+                                             network.strength) : qsTr(
+                                             "%1, %2, signal %3 percent").arg(network.ssid).arg(
+                                             securityLabel()).arg(network.strength)
 
     function securityLabel() {
         if (network.security === "open")
-            return "Open";
+            return qsTr("Open");
         if (network.security === "wpa-personal")
-            return "WPA Personal";
-        return "Enterprise or unsupported security";
+            return qsTr("WPA Personal");
+        return qsTr("Enterprise or unsupported security");
     }
 
     ColumnLayout {
@@ -55,9 +58,10 @@ IslandPanel {
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: root.securityLabel() + " · " + root.network.strength + "%" + (root.network.saved
-                                                                                        ? " · Saved" :
-                                                                                          "")
+                    text: root.network.saved ? qsTr("%1 · %2% · Saved").arg(root.securityLabel(
+                                                                                )).arg(root.network.strength) :
+                                               qsTr("%1 · %2%").arg(root.securityLabel()).arg(
+                                                   root.network.strength)
                     textFormat: Text.PlainText
                     size: "caption"
                     color: Theme.color.textSecondary
@@ -68,7 +72,7 @@ IslandPanel {
 
             IslandText {
                 visible: root.network.connected
-                text: "Connected"
+                text: qsTr("Connected")
                 size: "caption"
                 color: Theme.snapshot.accent
                 Accessible.ignored: true
@@ -80,11 +84,12 @@ IslandPanel {
             spacing: Theme.spacing.sm
 
             IslandButton {
-                label: root.network.connected ? "Disconnect" : "Connect"
+                label: root.network.connected ? qsTr("Disconnect") : qsTr("Connect")
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy && (root.network.connected || root.network.connectable)
-                Accessible.description: root.network.connected ? "Disconnect from this network" :
-                                                                 "Connect to this network"
+                Accessible.description: root.network.connected ? qsTr(
+                                                                     "Disconnect from this network") :
+                                                                 qsTr("Connect to this network")
                 onClicked: {
                     if (root.network.connected) {
                         root.disconnectRequested();
@@ -97,12 +102,13 @@ IslandPanel {
 
             IslandButton {
                 visible: root.network.saved
-                label: "Forget"
+                label: qsTr("Forget")
                 variant: "danger"
                 reducedMotion: root.reducedMotion
                 enabled: !root.busy && root.network.forgettable
-                Accessible.description: root.network.forgettable ? "Forget this personal profile" :
-                                                                   "System or administrator profile cannot be forgotten here"
+                Accessible.description: root.network.forgettable ? qsTr(
+                                                                       "Forget this personal profile") :
+                                                                   qsTr("System or administrator profile cannot be forgotten here")
                 onClicked: root.forgetRequested(root.network.token)
             }
 
@@ -114,7 +120,7 @@ IslandPanel {
         IslandText {
             Layout.fillWidth: true
             visible: root.network.saved && !root.network.forgettable
-            text: "This system or administrator profile remains managed by KDE."
+            text: qsTr("This system or administrator profile remains managed by KDE.")
             textFormat: Text.PlainText
             size: "caption"
             tone: "muted"
@@ -125,7 +131,7 @@ IslandPanel {
         IslandText {
             Layout.fillWidth: true
             visible: !root.network.connectable
-            text: "Enterprise, certificate, and advanced profiles remain managed by KDE."
+            text: qsTr("Enterprise, certificate, and advanced profiles remain managed by KDE.")
             textFormat: Text.PlainText
             size: "caption"
             tone: "muted"

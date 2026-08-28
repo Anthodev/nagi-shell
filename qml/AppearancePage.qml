@@ -39,8 +39,8 @@ Flickable {
             return false;
         }
         if (!settingsModel.updatePage("appearance", changes, continuous === true)) {
-            validationText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage :
-                                                                 "The appearance change could not be applied.";
+            validationText = settingsModel.errorMessage !== "" ? settingsModel.errorMessage : qsTr(
+                                                                     "The appearance change could not be applied.");
             return false;
         }
         validationText = "";
@@ -73,10 +73,10 @@ Flickable {
         ControlCenterSettingRow {
             id: fontFamilyRow
             Layout.fillWidth: true
-            label: "Font family"
-            description: scopeControl.configuredFamilyInstalled
-                         ? "Choose from the font families installed on this system." :
-                           "The configured family is unavailable. Choose an installed font to replace it."
+            label: qsTr("Font family")
+            description: scopeControl.configuredFamilyInstalled ? qsTr(
+                                                                      "Choose from the font families installed on this system.") :
+                                                                  qsTr("The configured family is unavailable. Choose an installed font to replace it.")
 
             ComboBox {
                 id: fontFamilySelector
@@ -86,8 +86,8 @@ Flickable {
                 implicitHeight: Theme.size.controlHeightLg
                 model: root.installedFontFamilies
                 currentIndex: scopeControl.selectedFamilyIndex
-                displayText: currentIndex >= 0 ? currentText : scopeControl.configuredFamily
-                                                 + " (unavailable)"
+                displayText: currentIndex >= 0 ? currentText : qsTr("%1 (unavailable)").arg(
+                                                     scopeControl.configuredFamily)
                 enabled: root.settingsModel.writable && count > 0
                 hoverEnabled: true
                 focusPolicy: Qt.StrongFocus
@@ -105,7 +105,7 @@ Flickable {
                 palette.mid: Theme.color.surfaceBorder
                 palette.dark: Theme.color.surfaceBorder
                 Accessible.role: Accessible.ComboBox
-                Accessible.name: scopeControl.scopeLabel + " font family"
+                Accessible.name: qsTr("%1 font family").arg(scopeControl.scopeLabel)
                 Accessible.description: fontFamilyRow.description
                 onActivated: index => {
                     const changes = {};
@@ -130,14 +130,14 @@ Flickable {
         SettingSliderRow {
             Layout.fillWidth: true
             objectName: scopeControl.sizeObjectName
-            label: scopeControl.scopeLabel + " default size"
-            description:
-            "Sets body text from 11 to 18 px. Titles, captions, and muted text keep their semantic proportions."
+            label: qsTr("%1 default size").arg(scopeControl.scopeLabel)
+            description: qsTr(
+                             "Sets body text from 11 to 18 px. Titles, captions, and muted text keep their semantic proportions.")
             value: root.settingsModel.snapshot.appearance[scopeControl.sizeKey]
             from: root.settingsModel.minimumBaseFontSize
             to: root.settingsModel.maximumBaseFontSize
             stepSize: 1
-            valueText: Math.round(value) + " px"
+            valueText: qsTr("%1 px").arg(Math.round(value))
             writable: root.settingsModel.writable
             onValueRequested: (value, continuous) => {
                 const changes = {};
@@ -155,7 +155,7 @@ Flickable {
         spacing: Theme.spacing.md
 
         IslandText {
-            text: "Appearance"
+            text: qsTr("Appearance")
             objectName: "appearancePageTitle"
             size: "title"
             Accessible.role: Accessible.Heading
@@ -164,14 +164,15 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Set an installed family and default body size independently for each Nagi surface. Semantic text roles preserve their hierarchy."
+            text: qsTr(
+                      "Set an installed family and default body size independently for each Nagi surface. Semantic text roles preserve their hierarchy.")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
         }
 
         TypographyScopeControls {
-            scopeLabel: "Idle island"
+            scopeLabel: qsTr("Idle island")
             familyKey: "idleFontFamily"
             sizeKey: "idleBaseFontSize"
             selectorObjectName: "appearanceIdleFontFamily"
@@ -180,7 +181,7 @@ Flickable {
         }
 
         TypographyScopeControls {
-            scopeLabel: "Expanded island"
+            scopeLabel: qsTr("Expanded island")
             familyKey: "expandedFontFamily"
             sizeKey: "expandedBaseFontSize"
             selectorObjectName: "appearanceExpandedFontFamily"
@@ -188,7 +189,7 @@ Flickable {
         }
 
         TypographyScopeControls {
-            scopeLabel: "Control Center"
+            scopeLabel: qsTr("Control Center")
             familyKey: "controlCenterFontFamily"
             sizeKey: "controlCenterBaseFontSize"
             selectorObjectName: "appearanceControlCenterFontFamily"
@@ -197,33 +198,33 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "appearanceColorSection"
-            text: "Color"
+            text: qsTr("Color")
         }
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Scheme"
-            description: "Select the maintained surface and text foundation."
+            label: qsTr("Scheme")
+            description: qsTr("Select the maintained surface and text foundation.")
             value: root.settingsModel.snapshot.appearance.scheme
             choices: [
                 {
-                    "label": "Nagi Dark",
+                    "label": qsTr("Nagi Dark"),
                     "value": "nagi-dark"
                 },
                 {
-                    "label": "Nagi OLED",
+                    "label": qsTr("Nagi OLED"),
                     "value": "nagi-oled"
                 },
                 {
-                    "label": "Nagi Light",
+                    "label": qsTr("Nagi Light"),
                     "value": "nagi-light"
                 },
                 {
-                    "label": "System",
+                    "label": qsTr("System"),
                     "value": "system"
                 },
                 {
-                    "label": "Custom",
+                    "label": qsTr("Custom"),
                     "value": "custom"
                 }
             ]
@@ -236,24 +237,24 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Accent"
-            description: "Use Nagi, KDE, the current wallpaper, or a validated custom accent."
+            label: qsTr("Accent")
+            description: qsTr("Use Nagi, KDE, the current wallpaper, or a validated custom accent.")
             value: root.settingsModel.snapshot.appearance.accentMode
             choices: [
                 {
-                    "label": "Nagi",
+                    "label": qsTr("Nagi"),
                     "value": "nagi"
                 },
                 {
-                    "label": "System",
+                    "label": qsTr("System"),
                     "value": "system"
                 },
                 {
-                    "label": "Wallpaper",
+                    "label": qsTr("Wallpaper"),
                     "value": "wallpaper"
                 },
                 {
-                    "label": "Custom",
+                    "label": qsTr("Custom"),
                     "value": "custom"
                 }
             ]
@@ -267,8 +268,8 @@ Flickable {
         SettingColorRow {
             Layout.fillWidth: true
             visible: root.settingsModel.snapshot.appearance.scheme === "custom"
-            label: "Primary surface"
-            description: "Custom base used to derive shallow surfaces and controls."
+            label: qsTr("Primary surface")
+            description: qsTr("Custom base used to derive shallow surfaces and controls.")
             value: root.settingsModel.snapshot.appearance.customSurface
             writable: root.settingsModel.writable
             validationText: root.validationText
@@ -280,8 +281,8 @@ Flickable {
         SettingColorRow {
             Layout.fillWidth: true
             visible: root.settingsModel.snapshot.appearance.scheme === "custom"
-            label: "Primary text"
-            description: "Must retain readable contrast against the custom surface."
+            label: qsTr("Primary text")
+            description: qsTr("Must retain readable contrast against the custom surface.")
             value: root.settingsModel.snapshot.appearance.customText
             writable: root.settingsModel.writable
             validationText: root.validationText
@@ -293,8 +294,8 @@ Flickable {
         SettingColorRow {
             Layout.fillWidth: true
             visible: root.settingsModel.snapshot.appearance.accentMode === "custom"
-            label: "Custom accent"
-            description: "State roles and readable foregrounds are derived from this input."
+            label: qsTr("Custom accent")
+            description: qsTr("State roles and readable foregrounds are derived from this input.")
             value: root.settingsModel.snapshot.appearance.customAccent
             allowAlpha: true
             writable: root.settingsModel.writable
@@ -306,18 +307,18 @@ Flickable {
 
         ControlCenterSectionHeading {
             objectName: "appearanceSurfaceMotionSection"
-            text: "Surface & motion"
+            text: qsTr("Surface & motion")
         }
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Surface opacity"
-            description: "Readable outer-surface opacity from 85 to 100 percent."
+            label: qsTr("Surface opacity")
+            description: qsTr("Readable outer-surface opacity from 85 to 100 percent.")
             value: root.settingsModel.snapshot.appearance.surfaceOpacity
             from: 0.85
             to: 1
             stepSize: 0.01
-            valueText: Math.round(value * 100) + "%"
+            valueText: qsTr("%1%").arg(Math.round(value * 100))
             writable: root.settingsModel.writable
             onValueRequested: (value, continuous) => root.request({
                                                                       "surfaceOpacity": value
@@ -326,13 +327,13 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Border intensity"
-            description: "Adds bounded outer separation without changing component hierarchy."
+            label: qsTr("Border intensity")
+            description: qsTr("Adds bounded outer separation without changing component hierarchy.")
             value: root.settingsModel.snapshot.appearance.borderIntensity
             from: 0
             to: 1
             stepSize: 0.1
-            valueText: Math.round(value * 100) + "%"
+            valueText: qsTr("%1%").arg(Math.round(value * 100))
             writable: root.settingsModel.writable
             onValueRequested: (value, continuous) => root.request({
                                                                       "borderIntensity": value
@@ -341,9 +342,9 @@ Flickable {
 
         SettingToggleRow {
             Layout.fillWidth: true
-            label: "Background blur"
-            description:
-            "Ask KWin for blur when its Wayland effect is available; otherwise keep the cheaper translucent surface."
+            label: qsTr("Background blur")
+            description: qsTr(
+                             "Ask KWin for blur when its Wayland effect is available; otherwise keep the cheaper translucent surface.")
             value: root.settingsModel.snapshot.appearance.blurEnabled
             writable: root.settingsModel.writable
             onValueRequested: value => root.request({
@@ -353,20 +354,21 @@ Flickable {
 
         SettingChoiceRow {
             Layout.fillWidth: true
-            label: "Motion"
-            description: "KDE accessibility preferences can only make this choice more restrictive."
+            label: qsTr("Motion")
+            description: qsTr(
+                             "KDE accessibility preferences can only make this choice more restrictive.")
             value: root.settingsModel.snapshot.appearance.motion
             choices: [
                 {
-                    "label": "Full",
+                    "label": qsTr("Full"),
                     "value": "full"
                 },
                 {
-                    "label": "Reduced",
+                    "label": qsTr("Reduced"),
                     "value": "reduced"
                 },
                 {
-                    "label": "Minimal",
+                    "label": qsTr("Minimal"),
                     "value": "minimal"
                 }
             ]
@@ -379,13 +381,14 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
-            label: "Outer radius"
-            description: "Keep the island softly rectangular across compact and expanded states."
+            label: qsTr("Outer radius")
+            description: qsTr(
+                             "Keep the island softly rectangular across compact and expanded states.")
             value: root.settingsModel.snapshot.appearance.outerRadius
             from: 8
             to: 32
             stepSize: 2
-            valueText: Math.round(value) + " px"
+            valueText: qsTr("%1 px").arg(Math.round(value))
             writable: root.settingsModel.writable
             onValueRequested: (value, continuous) => root.request({
                                                                       "outerRadius": value

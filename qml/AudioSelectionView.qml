@@ -81,19 +81,19 @@ FocusScope {
 
     function failureText(failure) {
         if (failure === "removed") {
-            return "The selected device is no longer available.";
+            return qsTr("The selected device is no longer available.");
         }
         if (failure === "rejected" || failure === "diverged") {
-            return "PipeWire kept a different device selected.";
+            return qsTr("PipeWire kept a different device selected.");
         }
         if (failure === "timeout") {
-            return "PipeWire did not confirm the device change.";
+            return qsTr("PipeWire did not confirm the device change.");
         }
         if (failure === "unavailable" || failure === "bridge-unavailable") {
-            return "Audio device selection is unavailable.";
+            return qsTr("Audio device selection is unavailable.");
         }
         if (failure !== "none") {
-            return "The audio device could not be selected.";
+            return qsTr("The audio device could not be selected.");
         }
         return "";
     }
@@ -102,17 +102,17 @@ FocusScope {
             return name;
         }
         if (state === "none") {
-            return "None reported";
+            return qsTr("None reported");
         }
         if ((easyEffectsStatus !== null && easyEffectsStatus.interested === true) && (state
                                                                                       === "unknown"
                                                                                       || presetStatusRefreshing)) {
-            return "Reading…";
+            return qsTr("Reading…");
         }
         if (state === "timeout") {
-            return "Read timed out";
+            return qsTr("Read timed out");
         }
-        return "Status unavailable";
+        return qsTr("Status unavailable");
     }
 
     function syncPresetStatusInterest() {
@@ -154,16 +154,16 @@ FocusScope {
             return "";
         }
         if (easyEffectsStatus.loadState === "mismatch") {
-            return "EasyEffects did not confirm that preset.";
+            return qsTr("EasyEffects did not confirm that preset.");
         }
         if (easyEffectsStatus.loadState === "timeout") {
-            return "Preset confirmation timed out.";
+            return qsTr("Preset confirmation timed out.");
         }
         if (easyEffectsStatus.loadState === "invalid") {
-            return "The preset name or response was invalid.";
+            return qsTr("The preset name or response was invalid.");
         }
         if (easyEffectsStatus.loadState === "unavailable") {
-            return "EasyEffects preset control is unavailable.";
+            return qsTr("EasyEffects preset control is unavailable.");
         }
         return "";
     }
@@ -203,7 +203,7 @@ FocusScope {
         }
         const requestId = applicationModel.dispatchLaunch(easyEffectsDesktopId);
         if (!Number.isInteger(requestId) || requestId <= 0) {
-            easyEffectsLaunchFailure = "EasyEffects could not be opened.";
+            easyEffectsLaunchFailure = qsTr("EasyEffects could not be opened.");
             return false;
         }
         easyEffectsLaunchRequestId = requestId;
@@ -244,7 +244,7 @@ FocusScope {
         function onLaunchRejected(requestId, category) {
             if (requestId === view.easyEffectsLaunchRequestId) {
                 view.easyEffectsLaunchRequestId = 0;
-                view.easyEffectsLaunchFailure = "EasyEffects could not be opened.";
+                view.easyEffectsLaunchFailure = qsTr("EasyEffects could not be opened.");
             }
         }
     }
@@ -262,7 +262,7 @@ FocusScope {
 
         anchors.fill: parent
         active: view.active
-        title: "Audio devices"
+        title: qsTr("Audio devices")
         reducedMotion: view.reducedMotion
         initialFocusItem: outputSection.control.enabled ? outputSection.control :
                                                           inputSection.control.enabled
@@ -313,7 +313,7 @@ FocusScope {
                         y: 0
                         width: view.twoColumnLayout ? Math.max(0, (parent.width - view.columnGap)
                                                                / 2) : parent.width
-                        title: "Output device"
+                        title: qsTr("Output device")
                         role: "output"
                         meaning: "volumeHigh"
                         candidates: view.outputCandidates
@@ -327,7 +327,7 @@ FocusScope {
                         x: view.twoColumnLayout ? outputSection.width + view.columnGap : 0
                         y: view.twoColumnLayout ? 0 : outputSection.height + Theme.spacing.lg
                         width: view.twoColumnLayout ? outputSection.width : parent.width
-                        title: "Input device"
+                        title: qsTr("Input device")
                         role: "input"
                         meaning: "microphone"
                         candidates: view.inputCandidates
@@ -341,8 +341,9 @@ FocusScope {
                     Layout.fillWidth: true
                     visible: view.adapter === null || !view.adapter.available
                              || view.candidateCount === 0
-                    text: view.adapter === null || !view.adapter.available
-                          ? "Audio devices unavailable" : "No selectable audio devices"
+                    text: view.adapter === null || !view.adapter.available ? qsTr(
+                                                                                 "Audio devices unavailable") :
+                                                                             qsTr("No selectable audio devices")
                     textFormat: Text.PlainText
                     tone: "secondary"
                     Accessible.role: Accessible.StaticText
@@ -382,7 +383,7 @@ FocusScope {
 
                         IslandText {
                             Layout.fillWidth: true
-                            text: "EasyEffects presets"
+                            text: qsTr("EasyEffects presets")
                             textFormat: Text.PlainText
                             font.weight: Theme.type.weightMedium
                             Accessible.role: Accessible.Heading
@@ -391,7 +392,7 @@ FocusScope {
 
                         IslandText {
                             Layout.fillWidth: true
-                            text: "Choose a local preset for each EasyEffects pipeline."
+                            text: qsTr("Choose a local preset for each EasyEffects pipeline.")
                             textFormat: Text.PlainText
                             tone: "secondary"
                             size: "caption"
@@ -404,7 +405,7 @@ FocusScope {
                             id: outputPresetRow
                             objectName: "audioEasyEffectsOutputPreset"
                             pipeline: "output"
-                            label: "Output preset"
+                            label: qsTr("Output preset")
                             currentName: view.easyEffectsStatus === null ? "" :
                                                                            view.easyEffectsStatus.outputName
                             statusValue: view.presetStatusText(view.easyEffectsStatus === null
@@ -420,7 +421,7 @@ FocusScope {
                             id: inputPresetRow
                             objectName: "audioEasyEffectsInputPreset"
                             pipeline: "input"
-                            label: "Input preset"
+                            label: qsTr("Input preset")
                             currentName: view.easyEffectsStatus === null ? "" :
                                                                            view.easyEffectsStatus.inputName
                             statusValue: view.presetStatusText(view.easyEffectsStatus === null
@@ -455,22 +456,23 @@ FocusScope {
                             IslandButton {
                                 id: easyEffectsRefreshButton
                                 objectName: "audioRefreshEasyEffectsStatus"
-                                label: view.presetStatusRefreshing ? "Reading…" : "Refresh"
+                                label: view.presetStatusRefreshing ? qsTr("Reading…") : qsTr(
+                                                                         "Refresh")
                                 reducedMotion: view.reducedMotion
                                 enabled: view.presetStatusReady && !view.presetStatusRefreshing &&
                                          !view.presetLoadPending && view.presetStatusOwnerEpoch > 0
-                                Accessible.name: "Refresh EasyEffects preset status"
+                                Accessible.name: qsTr("Refresh EasyEffects preset status")
                                 onClicked: view.refreshPresetStatus()
                             }
 
                             IslandButton {
                                 id: easyEffectsOpenButton
                                 objectName: "audioOpenEasyEffects"
-                                label: view.easyEffectsLaunchRequestId > 0 ? "Opening…" :
-                                                                             "Open EasyEffects"
+                                label: view.easyEffectsLaunchRequestId > 0 ? qsTr("Opening…") : qsTr(
+                                                                                 "Open EasyEffects")
                                 reducedMotion: view.reducedMotion
                                 enabled: view.easyEffectsLaunchRequestId === 0
-                                Accessible.name: "Open EasyEffects"
+                                Accessible.name: qsTr("Open EasyEffects")
                                 onClicked: view.openEasyEffects()
                             }
                         }
@@ -582,7 +584,7 @@ FocusScope {
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 Accessible.role: Accessible.StaticText
-                Accessible.name: presetRow.label + ", last loaded: " + text
+                Accessible.name: qsTr("%1, last loaded: %2").arg(presetRow.label).arg(text)
             }
         }
 
@@ -635,12 +637,15 @@ FocusScope {
                 IslandText {
                     id: contentLabel
                     Layout.fillWidth: true
-                    text: presetRow.pending ? "Applying…" : view.presetStatusRefreshing
-                                              || presetRow.listState === "unknown"
-                                              ? "Reading presets…" : presetRow.candidates.length
-                                                === 0 ? "No presets found" :
-                                                        presetRow.currentPresetIndex >= 0
-                                                        ? presetRow.currentName : "Choose a preset"
+                    text: presetRow.pending ? qsTr("Applying…") : view.presetStatusRefreshing
+                                              || presetRow.listState === "unknown" ? qsTr(
+                                                                                         "Reading presets…") :
+                                                                                     presetRow.candidates.length
+                                                                                     === 0 ? qsTr(
+                                                                                                 "No presets found") :
+                                                                                             presetRow.currentPresetIndex
+                                                                                             >= 0 ? presetRow.currentName :
+                                                                                                    qsTr("Choose a preset")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
@@ -697,8 +702,9 @@ FocusScope {
                     enabled: !view.presetLoadPending
                     Accessible.role: Accessible.ListItem
                     Accessible.name: modelData
-                    Accessible.description: modelData === presetRow.currentName
-                                            ? "Last loaded preset" : "Load preset"
+                    Accessible.description: modelData === presetRow.currentName ? qsTr(
+                                                                                      "Last loaded preset") :
+                                                                                  qsTr("Load preset")
                     onActiveFocusChanged: {
                         if (activeFocus) {
                             presetRow.highlightedIndex = index;
@@ -729,7 +735,7 @@ FocusScope {
                         }
                         IslandText {
                             visible: presetItem.modelData === presetRow.currentName
-                            text: "Last loaded"
+                            text: qsTr("Last loaded")
                             textFormat: Text.PlainText
                             color: Theme.snapshot.accent
                             size: "caption"
@@ -758,7 +764,7 @@ FocusScope {
         IslandText {
             Layout.fillWidth: true
             visible: presetRow.listState === "truncated"
-            text: "Showing the first available presets. Refine them in EasyEffects if needed."
+            text: qsTr("Showing the first available presets. Refine them in EasyEffects if needed.")
             textFormat: Text.PlainText
             tone: "secondary"
             size: "caption"
@@ -791,10 +797,10 @@ FocusScope {
         }
         readonly property string confirmedLabel: confirmedIndex >= 0
                                                  ? candidates[confirmedIndex].label :
-                                                   internalDefault ? "Choose a device" :
-                                                                     candidates.length > 0
-                                                                     ? "Choose a device" :
-                                                                       "No eligible devices"
+                                                   internalDefault ? qsTr("Choose a device") :
+                                                                     candidates.length > 0 ? qsTr(
+                                                                                                 "Choose a device") :
+                                                                                             qsTr("No eligible devices")
         readonly property bool popupOpen: view.openRole === role
         readonly property alias control: dropdownButton
         property int highlightedIndex: confirmedIndex >= 0 ? confirmedIndex : 0
@@ -931,12 +937,12 @@ FocusScope {
 
             IslandText {
                 visible: section.pending
-                text: "Confirming…"
+                text: qsTr("Confirming…")
                 textFormat: Text.PlainText
                 tone: "secondary"
                 size: "caption"
                 Accessible.role: Accessible.StaticText
-                Accessible.name: section.title + " selection pending"
+                Accessible.name: qsTr("%1 selection pending").arg(section.title)
             }
         }
 
@@ -1019,8 +1025,8 @@ FocusScope {
                         + "InternalDefaultWarning"
             Layout.fillWidth: true
             visible: section.internalDefault
-            text: "EasyEffects is the current " + section.role
-                  + ". Choose another device to change it."
+            text: qsTr("EasyEffects is the current %1. Choose another device to change it.").arg(
+                      section.role === "output" ? qsTr("output") : qsTr("input"))
             textFormat: Text.PlainText
             color: Theme.color.warning
             size: "caption"
@@ -1074,9 +1080,12 @@ FocusScope {
                     enabled: !view.selectionPending
                     Accessible.role: Accessible.ListItem
                     Accessible.name: modelData.label
-                    Accessible.description: modelData.isDefault ? "Confirmed current "
-                                                                  + section.role : "Select as "
-                                                                  + section.role
+                    Accessible.description: modelData.isDefault ? (section.role === "output" ? qsTr(
+                                                                                                   "Confirmed current output device") :
+                                                                                               qsTr("Confirmed current input device")) :
+                                                                  (section.role === "output" ? qsTr(
+                                                                                                   "Select as output device") :
+                                                                                               qsTr("Select as input device"))
                     onActiveFocusChanged: {
                         if (activeFocus) {
                             section.highlightedIndex = index;
@@ -1113,7 +1122,7 @@ FocusScope {
 
                         IslandText {
                             visible: candidateButton.modelData.isDefault
-                            text: "Selected"
+                            text: qsTr("Selected")
                             textFormat: Text.PlainText
                             color: Theme.snapshot.accent
                             size: "caption"

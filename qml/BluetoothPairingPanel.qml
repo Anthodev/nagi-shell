@@ -20,7 +20,7 @@ IslandPanel {
     implicitHeight: content.implicitHeight + Theme.spacing.lg * 2
     color: Theme.color.controlFill
     Accessible.role: Accessible.Pane
-    Accessible.name: "Pairing with " + deviceName
+    Accessible.name: qsTr("Pairing with %1").arg(deviceName)
 
     readonly property bool inputPrompt: prompt === "enter-pin" || prompt === "enter-passkey"
     readonly property bool decisionPrompt: prompt === "confirm-passkey" || prompt
@@ -61,7 +61,7 @@ IslandPanel {
 
         IslandText {
             Layout.fillWidth: true
-            text: "Pairing with " + root.deviceName
+            text: qsTr("Pairing with %1").arg(root.deviceName)
             textFormat: Text.PlainText
             size: "title"
             wrapMode: Text.Wrap
@@ -72,7 +72,7 @@ IslandPanel {
         IslandText {
             Layout.fillWidth: true
             visible: root.prompt === "none"
-            text: "Waiting for the device…"
+            text: qsTr("Waiting for the device…")
             size: "body"
             color: Theme.color.textSecondary
             Accessible.name: text
@@ -81,9 +81,9 @@ IslandPanel {
         IslandText {
             Layout.fillWidth: true
             visible: root.decisionPrompt
-            text: root.prompt === "confirm-passkey"
-                  ? "Confirm that this passkey matches the other device." :
-                    "Allow this explicit pairing request?"
+            text: root.prompt === "confirm-passkey" ? qsTr(
+                                                          "Confirm that this passkey matches the other device.") :
+                                                      qsTr("Allow this explicit pairing request?")
             size: "body"
             color: Theme.color.textSecondary
             wrapMode: Text.Wrap
@@ -97,13 +97,14 @@ IslandPanel {
             textFormat: Text.PlainText
             size: "display"
             horizontalAlignment: Text.AlignHCenter
-            Accessible.name: (root.prompt === "display-pin" ? "PIN " : "Passkey ") + text
+            Accessible.name: (root.prompt === "display-pin" ? qsTr("PIN: %1") : qsTr(
+                                                                  "Passkey: %1")).arg(text)
         }
 
         IslandText {
             Layout.fillWidth: true
             visible: root.prompt === "display-passkey"
-            text: "Entered digits: " + root.entered
+            text: qsTr("Entered digits: %1").arg(root.entered)
             size: "caption"
             color: Theme.color.textSecondary
             horizontalAlignment: Text.AlignHCenter
@@ -115,9 +116,11 @@ IslandPanel {
 
             Layout.fillWidth: true
             visible: root.inputPrompt
-            label: root.prompt === "enter-pin" ? "PIN" : "Passkey"
-            accessibleName: "Bluetooth " + label.toLowerCase()
-            accessibleDescription: "Enter the value shown or requested by the other device"
+            label: root.prompt === "enter-pin" ? qsTr("PIN") : qsTr("Passkey")
+            semanticName: root.prompt === "enter-pin" ? qsTr("Bluetooth PIN") : qsTr(
+                                                            "Bluetooth passkey")
+            semanticDescription: qsTr("Enter the value shown or requested by the other device")
+            revealLabel: root.prompt === "enter-pin" ? qsTr("Show PIN") : qsTr("Show passkey")
             inputObjectName: "bluetoothPairingInput"
             minimumLength: 1
             maximumLength: root.prompt === "enter-passkey" ? 6 : 16
@@ -134,7 +137,7 @@ IslandPanel {
 
             IslandButton {
                 visible: root.inputPrompt
-                label: "Submit"
+                label: qsTr("Submit")
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending && privateInput.acceptable
                 onClicked: root.submitInput()
@@ -142,7 +145,7 @@ IslandPanel {
 
             IslandButton {
                 visible: root.decisionPrompt
-                label: "Allow"
+                label: qsTr("Allow")
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending
                 onClicked: root.responseRequested(true, "")
@@ -150,7 +153,7 @@ IslandPanel {
 
             IslandButton {
                 visible: root.decisionPrompt
-                label: "Reject"
+                label: qsTr("Reject")
                 variant: "danger"
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending
@@ -158,7 +161,7 @@ IslandPanel {
             }
 
             IslandButton {
-                label: "Cancel"
+                label: qsTr("Cancel")
                 variant: "danger"
                 reducedMotion: root.reducedMotion
                 enabled: !root.operationPending

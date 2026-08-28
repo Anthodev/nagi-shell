@@ -115,7 +115,7 @@ FocusScope {
                     hoverEnabled: true
                     enabled: root.media !== null && root.media.canPrevious && !root.controlsPending
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Previous track"
+                    Accessible.name: qsTr("Previous track")
                     onClicked: root.previous()
 
                     background: Rectangle {
@@ -135,7 +135,7 @@ FocusScope {
                     }
                     ToolTip.delay: Theme.motion.durationSlow
                     ToolTip.visible: hovered || visualFocus
-                    ToolTip.text: "Previous track"
+                    ToolTip.text: qsTr("Previous track")
                 }
 
                 AbstractButton {
@@ -150,7 +150,7 @@ FocusScope {
                              !root.controlsPending
                     Accessible.role: Accessible.Button
                     Accessible.name: root.media !== null && root.media.playbackState === "playing"
-                                     ? "Pause" : "Play"
+                                     ? qsTr("Pause") : qsTr("Play")
                     onClicked: root.togglePlayback()
 
                     background: Rectangle {
@@ -172,7 +172,7 @@ FocusScope {
                     ToolTip.delay: Theme.motion.durationSlow
                     ToolTip.visible: hovered || visualFocus
                     ToolTip.text: root.media !== null && root.media.playbackState === "playing"
-                                  ? "Pause" : "Play"
+                                  ? qsTr("Pause") : qsTr("Play")
                 }
 
                 AbstractButton {
@@ -185,7 +185,7 @@ FocusScope {
                     hoverEnabled: true
                     enabled: root.media !== null && root.media.canNext && !root.controlsPending
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Next track"
+                    Accessible.name: qsTr("Next track")
                     onClicked: root.next()
 
                     background: Rectangle {
@@ -204,13 +204,13 @@ FocusScope {
                     }
                     ToolTip.delay: Theme.motion.durationSlow
                     ToolTip.visible: hovered || visualFocus
-                    ToolTip.text: "Next track"
+                    ToolTip.text: qsTr("Next track")
                 }
 
                 IslandText {
                     Layout.fillWidth: true
-                    text: root.controlsPending ? "Pending" : root.media === null ? "" :
-                                                                                   root.media.playbackState
+                    text: root.controlsPending ? qsTr("Pending") : root.media === null ? "" :
+                                                                                         root.media.playbackState
 
                     textFormat: Text.PlainText
                     tone: root.controlsPending ? "secondary" : "muted"
@@ -227,7 +227,7 @@ FocusScope {
                 IslandProgressBar {
                     Layout.fillWidth: true
                     value: root.media.position / root.media.duration
-                    label: "Playback position"
+                    label: qsTr("Playback position")
                 }
 
                 IslandText {
