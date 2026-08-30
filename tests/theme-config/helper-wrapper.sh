@@ -2,15 +2,7 @@
 set -euo pipefail
 
 operation=$1
-if [[ $operation == serve ]]; then
-    while IFS= read -r line; do
-        request=${line%% *}
-        if [[ $request == write ]]; then
-            printf 'ERR\n'
-        else
-            printf 'ERR\n'
-        fi
-    done
-    exit 0
+if [[ $operation == write ]]; then
+    exit 1
 fi
 exec "${NAGI_REAL_SETTINGS_HELPER:?}" "$@"

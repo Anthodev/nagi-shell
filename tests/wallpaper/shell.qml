@@ -125,7 +125,18 @@ ShellRoot {
         }
     }
 
+    function runInterestSoak() {
+        for (let cycle = 0; cycle < 50; cycle += 1) {
+            require(service.setPageOpen(true, []), "wallpaper soak opens page interest");
+            require(service.setPageOpen(false, []), "wallpaper soak closes page interest");
+            require(!service.pageOpen && service.images.length === 0 && service.preview === null
+                    && service.applyStatus === "idle" && service.activeTimerCount === 0,
+                    "wallpaper soak cancels page-owned work exactly");
+        }
+    }
+
     function finish() {
+        runInterestSoak();
         require(test.recoveryMode && service.helperRunning && !service.pageOpen
                 && service.images.length === 0 && service.preview === null
                 && service.applyStatus === "idle" && service.activeTimerCount === 0,

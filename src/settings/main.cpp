@@ -292,66 +292,6 @@ bool performOperation(int directory, std::string_view operation, std::string_vie
     }
     return false;
 }
-std::optional<std::string> percentDecode(std::string_view encoded)
-{
-    if (encoded.size() > MaximumSettingsBytes * 3) {
-        return std::nullopt;
-    }
-    auto hex = [](char value) -> int {
-        if (value >= '0' && value <= '9') {
-            return value - '0';
-        }
-        if (value >= 'A' && value <= 'F') {
-            return value - 'A' + 10;
-        }
-        if (value >= 'a' && value <= 'f') {
-            return value - 'a' + 10;
-        }
-        return -1;
-    };
-    std::string decoded;
-    decoded.reserve(encoded.size());
-    for (std::size_t index = 0; index < encoded.size(); ++index) {
-        if (encoded[index] != '%') {
-            decoded.push_back(encoded[index]);
-            continue;
-        }
-        if (index + 2 >= encoded.size()) {
-            return std::nullopt;
-        }
-        const int high = hex(encoded[index + 1]);
-        const int low = hex(encoded[index + 2]);
-        if (high < 0 || low < 0) {
-            return std::nullopt;
-        }
-        decoded.push_back(static_cast<char>((high << 4) | low));
-        index += 2;
-    }
-    return decoded.size() <= MaximumSettingsBytes ? std::optional<std::string>(std::move(decoded))
-                                                   : std::nullopt;
-}
-
-
-int serve(int directory)
-{
-    std::string header;
-    while (std::getline(std::cin, header)) {
-        const std::size_t separator = header.find(' ');
-        if (separator == std::string::npos) {
-            std::cout << "ERR\n" << std::flush;
-            continue;
-        }
-        const std::string operation = header.substr(0, separator);
-        const auto content = percentDecode(std::string_view(header).substr(separator + 1));
-        if (!content.has_value()) {
-            std::cout << "ERR\n" << std::flush;
-            continue;
-        }
-        std::cout << (performOperation(directory, operation, *content) ? "OK\n" : "ERR\n")
-                  << std::flush;
-    }
-    return 0;
-}
 
 int fail(const char *message)
 {
@@ -401,10 +341,6 @@ int main(int argc, char **argv)
                   << "\"}\n";
         return 0;
     }
-    if (operation == "serve") {
-        return serve(directory.get());
-    }
-
 
     if (argc != 4) {
         return fail("byte count required");
@@ -416,6 +352,5 @@ int main(int argc, char **argv)
     }
 
     const bool success = performOperation(directory.get(), operation, *content);
-
     return success ? 0 : fail("settings operation failed");
 }

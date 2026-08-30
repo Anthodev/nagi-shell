@@ -16,12 +16,64 @@ ShellRoot {
     property int actionRequests: 0
     property int pageResetRequests: 0
     property int resetAllRequests: 0
+    property int unloadRequestCount: 0
     property var controls: []
     readonly property string captureDirectory: Quickshell.env("NAGI_CONTROL_CENTER_CAPTURE_DIR")
                                                ?? ""
     property var tokenA: ({})
     property var tokenB: ({})
 
+    readonly property string privacyArtifactDirectory: Quickshell.env(
+                                                           "NAGI_CONTROL_CENTER_ARTIFACT_DIR") ?? ""
+    readonly property var privacyCorpus: Object.freeze({
+                                                           "wifiSsid": "SensitiveSSID",
+                                                           "wifiSecret": "wifi-secret-82",
+                                                           "bluetoothAddress": "AA:BB:CC:DD:EE:82",
+                                                           "bluetoothName": "Private Headset 82",
+                                                           "bluetoothPin": "4821",
+                                                           "bluetoothPasskey": "654321",
+                                                           "notificationSender": "sender-private-82",
+                                                           "notificationBody":
+                                                           "notification-body-private-82",
+                                                           "weatherLabel":
+                                                           "Private Weather Label 82",
+                                                           "weatherLatitude": 48.8566,
+                                                           "weatherLongitude": 2.3522,
+                                                           "weatherProviderBody":
+                                                           "provider-body-private-82",
+                                                           "displayMetadata":
+                                                           "Display Serial Private 82",
+                                                           "wallpaperPath":
+                                                           "/home/test/private-wallpaper-82.png",
+                                                           "wallpaperDigest": "digest-private-82",
+                                                           "executable":
+                                                           "/opt/private/bin/private-app-82",
+                                                           "pid": 824282,
+                                                           "rawDbus": "raw-dbus-private-82"
+                                                       })
+    readonly property var privacyForbiddenValues: Object.freeze([privacyCorpus.wifiSsid,
+                                                                 privacyCorpus.wifiSecret,
+                                                                 privacyCorpus.bluetoothAddress,
+                                                                 privacyCorpus.bluetoothName,
+                                                                 privacyCorpus.bluetoothPin,
+                                                                 privacyCorpus.bluetoothPasskey,
+                                                                 privacyCorpus.notificationSender,
+                                                                 privacyCorpus.notificationBody,
+                                                                 privacyCorpus.weatherLabel, String(
+                                                                     privacyCorpus.weatherLatitude),
+                                                                 String(privacyCorpus.weatherLongitude),
+                                                                 privacyCorpus.weatherProviderBody,
+                                                                 privacyCorpus.displayMetadata,
+                                                                 privacyCorpus.wallpaperPath,
+                                                                 privacyCorpus.wallpaperDigest,
+                                                                 privacyCorpus.executable, String(
+                                                                     privacyCorpus.pid),
+                                                                 privacyCorpus.rawDbus])
+    readonly property string alternateWifiSsid: "Alternate-Fixture-Network-82"
+    readonly property string alternateWifiSecret: "alternate-wifi-render-secret-with-another-length"
+    property var privacyAccessibility: []
+    property string privacyDiagnostic: ""
+    property int privacyArtifactSaveCount: 0
     property real requestedTallHeight: 0
     property real requestedTiledWidth: 0
     function fail(message) {
@@ -51,6 +103,117 @@ ShellRoot {
         });
     }
 
+    function requireMinimalMotion(context) {
+        require(UserConfig.snapshot.appearance.motion === "minimal" && Theme.motion.effectiveMode
+                === "minimal" && controlCenter.reducedMotion, context
+                + " runs under the explicitly fixed Minimal motion policy");
+    }
+
+    function requireCorpusAbsent(value, context) {
+        const text = String(value);
+        for (let index = 0; index < privacyForbiddenValues.length; index += 1) {
+            require(text.indexOf(privacyForbiddenValues[index]) === -1, context
+                    + " excludes every synthetic private value");
+        }
+    }
+
+    function recordSecretAccessibility(flow, input, boundary) {
+        require(input !== null && input !== undefined && boundary !== null && boundary !== undefined
+                && privacyAccessibility.every(record => record.flow !== flow), flow
+                + " exposes one unique secret accessibility boundary");
+        const record = {
+            "flow": flow,
+            "objectName": input.objectName,
+            "name": String(boundary.semanticName),
+            "description": String(boundary.semanticDescription),
+            "role": "editableText",
+            "passwordEdit": input.Accessible.passwordEdit === true
+        };
+        require(record.objectName !== "" && record.name !== "" && record.description !== ""
+                && record.passwordEdit, flow + " exports purpose-only password metadata");
+        requireCorpusAbsent(JSON.stringify(record), flow + " accessibility metadata");
+        privacyAccessibility = privacyAccessibility.concat([record]);
+    }
+
+    function privacySnapshot() {
+        return {
+            "schemaVersion": 1,
+            "controlCenter": {
+                "visible": controlCenter.visible,
+                "loadedPageCount": controlCenter.loadedPageCount
+            },
+            "pageInterest": {
+                "wifi": fakeWifi.wifiManagerOpen,
+                "bluetooth": fakeWifi.bluetoothManagerOpen,
+                "wallpaper": fakeWallpaper.pageOpen,
+                "weatherResults": fakeLocationSearch.results.length
+            },
+            "privateState": {
+                "notificationHistoryCount": fakeNotifications.historyCount,
+                "wallpaperPreviewActive": fakeWallpaper.preview !== null,
+                "wifiSecretLength": fakeWifi.lastWifiSecretLength,
+                "wifiSsidLength": fakeWifi.lastSsidLength,
+                "bluetoothSecretLength": fakeWifi.lastBluetoothSecretLength,
+                "bluetoothPrompt": fakeWifi.bluetoothPairingPrompt
+            }
+        };
+    }
+
+    function finalizePrivacyState() {
+        controlCenter.closeWindow();
+        fakeHost.clearPrivateState();
+        fakeMedia.clearPrivateState();
+        fakeLocationSearch.clear();
+        fakeNotifications.clearHistory();
+        fakeWifi.clearPrivateState();
+        fakeWallpaper.clearPrivateState();
+        const retainedState = JSON.stringify({
+                                                 "host": fakeHost.privacyState(),
+                                                 "media": fakeMedia.privacyState(),
+                                                 "weather": fakeLocationSearch.privacyState(),
+                                                 "notifications": fakeNotifications.privacyState(),
+                                                 "connectivity": fakeWifi.privacyState(),
+                                                 "wallpaper": fakeWallpaper.privacyState(),
+                                                 "settings": UserConfig.serializeConfiguration(
+                                                                 UserConfig.snapshot)
+                                             });
+        requireCorpusAbsent(retainedState, "final normalized fixture state");
+        const snapshot = privacySnapshot();
+        require(!snapshot.controlCenter.visible && snapshot.controlCenter.loadedPageCount === 0 &&
+                !snapshot.pageInterest.wifi && !snapshot.pageInterest.bluetooth &&
+                !snapshot.pageInterest.wallpaper && snapshot.pageInterest.weatherResults === 0
+                && snapshot.privateState.notificationHistoryCount === 0 &&
+                !snapshot.privateState.wallpaperPreviewActive
+                && snapshot.privateState.wifiSecretLength === 0
+                && snapshot.privateState.wifiSsidLength === 0
+                && snapshot.privateState.bluetoothSecretLength === 0
+                && snapshot.privateState.bluetoothPrompt === "none",
+                "final cleanup clears every private model, operation, prompt, and page interest");
+    }
+
+    function writePrivacyArtifacts() {
+        require(privacyArtifactDirectory !== "" && privacyDiagnostic !== ""
+                && privacyAccessibility.length === 3,
+                "the private runner exposes complete diagnostic and accessibility artifacts");
+        const snapshotText = JSON.stringify(privacySnapshot(), null, 2);
+        const accessibilityText = JSON.stringify(privacyAccessibility, null, 2);
+        requireCorpusAbsent(privacyDiagnostic, "safe diagnostic artifact");
+        requireCorpusAbsent(snapshotText, "safe IPC snapshot artifact");
+        requireCorpusAbsent(accessibilityText, "accessibility artifact");
+        privacyArtifactSaveCount = 0;
+        diagnosticArtifactWriter.setText(privacyDiagnostic + "\n");
+        snapshotArtifactWriter.setText(snapshotText + "\n");
+        accessibilityArtifactWriter.setText(accessibilityText + "\n");
+    }
+
+    function privacyArtifactSaved() {
+        privacyArtifactSaveCount += 1;
+        if (privacyArtifactSaveCount === 3) {
+            console.log("control center tests passed");
+            Qt.exit(0);
+        }
+    }
+
     function findObject(item, objectName) {
         if (item === null || item === undefined) {
             return null;
@@ -75,11 +238,12 @@ ShellRoot {
             const section = findObject(page, specification.name);
             require(section !== null && section.text !== "" && section.width > 0
                     && section.implicitHeight > 0, context + " exposes " + specification.name);
-            require(section.separated === specification.separated
-                    && section.topSeparation === (specification.separated ? Theme.spacing.lg : 0),
-                    context + " uses the shared subsection spacing contract");
+            require(section.separated === specification.separated && section.topSeparation === (
+                        specification.separated ? Theme.spacing.lg : 0), context
+                    + " uses the shared subsection spacing contract");
             const position = section.mapToItem(page.contentItem, 0, 0);
-            require(position.y > previousY, context + " keeps subsection headings in document order");
+            require(position.y > previousY, context
+                    + " keeps subsection headings in document order");
             previousY = position.y;
         }
     }
@@ -203,6 +367,11 @@ ShellRoot {
                 && controlCenter.availableRoutes[9].id === "displays"
                 && controlCenter.availableRoutes[10].id === "about",
                 "final route names stay fixed and all complete pages are exposed");
+        require(UserConfig.updatePage("appearance", {
+                                          "motion": "minimal"
+                                      }, false),
+                "privacy captures fix the persisted motion policy to Minimal");
+        requireMinimalMotion("Control Center fixture");
         createControls();
         exerciseControls();
         require(controlCenter.open("appearance", tokenA), "initiating island opens Appearance");
@@ -284,22 +453,28 @@ ShellRoot {
                 && appearanceTitle.font.family === targetFamilies[2]
                 && appearanceTitle.font.pixelSize === Theme.type.sizeFor("controlCenter", "title"),
                 "loaded Control Center text resolves the Control Center typography scope");
-        requireSectionHierarchy(appearancePage, [{
-                                                     "name": "appearanceIdleFontFamilySection",
-                                                     "separated": false
-                                                 }, {
-                                                     "name": "appearanceExpandedFontFamilySection",
-                                                     "separated": true
-                                                 }, {
-                                                     "name": "appearanceControlCenterFontFamilySection",
-                                                     "separated": true
-                                                 }, {
-                                                     "name": "appearanceColorSection",
-                                                     "separated": true
-                                                 }, {
-                                                     "name": "appearanceSurfaceMotionSection",
-                                                     "separated": true
-                                                 }], "Appearance");
+        requireSectionHierarchy(appearancePage, [
+                                    {
+                                        "name": "appearanceIdleFontFamilySection",
+                                        "separated": false
+                                    },
+                                    {
+                                        "name": "appearanceExpandedFontFamilySection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "appearanceControlCenterFontFamilySection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "appearanceColorSection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "appearanceSurfaceMotionSection",
+                                        "separated": true
+                                    }
+                                ], "Appearance");
         captureCurrent("sidebar-appearance", function () {
             const controlCenterSelectorPosition = familySelectors[2].mapToItem(
                       appearancePage.contentItem, 0, 0);
@@ -324,16 +499,20 @@ ShellRoot {
     function islandStage() {
         require(controlCenter.currentPageId === "island" && controlCenter.loadedPageItem !== null,
                 "complete Island page loads in the shared page viewport");
-        requireSectionHierarchy(controlCenter.loadedPageItem, [{
-                                                                  "name": "islandGeometrySection",
-                                                                  "separated": false
-                                                              }, {
-                                                                  "name": "islandFeedbackSection",
-                                                                  "separated": true
-                                                              }, {
-                                                                  "name": "islandCompactContentSection",
-                                                                  "separated": true
-                                                              }], "Island");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [
+                                    {
+                                        "name": "islandGeometrySection",
+                                        "separated": false
+                                    },
+                                    {
+                                        "name": "islandFeedbackSection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "islandCompactContentSection",
+                                        "separated": true
+                                    }
+                                ], "Island");
         const gamingToggle = findObject(controlCenter.loadedPageItem, "gamingPerformanceToggle");
         require(gamingToggle !== null && gamingToggle.label === "Gaming performance indicator"
                 && gamingToggle.value === true && gamingToggle.description.indexOf(
@@ -359,10 +538,12 @@ ShellRoot {
     function clockStage() {
         require(controlCenter.loadedPageItem !== null && fakeClock.text !== ""
                 && fakeClock.dateText !== "", "Clock & Date uses the shared clock preview");
-        requireSectionHierarchy(controlCenter.loadedPageItem, [{
-                                                                  "name": "clockPresentationSection",
-                                                                  "separated": true
-                                                              }], "Clock & Date");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [
+                                    {
+                                        "name": "clockPresentationSection",
+                                        "separated": true
+                                    }
+                                ], "Clock & Date");
         captureCurrent("sidebar-clock-date", function () {
             require(controlCenter.open("media", tokenB) && controlCenter.currentPageId === "media",
                     "Media joins the shared responsive page viewport");
@@ -372,15 +553,25 @@ ShellRoot {
     }
 
     function mediaStage() {
+        require(fakeMedia.queueApplicationEvent(privacyCorpus.executable, privacyCorpus.pid)
+                && fakeMedia.pendingApplication.executable === privacyCorpus.executable
+                && fakeMedia.pendingApplication.pid === privacyCorpus.pid
+                && fakeMedia.publishApplicationEvent() && fakeMedia.pendingApplication === null,
+                "application executable and PID cross the owning adapter event before normalization");
+        requireCorpusAbsent(JSON.stringify(fakeMedia.availableApplications),
+                            "normalized Media application policy");
         require(controlCenter.loadedPageItem !== null && fakeMedia.availableApplications.length
                 === 1, "Media receives the normalized shared application policy source");
-        requireSectionHierarchy(controlCenter.loadedPageItem, [{
-                                                                  "name": "mediaVisibilitySection",
-                                                                  "separated": false
-                                                              }, {
-                                                                  "name": "mediaPlayerSelectionSection",
-                                                                  "separated": true
-                                                              }], "Media");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [
+                                    {
+                                        "name": "mediaVisibilitySection",
+                                        "separated": false
+                                    },
+                                    {
+                                        "name": "mediaPlayerSelectionSection",
+                                        "separated": true
+                                    }
+                                ], "Media");
         captureCurrent("sidebar-media", function () {
             require(controlCenter.open("weather", tokenB) && controlCenter.currentPageId
                     === "weather", "Weather joins the shared responsive page viewport");
@@ -394,20 +585,77 @@ ShellRoot {
         require(page !== null && !controlCenter.weatherLookupAllowed,
                 "Weather preview loads without enabling location lookup");
         page.privacyAccepted = true;
-        require(controlCenter.weatherLookupAllowed && fakeLocationSearch.search("Paris"),
-                "privacy acceptance gates explicit location search");
-        require(page.confirm(fakeLocationSearch.results[0]) && UserConfig.snapshot.weather.enabled
-                && UserConfig.snapshot.weather.locationLabel === "Paris, France",
-                "confirmed normalized location atomically enables Weather");
-        require(fakeLocationSearch.results.length === 0,
-                "confirmation clears page-owned lookup models and query state");
-        requireSectionHierarchy(page, [{
-                                           "name": "weatherLocationSection",
-                                           "separated": true
-                                       }, {
-                                           "name": "weatherForecastPreferencesSection",
-                                           "separated": true
-                                       }], "Weather");
+        require(fakeLocationSearch.queueProviderResponse(privacyCorpus.weatherLabel,
+                                                         privacyCorpus.weatherLatitude,
+                                                         privacyCorpus.weatherLongitude,
+                                                         privacyCorpus.weatherProviderBody)
+                && controlCenter.weatherLookupAllowed && fakeLocationSearch.search(
+                    "private fixture"),
+                "privacy acceptance drives the synthetic provider response through location search");
+        const privateResult = fakeLocationSearch.results[0];
+        require(privateResult.label === privacyCorpus.weatherLabel && privateResult.latitude
+                === privacyCorpus.weatherLatitude && privateResult.longitude
+                === privacyCorpus.weatherLongitude && fakeLocationSearch.providerBody
+                === privacyCorpus.weatherProviderBody,
+                "Weather owns the complete synthetic provider result before confirmation");
+        require(page.confirm(privateResult) && UserConfig.snapshot.weather.enabled
+                && UserConfig.snapshot.weather.locationLabel === privacyCorpus.weatherLabel
+                && UserConfig.snapshot.weather.latitude === privacyCorpus.weatherLatitude
+                && UserConfig.snapshot.weather.longitude === privacyCorpus.weatherLongitude,
+                "confirmed private location crosses the normalized settings boundary");
+        require(fakeLocationSearch.results.length === 0 && fakeLocationSearch.providerBody === "",
+                "confirmation clears provider body, lookup models, and query state");
+        stage = "weather-private-persisted";
+        settle.restart();
+    }
+
+    function weatherPrivatePersistedStage() {
+        if (UserConfig._writeInProgress || UserConfig._writeCandidate !== null
+                || UserConfig._persistedSnapshot.weather.locationLabel
+                !== privacyCorpus.weatherLabel) {
+            settle.restart();
+            return;
+        }
+        require(UserConfig._persistedSnapshot.weather.latitude === privacyCorpus.weatherLatitude
+                && UserConfig._persistedSnapshot.weather.longitude
+                === privacyCorpus.weatherLongitude,
+                "the owning settings flow completed its private persistence cycle");
+        require(UserConfig.resetPage("weather"),
+                "Weather cleanup replaces the persisted private location");
+        stage = "weather-private-cleared";
+        settle.restart();
+    }
+
+    function weatherPrivateClearedStage() {
+        const defaults = UserConfig.defaultSnapshot(0);
+        if (UserConfig._writeInProgress || UserConfig._writeCandidate !== null
+                || UserConfig._persistedSnapshot.weather.locationLabel
+                !== defaults.weather.locationLabel) {
+            settle.restart();
+            return;
+        }
+        const page = controlCenter.loadedPageItem;
+        require(page !== null && UserConfig.snapshot.weather.locationLabel === ""
+                && UserConfig.snapshot.weather.latitude === null
+                && UserConfig.snapshot.weather.longitude === null,
+                "Weather cleanup clears private values from published and persisted settings");
+        page.privacyAccepted = true;
+        require(fakeLocationSearch.search("Paris") && page.confirm(fakeLocationSearch.results[0])
+                && UserConfig.snapshot.weather.enabled && UserConfig.snapshot.weather.locationLabel
+                === "Paris, France",
+                "the ordinary normalized Weather path remains available after private cleanup");
+        require(fakeLocationSearch.results.length === 0 && fakeLocationSearch.providerBody === "",
+                "safe confirmation also clears page-owned lookup state");
+        requireSectionHierarchy(page, [
+                                    {
+                                        "name": "weatherLocationSection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "weatherForecastPreferencesSection",
+                                        "separated": true
+                                    }
+                                ], "Weather");
         captureCurrent("sidebar-weather", function () {
             require(controlCenter.open("notifications", tokenB) && controlCenter.currentPageId
                     === "notifications", "Notifications joins the shared responsive page viewport");
@@ -419,22 +667,33 @@ ShellRoot {
     function notificationsStage() {
         require(controlCenter.loadedPageItem !== null && fakeNotifications.historyCount === 1,
                 "Notifications receives the shared memory-history service");
+        require(fakeNotifications.admit(privacyCorpus.notificationSender,
+                                        privacyCorpus.notificationBody)
+                && fakeNotifications.historyCount === 2 && fakeNotifications.history[1].sender
+                === privacyCorpus.notificationSender && fakeNotifications.history[1].body
+                === privacyCorpus.notificationBody,
+                "sender and body cross the owning bounded notification history flow");
         fakeNotifications.clearHistory();
         require(fakeNotifications.historyCount === 0,
                 "Clear history stays inside the existing service boundary");
-        requireSectionHierarchy(controlCenter.loadedPageItem, [{
-                                                                  "name": "notificationsPopupPolicySection",
-                                                                  "separated": false
-                                                              }, {
-                                                                  "name": "notificationsFeedbackSection",
-                                                                  "separated": true
-                                                              }, {
-                                                                  "name": "notificationsIslandContentSection",
-                                                                  "separated": true
-                                                              }, {
-                                                                  "name": "notificationsHistorySection",
-                                                                  "separated": true
-                                                              }], "Notifications");
+        requireSectionHierarchy(controlCenter.loadedPageItem, [
+                                    {
+                                        "name": "notificationsPopupPolicySection",
+                                        "separated": false
+                                    },
+                                    {
+                                        "name": "notificationsFeedbackSection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "notificationsIslandContentSection",
+                                        "separated": true
+                                    },
+                                    {
+                                        "name": "notificationsHistorySection",
+                                        "separated": true
+                                    }
+                                ], "Notifications");
         captureCurrent("sidebar-notifications", function () {
             require(controlCenter.open("wifi", tokenB) && controlCenter.currentPageId === "wifi",
                     "Wi-Fi joins the shared responsive page viewport");
@@ -445,6 +704,7 @@ ShellRoot {
 
     function wifiStage() {
         const page = controlCenter.loadedPageItem;
+        requireMinimalMotion("Wi-Fi privacy flow");
         require(page !== null && fakeWifi.wifiManagerOpen && fakeWifi.wifiNetworks.length === 3,
                 "Wi-Fi receives the one shared NetworkManager projection and opens scan interest");
 
@@ -453,32 +713,57 @@ ShellRoot {
         const passwordInput = findObject(page, "wifiPasswordInput");
         require(passwordInput !== null,
                 "protected input mounts one explicit accessibility boundary");
-        require(passwordInput.echoMode === TextInput.NoEcho
-                && passwordInput.Accessible.passwordEdit,
+        require(passwordInput.echoMode === TextInput.NoEcho && passwordInput.Accessible.passwordEdit,
                 "protected input starts hidden with the password-edit semantic");
         const passwordBoundary = passwordInput.parent.parent;
         require(passwordBoundary.semanticName === "Wi-Fi password",
                 "protected input exposes a purpose-only accessible name");
-        passwordInput.text = "fixture-password";
+        passwordInput.text = privacyCorpus.wifiSecret;
         require(passwordBoundary.semanticName.indexOf(passwordInput.text) === -1
                 && passwordBoundary.semanticDescription.indexOf(passwordInput.text) === -1,
                 "Wi-Fi secret bytes never enter accessibility metadata");
+        recordSecretAccessibility("wifi", passwordInput, passwordBoundary);
         page.rememberConnection = true;
         require(page.submitVisibleNetwork() && passwordInput.text === "" && fakeWifi.lastOperation
-                === "connect" && fakeWifi.lastToken === 3 && fakeWifi.lastSecretLength === 16
-                && fakeWifi.lastRemember,
-                "visible password submits once, delegates Remember, and clears immediately");
+                === "connect" && fakeWifi.lastToken === 3 && fakeWifi.lastWifiSecretLength
+                === privacyCorpus.wifiSecret.length && fakeWifi.lastRemember,
+                "visible PSK crosses the owning request once and clears immediately");
+        beginWifiHiddenCapture(page, privacyCorpus.wifiSsid, privacyCorpus.wifiSecret,
+                               "privacy-wifi-a", function () {
+                                   beginWifiHiddenCapture(page, alternateWifiSsid,
+                                                          alternateWifiSecret, "privacy-wifi-b",
+                                                          function () {
+                                                              completeWifiStage(page);
+                                                          });
+                               });
+    }
 
+    function beginWifiHiddenCapture(page, ssid, secret, captureName, continuation) {
         page.clearPrivateState();
         page.mode = "hidden";
         const hiddenSsid = findObject(page, "wifiHiddenSsid");
         const hiddenPassword = findObject(page, "wifiHiddenPasswordInput");
-        hiddenSsid.text = "Hidden Fixture";
-        hiddenPassword.text = "hidden-password";
+        hiddenSsid.text = ssid;
+        hiddenPassword.text = secret;
         require(page.submitHiddenNetwork() && hiddenSsid.text === "" && hiddenPassword.text === ""
-                && fakeWifi.lastOperation === "hidden-connect" && fakeWifi.lastSecretLength === 15,
-                "hidden WPA Personal submits bounded arguments and clears SSID and secret");
+                && fakeWifi.lastOperation === "hidden-connect" && fakeWifi.lastSsidLength
+                === ssid.length && fakeWifi.lastWifiSecretLength === secret.length,
+                "hidden SSID and PSK cross the owning request and clear immediately");
+        requireMinimalMotion(captureName);
+        page.contentY = 0;
+        controlCenter.contentItem.forceActiveFocus(Qt.OtherFocusReason);
+        captureCurrent(captureName, continuation);
+    }
 
+    function completeWifiStage(page) {
+        page.mode = "hidden";
+        const hiddenSsid = findObject(page, "wifiHiddenSsid");
+        const hiddenPassword = findObject(page, "wifiHiddenPasswordInput");
+        hiddenSsid.text = "cancelled fixture network";
+        hiddenPassword.text = "cancelled-fixture-password";
+        page.clearPrivateState();
+        require(hiddenSsid.text === "" && hiddenPassword.text === "" && page.mode === "list",
+                "Wi-Fi cancellation clears every private field without dispatch");
         require(page.requestForget(fakeWifi.wifiNetworks[0]) && page.confirmForget()
                 && fakeWifi.lastOperation === "forget" && fakeWifi.lastToken === 1,
                 "forget requires confirmation and dispatches only a proven personal token");
@@ -492,32 +777,87 @@ ShellRoot {
 
     function bluetoothStage() {
         const page = controlCenter.loadedPageItem;
+        requireMinimalMotion("Bluetooth privacy flow");
         require(page !== null && !fakeWifi.wifiManagerOpen && fakeWifi.bluetoothManagerOpen
                 && fakeWifi.bluetoothDevices.length === 3,
                 "Bluetooth shares the connectivity owner and suspends Wi-Fi page interest");
+        require(fakeWifi.installPrivateBluetoothDevice(privacyCorpus.bluetoothAddress,
+                                                       privacyCorpus.bluetoothName)
+                && fakeWifi.bluetoothDevices[2].address === privacyCorpus.bluetoothAddress
+                && fakeWifi.bluetoothDevices[2].name === privacyCorpus.bluetoothName,
+                "Bluetooth address and name cross the owning device projection");
         require(fakeWifi.scanBluetooth() && fakeWifi.bluetoothDiscovering,
                 "Scan starts only from an explicit manager action");
+        fakeWifi.nextBluetoothPairingPrompt = "enter-pin";
         require(fakeWifi.pairBluetooth(13) && fakeWifi.bluetoothOperation === "pairing"
                 && fakeWifi.bluetoothPairingPrompt === "enter-pin",
-                "pairing replaces discovery and opens the owning prompt");
+                "pairing replaces discovery and opens the owning PIN prompt");
         const pairingPanel = findObject(page, "bluetoothPairingPanel");
         const pairingInput = findObject(page, "bluetoothPairingInput");
         const pairingBoundary = pairingInput === null ? null : pairingInput.parent.parent;
         require(pairingPanel !== null && pairingInput !== null
                 && pairingInput.Accessible.passwordEdit && pairingBoundary !== null
-                && pairingBoundary.semanticName === "Bluetooth PIN",
-                "Bluetooth pairing mounts one redacted password-edit boundary");
+                && pairingBoundary.semanticName === "Bluetooth PIN" && pairingPanel.deviceName
+                === privacyCorpus.bluetoothName,
+                "Bluetooth PIN mounts beside the projected private device without merging metadata");
         pairingPanel.focusInput();
         require(pairingInput.echoMode === TextInput.NoEcho && pairingInput.activeFocus &&
                 !pairingBoundary.clipboardEnabled,
                 "Bluetooth PIN starts hidden, receives focus, and blocks clipboard export");
-        pairingInput.text = "1234";
+        pairingInput.text = privacyCorpus.bluetoothPin;
         require(pairingBoundary.semanticName.indexOf(pairingInput.text) === -1
                 && pairingBoundary.semanticDescription.indexOf(pairingInput.text) === -1,
-                "Bluetooth pairing codes never enter accessibility metadata");
-        require(pairingPanel.submitInput() && pairingInput.text === "" && fakeWifi.lastSecretLength
-                === 4 && fakeWifi.bluetoothOperationResult === "paired-connected",
+                "Bluetooth PIN never enters purpose-only accessibility metadata");
+        recordSecretAccessibility("bluetooth-pin", pairingInput, pairingBoundary);
+        require(pairingPanel.submitInput() && pairingInput.text === ""
+                && fakeWifi.lastBluetoothSecretLength === privacyCorpus.bluetoothPin.length
+                && fakeWifi.bluetoothOperationResult === "paired-connected",
                 "PIN submits once as an argument, clears immediately, and completes pairing");
+        fakeWifi.clearPrivateBluetoothDevice();
+        requireCorpusAbsent(JSON.stringify(fakeWifi.bluetoothDevices),
+                            "cleaned Bluetooth device projection");
+        page.contentY = 0;
+        controlCenter.contentItem.forceActiveFocus(Qt.OtherFocusReason);
+        captureCurrent("privacy-bluetooth-a", function () {
+            completeBluetoothPasskeyStage(page);
+        });
+    }
+
+    function completeBluetoothPasskeyStage(page) {
+        fakeWifi.nextBluetoothPairingPrompt = "enter-passkey";
+        require(fakeWifi.pairBluetooth(13) && fakeWifi.bluetoothOperation === "pairing"
+                && fakeWifi.bluetoothPairingPrompt === "enter-passkey",
+                "the same owning flow accepts a bounded passkey prompt");
+        const pairingPanel = findObject(page, "bluetoothPairingPanel");
+        const pairingInput = findObject(page, "bluetoothPairingInput");
+        const pairingBoundary = pairingInput === null ? null : pairingInput.parent.parent;
+        require(pairingPanel !== null && pairingInput !== null && pairingBoundary !== null
+                && pairingBoundary.semanticName === "Bluetooth passkey",
+                "passkey input keeps a purpose-only accessibility boundary");
+        pairingInput.text = privacyCorpus.bluetoothPasskey;
+        recordSecretAccessibility("bluetooth-passkey", pairingInput, pairingBoundary);
+        require(pairingPanel.submitInput() && pairingInput.text === ""
+                && fakeWifi.lastBluetoothSecretLength === privacyCorpus.bluetoothPasskey.length
+                && fakeWifi.bluetoothOperationResult === "paired-connected",
+                "passkey submits once and clears at the owning terminal path");
+        requireMinimalMotion("privacy-bluetooth-b");
+        page.contentY = 0;
+        controlCenter.contentItem.forceActiveFocus(Qt.OtherFocusReason);
+        captureCurrent("privacy-bluetooth-b", function () {
+            completeBluetoothStage(page);
+        });
+    }
+
+    function completeBluetoothStage(page) {
+        fakeWifi.nextBluetoothPairingPrompt = "enter-pin";
+        require(fakeWifi.pairBluetooth(13), "Bluetooth cancellation opens a current prompt");
+        const pairingInput = findObject(page, "bluetoothPairingInput");
+        pairingInput.text = "731";
+        page.clearPrivateState();
+        require(fakeWifi.cancelBluetoothPairing() && pairingInput.text === ""
+                && fakeWifi.bluetoothOperation === "idle" && fakeWifi.bluetoothPairingPrompt
+                === "none",
+                "Bluetooth cancellation clears pairing input and service-owned prompt state");
         require(page.requestUnpair(12, "Fixture Keyboard") && page.confirmUnpair()
                 && fakeWifi.lastOperation === "bluetooth-unpair" && fakeWifi.lastToken === 12,
                 "unpair requires an explicit confirmation and selected opaque token");
@@ -535,6 +875,17 @@ ShellRoot {
                 === "Wallpapers" && page.childDirectories().length === 1 && page.filteredImages(
                     ).length === 1,
                 "Wallpaper opens lazy interest with bounded breadcrumb navigation and filtering");
+        require(fakeWallpaper.installPrivateRecord(privacyCorpus.wallpaperPath,
+                                                   privacyCorpus.wallpaperDigest)
+                && fakeWallpaper.images[0].sourcePath === privacyCorpus.wallpaperPath
+                && fakeWallpaper.images[0].digest === privacyCorpus.wallpaperDigest
+                && page.selectImage(fakeWallpaper.images[0]) && fakeWallpaper.preview !== null,
+                "wallpaper path and digest cross the owning library and preview flow");
+        require(fakeWallpaper.cancelPreview(), "private wallpaper preview cancellation succeeds");
+        page.selectedLibraryId = "";
+        fakeWallpaper.clearPrivateRecord();
+        requireCorpusAbsent(JSON.stringify(fakeWallpaper.images),
+                            "cleaned wallpaper library projection");
         const filter = findObject(page, "wallpaperFilterInput");
         require(filter !== null, "Wallpaper exposes a keyboard-focusable image filter");
         filter.forceActiveFocus(Qt.TabFocusReason);
@@ -558,6 +909,14 @@ ShellRoot {
         require(page.requestApply() && fakeWallpaper.applySuccess,
                 "confirmed Apply targets every active display through the shared service");
         captureCurrent("sidebar-wallpaper", function () {
+            require(fakeHost.queueDisplayEvent(privacyCorpus.displayMetadata,
+                                               privacyCorpus.rawDbus)
+                    && fakeHost.pendingDisplayEvent.metadata === privacyCorpus.displayMetadata
+                    && fakeHost.pendingDisplayEvent.rawPayload === privacyCorpus.rawDbus
+                    && fakeHost.publishDisplayEvent() && fakeHost.pendingDisplayEvent === null,
+                    "display metadata and raw D-Bus payload cross the owning topology event");
+            requireCorpusAbsent(JSON.stringify(fakeHost.privacyState()),
+                                "normalized display topology projection");
             require(controlCenter.open("displays", tokenB) && controlCenter.currentPageId
                     === "displays", "leaving Wallpaper loads Displays through the same singleton");
             test.stage = "displays-after-wallpaper";
@@ -571,13 +930,16 @@ ShellRoot {
         const displaysPage = controlCenter.loadedPageItem;
         require(displaysPage !== null && displaysPage.contentHeight < displaysPage.height,
                 "tall tiled windows keep display rows packed at the top");
-        requireSectionHierarchy(displaysPage, [{
-                                                  "name": "displaysActiveSection",
-                                                  "separated": false
-                                              }, {
-                                                  "name": "displaysRememberedSection",
-                                                  "separated": true
-                                              }], "Displays");
+        requireSectionHierarchy(displaysPage, [
+                                    {
+                                        "name": "displaysActiveSection",
+                                        "separated": false
+                                    },
+                                    {
+                                        "name": "displaysRememberedSection",
+                                        "separated": true
+                                    }
+                                ], "Displays");
         captureCurrent("sidebar-displays", function () {
             test.requestedTallHeight = Math.min(1200, controlCenter.maximumSize.height);
             test.requestedTiledWidth = Math.min(1200, controlCenter.maximumSize.width);
@@ -630,7 +992,8 @@ ShellRoot {
         const aboutRoute = findObject(controlCenter.contentItem, "controlCenterSidebarRoute-about");
         const displaysRoute = findObject(controlCenter.contentItem,
                                          "controlCenterSidebarRoute-displays");
-        const islandRoute = findObject(controlCenter.contentItem, "controlCenterSidebarRoute-island");
+        const islandRoute = findObject(controlCenter.contentItem,
+                                       "controlCenterSidebarRoute-island");
         require(aboutRoute !== null && displaysRoute !== null && islandRoute !== null
                 && aboutRoute.activeFocus && aboutRoute.Accessible.name === "About"
                 && aboutRoute.Accessible.description === "Open About",
@@ -649,11 +1012,8 @@ ShellRoot {
         require(diagnostic.indexOf("Nagi Shell 0.1.0") === 0 && diagnostic.indexOf(
                     "Settings schema: 3") !== -1 && diagnostic.indexOf("Wi-Fi: unavailable") !== -1,
                 "About diagnostic exposes exact allowlisted component states");
-        const forbidden = ["SensitiveSSID", "/home/test", "secret-value", "12345", "executable"];
-        for (let index = 0; index < forbidden.length; index += 1) {
-            require(diagnostic.indexOf(forbidden[index]) === -1,
-                    "diagnostic excludes forbidden identity and content data");
-        }
+        privacyDiagnostic = diagnostic;
+        requireCorpusAbsent(diagnostic, "About diagnostic identity and content allowlist");
         captureCurrent("sidebar-about", function () {
             controlCenter.closeWindow();
             controlCenter.implicitWidth = Theme.size.controlCenterMinimumWidth;
@@ -721,8 +1081,8 @@ ShellRoot {
                         "recovery confirmation receives deterministic initial focus");
                 cancelButton.clicked();
                 Qt.callLater(function () {
-                    require(UserConfig.recoveryRequired
-                            && !controlCenter.settingsRecoveryConfirmationVisible
+                    require(UserConfig.recoveryRequired &&
+                            !controlCenter.settingsRecoveryConfirmationVisible
                             && resetButton.visible && resetButton.activeFocus,
                             "cancel returns focus without changing invalid settings");
                     resetButton.clicked();
@@ -760,9 +1120,9 @@ ShellRoot {
 
     function rehomedStage() {
         const routePrefix = controlCenter.layoutMode === "sidebar" ? "controlCenterSidebarRoute-" :
-                                                                         "controlCenterCompactRoute-";
-        const activeRoute = findObject(controlCenter.contentItem,
-                                       routePrefix + controlCenter.currentPageId);
+                                                                     "controlCenterCompactRoute-";
+        const activeRoute = findObject(controlCenter.contentItem, routePrefix
+                                       + controlCenter.currentPageId);
         require(activeRoute !== null && activeRoute.visible && activeRoute.activeFocus,
                 "display loss restores one visible valid Control Center focus target");
         controlCenter.closeWindow();
@@ -775,12 +1135,27 @@ ShellRoot {
         require(controlCenter.currentPageId === "displays" && controlCenter.screen
                 === Quickshell.screens[0],
                 "missing routes fall back deterministically through pointer routing");
-        controlCenter.closeWindow();
+        if (UserConfig._writeInProgress || UserConfig._writeCandidate !== null
+                || UserConfig._pendingLastGoodSnapshot !== null) {
+            settle.restart();
+            return;
+        }
+        const defaults = UserConfig.defaultSnapshot(0);
+        require(UserConfig.snapshotKey(UserConfig._persistedSnapshot) === UserConfig.snapshotKey(
+                    defaults),
+                "final reload cleanup persists only the default normalized configuration");
+        const unloadCountBeforeNativeClose = unloadRequestCount;
+        controlCenter.visible = false;
+        controlCenter.closed();
+        require(unloadRequestCount === unloadCountBeforeNativeClose + 1
+                && controlCenter.closeUnloadRequested,
+                "native window close unloads the Control Center after visibility is already false");
         for (let index = 0; index < controls.length; index += 1) {
             controls[index].destroy();
         }
-        console.log("control center tests passed");
-        Qt.exit(0);
+        controls = [];
+        finalizePrivacyState();
+        writePrivacyArtifacts();
     }
 
     function runStage() {
@@ -802,6 +1177,12 @@ ShellRoot {
             break;
         case "weather":
             weatherStage();
+            break;
+        case "weather-private-persisted":
+            weatherPrivatePersistedStage();
+            break;
+        case "weather-private-cleared":
+            weatherPrivateClearedStage();
             break;
         case "notifications":
             notificationsStage();
@@ -861,6 +1242,7 @@ ShellRoot {
         property var rememberedDisplays: []
         property string lastFailure: ""
         property bool rejectChanges: false
+        property var pendingDisplayEvent: null
 
         function routeSurfaceToken(excludedToken) {
             return test.tokenA;
@@ -889,6 +1271,42 @@ ShellRoot {
                           });
             }
             return rows;
+        }
+
+        function queueDisplayEvent(metadata, rawPayload) {
+            if (typeof metadata !== "string" || typeof rawPayload !== "string"
+                    || pendingDisplayEvent !== null) {
+                return false;
+            }
+            pendingDisplayEvent = {
+                "metadata": metadata,
+                "rawPayload": rawPayload
+            };
+            return true;
+        }
+
+        function publishDisplayEvent() {
+            if (pendingDisplayEvent === null) {
+                return false;
+            }
+            revision += 1;
+            pendingDisplayEvent = null;
+            return true;
+        }
+
+        function clearPrivateState() {
+            pendingDisplayEvent = null;
+            lastFailure = "";
+        }
+
+        function privacyState() {
+            return {
+                "pendingDisplayEvent": pendingDisplayEvent,
+                "revision": revision,
+                "enabledDisplayCount": enabledDisplayCount,
+                "rememberedDisplayCount": rememberedDisplays.length,
+                "lastFailure": lastFailure
+            };
         }
 
         function setEnabled(screen, enabled) {
@@ -920,12 +1338,50 @@ ShellRoot {
 
     QtObject {
         id: fakeMedia
+        property var pendingApplication: null
         property var availableApplications: [
             {
                 "label": "Fixture Player",
                 "value": "fixture"
             }
         ]
+
+        function queueApplicationEvent(executable, pid) {
+            if (typeof executable !== "string" || !Number.isInteger(pid) || pendingApplication
+                    !== null) {
+                return false;
+            }
+            pendingApplication = {
+                "executable": executable,
+                "pid": pid
+            };
+            return true;
+        }
+
+        function publishApplicationEvent() {
+            if (pendingApplication === null) {
+                return false;
+            }
+            availableApplications = [
+                        {
+                            "label": "Fixture Player",
+                            "value": "fixture"
+                        }
+                    ];
+            pendingApplication = null;
+            return true;
+        }
+
+        function clearPrivateState() {
+            pendingApplication = null;
+        }
+
+        function privacyState() {
+            return {
+                "pendingApplication": pendingApplication,
+                "availableApplications": availableApplications
+            };
+        }
     }
 
     QtObject {
@@ -942,21 +1398,65 @@ ShellRoot {
         property var results: []
         property string failure: "none"
         property string attribution: "Location data by GeoNames via Open-Meteo · CC BY 4.0"
-        function search(query) {
-            if (query !== "Paris")
+        property string providerBody: ""
+        property var queuedResponse: null
+
+        function queueProviderResponse(label, latitude, longitude, body) {
+            if (typeof label !== "string" || typeof latitude !== "number" || typeof longitude
+                    !== "number" || typeof body !== "string" || queuedResponse !== null) {
                 return false;
-            results = [
-                        {
-                            "label": "Paris, France",
-                            "latitude": 48.8534,
-                            "longitude": 2.3488
-                        }
-                    ];
+            }
+            queuedResponse = {
+                "label": label,
+                "latitude": latitude,
+                "longitude": longitude,
+                "body": body
+            };
             return true;
         }
+
+        function search(query) {
+            if (query === "Paris") {
+                results = [
+                            {
+                                "label": "Paris, France",
+                                "latitude": 48.8534,
+                                "longitude": 2.3488
+                            }
+                        ];
+                providerBody = "";
+                return true;
+            }
+            if (query !== "private fixture" || queuedResponse === null) {
+                return false;
+            }
+            results = [
+                        {
+                            "label": queuedResponse.label,
+                            "latitude": queuedResponse.latitude,
+                            "longitude": queuedResponse.longitude
+                        }
+                    ];
+            providerBody = queuedResponse.body;
+            queuedResponse = null;
+            return true;
+        }
+
         function clear() {
             results = [];
+            providerBody = "";
+            queuedResponse = null;
             failure = "none";
+        }
+
+        function privacyState() {
+            return {
+                "inFlight": inFlight,
+                "results": results,
+                "failure": failure,
+                "providerBody": providerBody,
+                "queuedResponse": queuedResponse
+            };
         }
     }
     QtObject {
@@ -968,7 +1468,9 @@ ShellRoot {
         property bool wifiBusy: false
         property bool wifiScanning: false
         property bool wifiManagerOpen: false
-        property int lastSecretLength: 0
+        property int lastWifiSecretLength: 0
+        property int lastSsidLength: 0
+        property int lastBluetoothSecretLength: 0
         property int lastToken: 0
         property bool lastRemember: false
         property string lastOperation: ""
@@ -1068,6 +1570,7 @@ ShellRoot {
         property string bluetoothPairingValue: ""
         property int bluetoothPairingEntered: 0
         property int bluetoothPairingToken: 0
+        property string nextBluetoothPairingPrompt: "enter-pin"
 
         function setWifiManagerOpen(open) {
             wifiManagerOpen = open;
@@ -1083,14 +1586,15 @@ ShellRoot {
         function connectWifi(token, secret, remember) {
             lastOperation = "connect";
             lastToken = token;
-            lastSecretLength = secret.length;
+            lastWifiSecretLength = secret.length;
             lastRemember = remember;
             return true;
         }
         function connectHiddenWifi(ssid, security, secret, remember) {
             lastOperation = "hidden-connect";
             lastToken = 0;
-            lastSecretLength = secret.length;
+            lastSsidLength = ssid.length;
+            lastWifiSecretLength = secret.length;
             lastRemember = remember;
             return true;
         }
@@ -1115,6 +1619,31 @@ ShellRoot {
             }
             return true;
         }
+        function installPrivateBluetoothDevice(address, name) {
+            if (typeof address !== "string" || typeof name !== "string" || bluetoothDevices.length
+                    !== 3) {
+                return false;
+            }
+            const devices = bluetoothDevices.slice();
+            devices[2] = Object.assign({}, devices[2], {
+                                           "address": address,
+                                           "name": name
+                                       });
+            bluetoothDevices = devices;
+            return true;
+        }
+        function clearPrivateBluetoothDevice() {
+            if (bluetoothDevices.length !== 3) {
+                return;
+            }
+            const devices = bluetoothDevices.slice();
+            const cleaned = Object.assign({}, devices[2], {
+                                              "name": "Fixture Phone"
+                                          });
+            delete cleaned.address;
+            devices[2] = cleaned;
+            bluetoothDevices = devices;
+        }
         function requestBluetoothEnabled(enabled) {
             bluetoothEnabled = enabled;
             return true;
@@ -1138,13 +1667,15 @@ ShellRoot {
             bluetoothDiscovering = false;
             bluetoothOperation = "pairing";
             bluetoothOperationGeneration += 1;
-            bluetoothPairingPrompt = "enter-pin";
+            bluetoothPairingPrompt = nextBluetoothPairingPrompt;
+            nextBluetoothPairingPrompt = "enter-pin";
             bluetoothPairingToken = token;
             return true;
         }
         function respondBluetoothPairing(accepted, response) {
-            lastSecretLength = response.length;
+            lastBluetoothSecretLength = response.length;
             bluetoothPairingPrompt = "none";
+            bluetoothPairingValue = "";
             bluetoothPairingToken = 0;
             bluetoothOperation = "idle";
             bluetoothOperationResult = accepted ? "paired-connected" : "cancelled";
@@ -1154,6 +1685,7 @@ ShellRoot {
             bluetoothOperation = "idle";
             bluetoothOperationResult = "cancelled";
             bluetoothPairingPrompt = "none";
+            bluetoothPairingValue = "";
             bluetoothPairingToken = 0;
             return true;
         }
@@ -1171,6 +1703,34 @@ ShellRoot {
             lastOperation = "bluetooth-unpair";
             lastToken = token;
             return true;
+        }
+
+        function clearPrivateState() {
+            setWifiManagerOpen(false);
+            setBluetoothManagerOpen(false);
+            clearPrivateBluetoothDevice();
+            lastWifiSecretLength = 0;
+            lastSsidLength = 0;
+            lastBluetoothSecretLength = 0;
+            lastRemember = false;
+            bluetoothPairingValue = "";
+            bluetoothPairingEntered = 0;
+            nextBluetoothPairingPrompt = "enter-pin";
+        }
+
+        function privacyState() {
+            return {
+                "wifiManagerOpen": wifiManagerOpen,
+                "wifiNetworks": wifiNetworks,
+                "lastWifiSecretLength": lastWifiSecretLength,
+                "lastSsidLength": lastSsidLength,
+                "bluetoothManagerOpen": bluetoothManagerOpen,
+                "bluetoothDevices": bluetoothDevices,
+                "lastBluetoothSecretLength": lastBluetoothSecretLength,
+                "bluetoothPairingPrompt": bluetoothPairingPrompt,
+                "bluetoothPairingValue": bluetoothPairingValue,
+                "bluetoothPairingToken": bluetoothPairingToken
+            };
         }
     }
 
@@ -1242,10 +1802,44 @@ ShellRoot {
         property bool applySuccess: false
         property bool applyPartial: false
         property var applyResults: []
+        property var savedImages: []
+        property var privateRecord: null
 
         function setPageOpen(open, roots) {
             pageOpen = open;
             return true;
+        }
+        function installPrivateRecord(path, digest) {
+            if (typeof path !== "string" || typeof digest !== "string" || privateRecord !== null) {
+                return false;
+            }
+            savedImages = images;
+            privateRecord = {
+                "id": "i222222222222222222222222",
+                "path": path,
+                "digest": digest
+            };
+            images = [
+                        {
+                            "id": privateRecord.id,
+                            "directoryId": "d000000000000000000000000",
+                            "name": "Imported fixture image",
+                            "sourcePath": path,
+                            "digest": digest,
+                            "byteSize": 12288,
+                            "modifiedMs": 3,
+                            "width": 1920,
+                            "height": 1080
+                        }
+                    ];
+            return true;
+        }
+        function clearPrivateRecord() {
+            privateRecord = null;
+            if (savedImages.length > 0) {
+                images = savedImages;
+                savedImages = [];
+            }
         }
         function refreshLibrary(roots) {
             libraryGeneration += 1;
@@ -1258,6 +1852,11 @@ ShellRoot {
             return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
         }
         function previewImage(identity) {
+            if (privateRecord !== null && identity === privateRecord.id && (privateRecord.path === ""
+                                                                            || privateRecord.digest
+                                                                            === "")) {
+                return false;
+            }
             preview = {
                 "status": "ready",
                 "id": "c000000000000000000000000",
@@ -1296,13 +1895,61 @@ ShellRoot {
             previewGeneration += 1;
             return true;
         }
+
+        function clearPrivateState() {
+            pageOpen = false;
+            cancelPreview();
+            clearPrivateRecord();
+            applyStatus = "idle";
+            applySuccess = false;
+            applyPartial = false;
+            applyResults = [];
+        }
+
+        function privacyState() {
+            return {
+                "pageOpen": pageOpen,
+                "screens": screens,
+                "directories": directories,
+                "images": images,
+                "preview": preview,
+                "privateRecord": privateRecord,
+                "applyStatus": applyStatus,
+                "applyResults": applyResults
+            };
+        }
     }
 
     QtObject {
         id: fakeNotifications
-        property int historyCount: 1
+        property var history: [
+            {
+                "sender": "Fixture sender",
+                "body": "Fixture body"
+            }
+        ]
+        readonly property int historyCount: history.length
+
+        function admit(sender, body) {
+            if (typeof sender !== "string" || typeof body !== "string") {
+                return false;
+            }
+            history = history.concat([
+                                         {
+                                             "sender": sender,
+                                             "body": body
+                                         }
+                                     ]).slice(-50);
+            return true;
+        }
         function clearHistory() {
-            historyCount = 0;
+            history = [];
+        }
+        function privacyState() {
+            return {
+                "history": history,
+                "historyCount": historyCount
+            };
         }
     }
 
@@ -1318,6 +1965,7 @@ ShellRoot {
         locationSearch: fakeLocationSearch
         wifi: fakeWifi
         wallpaper: fakeWallpaper
+        reducedMotion: Theme.motion.effectiveMode === "minimal"
         capabilities: ({
                            "displayRouting": true,
                            "audio": false,
@@ -1326,13 +1974,9 @@ ShellRoot {
                            "wifi": false,
                            "bluetooth": false,
                            "notifications": false,
-                           "weather": false,
-                           "ssid": "SensitiveSSID",
-                           "path": "/home/test",
-                           "secret": "secret-value",
-                           "pid": 12345,
-                           "executable": "qs"
+                           "weather": false
                        })
+        onUnloadRequested: test.unloadRequestCount += 1
     }
 
     Component {
@@ -1371,6 +2015,39 @@ ShellRoot {
         onSaveFailed: test.fail("invalid settings fixture write failed")
     }
 
+    FileView {
+        id: diagnosticArtifactWriter
+        path: test.privacyArtifactDirectory === "" ? "" : test.privacyArtifactDirectory
+                                                     + "/diagnostic.txt"
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+        onSaved: test.privacyArtifactSaved()
+        onSaveFailed: test.fail("safe diagnostic artifact write failed")
+    }
+
+    FileView {
+        id: snapshotArtifactWriter
+        path: test.privacyArtifactDirectory === "" ? "" : test.privacyArtifactDirectory
+                                                     + "/ipc-snapshot.json"
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+        onSaved: test.privacyArtifactSaved()
+        onSaveFailed: test.fail("safe IPC snapshot artifact write failed")
+    }
+
+    FileView {
+        id: accessibilityArtifactWriter
+        path: test.privacyArtifactDirectory === "" ? "" : test.privacyArtifactDirectory
+                                                     + "/accessibility.json"
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+        onSaved: test.privacyArtifactSaved()
+        onSaveFailed: test.fail("accessibility artifact write failed")
+    }
+
     Timer {
         id: settle
         interval: 80
@@ -1384,6 +2061,8 @@ ShellRoot {
     }
 
     Component.onCompleted: {
+        require(captureDirectory !== "" && privacyArtifactDirectory !== "",
+                "private runner exposes capture and artifact directories");
         require(Quickshell.screens.length >= 2, "two virtual screens are available");
         settle.start();
     }

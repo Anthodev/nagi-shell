@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "qml"
 
@@ -17,6 +18,41 @@ ShellRoot {
     property var sharedSecondCap: null
     property var sharedThirdCap: null
     property var sharedFourthCap: null
+    property var weatherInstances: []
+    property int schedulingDisplayCount: 0
+    property int schedulingExpectedRequests: -1
+    property string schedulingCacheFileName: ""
+    property string schedulingCachePath: ""
+    property var schedulingCapture: null
+    property var schedulingAdapter: null
+    property bool schedulingCorruptWritePending: false
+    property int schedulingLocationVariant: 0
+    property int schedulingDecisionIndex: 0
+    property bool schedulingWaitingForCacheSave: false
+    property real schedulingExpiresAt: 0
+    property real schedulingValidatedAt: 0
+    property real schedulingLastManualRefreshAt: 0
+    property string schedulingExpectedUrl: ""
+    property string schedulingCacheValidator: ""
+    property var schedulingWarningKeys: ({})
+    readonly property var schedulingDecisionKinds: Object.freeze([
+                                                                      "expiry-boundary",
+                                                                      "expiry-request",
+                                                                      "expiry-success",
+                                                                      "manual-blocked",
+                                                                      "manual-request",
+                                                                      "manual-success",
+                                                                      "failure-request",
+                                                                      "backoff-completion",
+                                                                      "backoff-early",
+                                                                      "provider-recovery",
+                                                                      "stale-cutoff",
+                                                                      "stale-recovery",
+                                                                      "location-replacement",
+                                                                      "location-success",
+                                                                      "permanent-failure",
+                                                                      "provider-version-recovery"
+                                                                  ])
 
     function require(condition, message) {
         if (!condition) {
@@ -56,6 +92,35 @@ ShellRoot {
             "record": record,
             "transport": transport
         };
+    }
+
+    function schedulingUrl(latitude, longitude) {
+        return "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat="
+                + Number(latitude).toFixed(4) + "&lon=" + Number(longitude).toFixed(4);
+    }
+
+    function newSchedulingCapture() {
+        const capture = newCapture(null);
+        const create = capture.transport.create;
+        capture.transport.create = function (request) {
+            const validator = test.schedulingCacheValidator;
+            const requestValidator = request.headers["If-Modified-Since"];
+            require(request.url === test.schedulingExpectedUrl,
+                    "weather soak request uses only the active location identity");
+            require(validator === "" ? requestValidator === undefined :
+                                       requestValidator === validator,
+                    "weather soak request uses only the active cache validator");
+            request.soakExpectedLocation = test.schedulingExpectedUrl;
+            request.soakExpectedValidator = validator;
+            return create(request);
+        };
+        return capture;
+    }
+
+    function markSchedulingWarning(key) {
+        const keys = Object.assign({}, schedulingWarningKeys);
+        keys[key] = true;
+        schedulingWarningKeys = keys;
     }
 
     function metEntry(offsetMs, temperature, symbolCode, humidity, windMs) {
@@ -124,7 +189,40 @@ ShellRoot {
             properties[key] = overrides[key];
         }
 
-        return weatherFactory.createObject(test, properties);
+        const adapter = weatherFactory.createObject(test, properties);
+        require(adapter !== null, "weather fixture creates an adapter");
+        const tracked = weatherInstances.slice();
+        tracked.push(adapter);
+        weatherInstances = tracked;
+        return adapter;
+    }
+
+    function destroyWeather(adapter) {
+        if (adapter === null || adapter === undefined) {
+            return;
+        }
+        const retained = [];
+        for (let index = 0; index < weatherInstances.length; index += 1) {
+            if (weatherInstances[index] !== adapter) {
+                retained.push(weatherInstances[index]);
+            }
+        }
+        weatherInstances = retained;
+        adapter.destroy();
+    }
+
+    function destroyTrackedWeather() {
+        const tracked = weatherInstances;
+        weatherInstances = [];
+        for (let index = 0; index < tracked.length; index += 1) {
+            if (tracked[index] !== null && tracked[index] !== undefined) {
+                tracked[index].destroy();
+            }
+        }
+        sharedFirst = null;
+        sharedSecond = null;
+        sharedThird = null;
+        sharedFourth = null;
     }
 
     function makeLookup(overrides) {
@@ -275,7 +373,7 @@ ShellRoot {
             "condition": weather.condition,
             "dayPhase": weather.dayPhase
         };
-        weather.destroy();
+        destroyWeather(weather);
         return result;
     }
 
@@ -847,6 +945,352 @@ ShellRoot {
         afterSaved(sharedThird, runCacheClearedStage);
     }
 
+
+    function outstandingSchedulingRequests() {
+        let count = 0;
+        for (let index = 0; index < schedulingCapture.record.requests.length; index += 1) {
+            if (schedulingCapture.record.requests[index].soakCompleted !== true) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    function completeSchedulingRequest(outcome) {
+        const requests = schedulingCapture.record.requests;
+        require(requests.length > 0, "weather soak has a request to complete");
+        const request = requests[requests.length - 1];
+        require(request.soakCompleted !== true,
+                "weather soak completes each request generation exactly once");
+        request.soakCompleted = true;
+        request.onCompleted(outcome);
+    }
+
+    function schedulingSuccess(status, condition, marker) {
+        return ok(status, metBody([metEntry(-600000, 12.5, condition)]), 600000, marker);
+    }
+
+    function requireSchedulingInvariants(label) {
+        const adapter = schedulingAdapter;
+        const outstanding = outstandingSchedulingRequests();
+        require(weatherInstances.length === 1 && weatherInstances[0] === adapter,
+                label + " retains one process-wide weather scheduler instance");
+        require(outstanding <= 1 && adapter.refreshInFlight === (outstanding === 1),
+                label + " retains at most one matching in-flight request");
+        require(adapter.requestCount === schedulingCapture.record.requests.length,
+                label + " keeps the adapter and transport request totals identical");
+        require(schedulingExpectedUrl !== "" && typeof schedulingCacheValidator === "string",
+                label + " retains one explicit location/cache identity");
+        const warningKeys = Object.keys(schedulingWarningKeys).sort();
+        const supportedWarningKeys = ["cache-size", "deprecated", "unknown-symbol"];
+
+        require(warningKeys.length <= supportedWarningKeys.length,
+                label + " keeps scheduler warnings bounded");
+        for (let index = 0; index < warningKeys.length; index += 1) {
+            require(supportedWarningKeys.indexOf(warningKeys[index]) >= 0,
+                    label + " retains only a fixed warning identity");
+        }
+        require(adapter.hourly.length <= 12 && adapter.daily.length <= 5,
+                label + " keeps forecast projections bounded");
+    }
+
+    function schedulingExpiryAfter(deltaMs) {
+        return Date.parse(new Date(nowMs + deltaMs).toUTCString());
+    }
+
+    function runSchedulingDecision(decision, kind) {
+        const adapter = schedulingAdapter;
+        let requestsBefore = schedulingCapture.record.requests.length;
+
+        if (kind === "corrupt-cache-startup") {
+            require(!adapter.available && adapter.failure === "none",
+                    "corrupt-cache startup rejects the record without publishing stale state");
+            require(requestsBefore <= 1,
+                    "corrupt-cache startup admits at most one automatic refresh");
+            if (!adapter.refreshInFlight) {
+                nowMs = Math.max(nowMs, adapter.nextRequestAt);
+                adapter.refreshDeadlineReached();
+            }
+            require(schedulingCapture.record.requests.length === 1 && adapter.refreshInFlight,
+                    "corrupt-cache startup retains one unconditional recovery request");
+            completeSchedulingRequest(schedulingSuccess(203, "mysterycode",
+                                                        "SOAK-CORRUPT-START"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-CORRUPT-START";
+            markSchedulingWarning("unknown-symbol");
+            markSchedulingWarning("deprecated");
+            require(adapter.available && adapter.failure === "none",
+                    "corrupt-cache startup recovers through a valid provider generation");
+        } else if (kind === "expiry-boundary") {
+            require(schedulingValidatedAt > 0 && schedulingExpiresAt > schedulingValidatedAt,
+                    "expiry decision starts from one cache identity");
+            requestsBefore = schedulingCapture.record.requests.length;
+            nowMs = schedulingExpiresAt - 1;
+            adapter.localDeadlineReached();
+            adapter.refreshDeadlineReached();
+            require(adapter.available && !adapter.stale
+                    && schedulingCapture.record.requests.length === requestsBefore,
+                    "the instant before expiry stays fresh and performs no request: available="
+                    + adapter.available + " stale=" + adapter.stale + " requests="
+                    + schedulingCapture.record.requests.length + " expected=" + requestsBefore
+                    + " next=" + adapter.nextRequestAt + " now=" + nowMs);
+            nowMs = schedulingExpiresAt;
+            adapter.localDeadlineReached();
+            adapter.refreshDeadlineReached();
+            require(adapter.available && adapter.stale
+                    && schedulingCapture.record.requests.length === requestsBefore,
+                    "provider expiry marks local state stale without bypassing the refresh schedule");
+        } else if (kind === "expiry-request") {
+            nowMs = adapter.nextRequestAt;
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1
+                    && adapter.refreshInFlight,
+                    "scheduled expiry opens exactly one conditional request");
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1,
+                    "scheduled expiry deduplicates while the request is in flight");
+        } else if (kind === "expiry-success") {
+            completeSchedulingRequest({
+                                                  "status": 304,
+                                                  "headers": {
+                                                      "expires": new Date(nowMs + 600000).toUTCString()
+                                                  },
+                                                  "bodyText": ""
+                                              });
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            require(adapter.available && !adapter.stale && adapter.failure === "none",
+                    "successful conditional completion refreshes cached state");
+        } else if (kind === "manual-blocked") {
+            require(!adapter.manualRefreshAvailable && !adapter.manualRefresh()
+                    && schedulingCapture.record.requests.length === requestsBefore,
+                    "manual cooldown rejects a premature refresh without queueing");
+        } else if (kind === "manual-request") {
+            nowMs = adapter.nextManualRefreshAt;
+            adapter.manualRefreshDeadlineReached();
+            require(adapter.manualRefreshAvailable && adapter.manualRefresh()
+                    && schedulingCapture.record.requests.length === requestsBefore + 1
+                    && adapter.refreshInFlight,
+                    "manual cooldown opens exactly one request at its deadline");
+            schedulingLastManualRefreshAt = nowMs;
+        } else if (kind === "manual-success") {
+            completeSchedulingRequest(schedulingSuccess(200, "clear", "SOAK-MANUAL"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-MANUAL";
+            require(adapter.available && adapter.failure === "none"
+                    && adapter.nextManualRefreshAt >= schedulingLastManualRefreshAt + 60000,
+                    "manual completion rearms the bounded cooldown");
+        } else if (kind === "failure-request") {
+            nowMs = adapter.nextRequestAt;
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1
+                    && adapter.refreshInFlight,
+                    "retry scenario starts one scheduled request");
+        } else if (kind === "backoff-completion") {
+            completeSchedulingRequest({
+                                                  "networkError": true
+                                              });
+            require(adapter.failure === "transient" && adapter.nextRequestAt > nowMs,
+                    "provider failure enters the bounded retry ladder");
+        } else if (kind === "backoff-early") {
+            nowMs = adapter.nextRequestAt - 1;
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore,
+                    "retry backoff rejects the decision immediately before its deadline");
+        } else if (kind === "provider-recovery") {
+            nowMs = adapter.nextRequestAt;
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1,
+                    "provider recovery starts at the retry deadline");
+            completeSchedulingRequest(schedulingSuccess(200, "partlycloudy_day",
+                                                        "SOAK-RECOVERY"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-RECOVERY";
+            require(adapter.available && adapter.failure === "none",
+                    "provider recovery clears the transient failure generation");
+        } else if (kind === "stale-cutoff") {
+            require(schedulingValidatedAt > 0 && schedulingCacheValidator !== "",
+                    "stale cutoff starts from one cached generation");
+            nowMs = schedulingValidatedAt + 21600001;
+            adapter.localDeadlineReached();
+            schedulingExpiresAt = 0;
+            schedulingValidatedAt = 0;
+            schedulingCacheValidator = "";
+            require(!adapter.available && adapter.failure === "stale",
+                    "six-hour stale cutoff clears model and cache identity");
+        } else if (kind === "stale-recovery") {
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1,
+                    "stale cutoff recovery is one unconditional request");
+            completeSchedulingRequest(schedulingSuccess(200, "rain", "SOAK-STALE-RECOVERY"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-STALE-RECOVERY";
+            require(adapter.available && adapter.failure === "none",
+                    "stale cutoff recovery publishes one fresh generation");
+        } else if (kind === "location-replacement") {
+            const previousUrl = schedulingExpectedUrl;
+            schedulingLocationVariant = 1 - schedulingLocationVariant;
+            const latitude = schedulingLocationVariant === 1 ? 41.3874 : 48.8566;
+            const longitude = schedulingLocationVariant === 1 ? 2.1686 : 2.3522;
+            schedulingExpectedUrl = schedulingUrl(latitude, longitude);
+            schedulingExpiresAt = 0;
+            schedulingValidatedAt = 0;
+            schedulingCacheValidator = "";
+            adapter.latitude = latitude;
+            adapter.longitude = longitude;
+            adapter.label = schedulingLocationVariant === 1 ? "Replacement Barcelona" :
+                                                               "Replacement Paris";
+            adapter.applyLocation();
+            require(schedulingExpectedUrl !== previousUrl && !adapter.available,
+                    "location replacement retires the previous cache generation atomically");
+            nowMs = Math.max(nowMs, adapter.nextRequestAt);
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1
+                    && adapter.refreshInFlight,
+                    "location replacement starts one request without stale cache validators");
+        } else if (kind === "location-success") {
+            completeSchedulingRequest(schedulingSuccess(203, "mysterycode",
+                                                        "SOAK-LOCATION"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-LOCATION";
+            markSchedulingWarning("unknown-symbol");
+            markSchedulingWarning("deprecated");
+            require(adapter.available && adapter.failure === "none",
+                    "location replacement publishes one normalized provider generation");
+        } else if (kind === "permanent-failure") {
+            nowMs = adapter.nextRequestAt;
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1,
+                    "permanent provider verdict follows one scheduled request");
+            completeSchedulingRequest(ok(404, "gone", 60000, ""));
+            require(adapter.failure === "permanent" && !adapter.available
+                    && adapter.nextRequestAt === 0,
+                    "permanent provider verdict stops retries for that version");
+        } else if (kind === "provider-version-recovery") {
+            adapter.version = "0.2." + decision;
+            adapter.applyLocation();
+            nowMs = Math.max(nowMs, adapter.nextRequestAt);
+            adapter.refreshDeadlineReached();
+            require(schedulingCapture.record.requests.length === requestsBefore + 1,
+                    "provider version replacement restarts a permanent location");
+            completeSchedulingRequest(schedulingSuccess(200, "clear",
+                                                        "SOAK-VERSION-RECOVERY"));
+            schedulingExpiresAt = schedulingExpiryAfter(600000);
+            schedulingValidatedAt = nowMs;
+            schedulingCacheValidator = "SOAK-VERSION-RECOVERY";
+            require(adapter.available && adapter.failure === "none",
+                    "provider version replacement recovers normalized state");
+        } else {
+            require(false, "unknown scheduling decision " + kind);
+        }
+
+        requireSchedulingInvariants("weather decision " + decision + " (" + kind + ")");
+    }
+
+    function schedulingDecisionWritesCache(kind) {
+        return kind === "corrupt-cache-startup" || kind === "expiry-success"
+                || kind === "manual-success" || kind === "provider-recovery"
+                || kind === "stale-cutoff" || kind === "stale-recovery"
+                || kind === "location-replacement" || kind === "location-success"
+                || kind === "provider-version-recovery";
+    }
+
+    function finishSchedulingTable() {
+        require(Object.keys(schedulingWarningKeys).sort().join(",")
+                === "deprecated,unknown-symbol",
+                "repeated provider warnings retain exactly the two exercised bounded identities");
+        require(!schedulingAdapter.refreshInFlight && outstandingSchedulingRequests() === 0,
+                "512 decisions leave no request generation in flight");
+        const requestTotal = schedulingCapture.record.requests.length;
+        if (schedulingExpectedRequests < 0) {
+            schedulingExpectedRequests = requestTotal;
+        } else {
+            require(requestTotal === schedulingExpectedRequests,
+                    "weather request totals stay independent of display count");
+        }
+
+        destroyWeather(schedulingAdapter);
+        schedulingAdapter = null;
+        schedulingCapture = null;
+        if (schedulingDisplayCount < 3) {
+            startSchedulingDisplay(schedulingDisplayCount + 1);
+            return;
+        }
+
+        console.log("weather state tests passed");
+        Qt.exit(0);
+    }
+
+    function runNextSchedulingDecision() {
+        require(schedulingAdapter !== null && !schedulingWaitingForCacheSave,
+                "weather soak advances only after the prior cache write settles");
+        if (schedulingDecisionIndex >= 512) {
+            finishSchedulingTable();
+            return;
+        }
+
+        const decision = schedulingDecisionIndex;
+        const kind = decision === 0 ? "corrupt-cache-startup" :
+                                     schedulingDecisionKinds[(decision - 1)
+                                                             % schedulingDecisionKinds.length];
+        schedulingWaitingForCacheSave = schedulingDecisionWritesCache(kind);
+        runSchedulingDecision(decision, kind);
+        schedulingDecisionIndex += 1;
+        if (!schedulingWaitingForCacheSave) {
+            Qt.callLater(test.runNextSchedulingDecision);
+        }
+    }
+
+    function continueSchedulingAfterCacheSave() {
+        if (!schedulingWaitingForCacheSave) {
+            return;
+        }
+        schedulingWaitingForCacheSave = false;
+        Qt.callLater(test.runNextSchedulingDecision);
+    }
+
+    function runSchedulingTable() {
+        schedulingExpectedUrl = schedulingUrl(48.8566, 2.3522);
+        schedulingCacheValidator = "";
+        schedulingExpiresAt = 0;
+        schedulingValidatedAt = 0;
+        schedulingLastManualRefreshAt = 0;
+        schedulingWarningKeys = {};
+        schedulingCapture = newSchedulingCapture();
+        schedulingAdapter = makeWeather({
+                                              "latitude": 48.8566,
+                                              "longitude": 2.3522,
+                                              "cacheFileName": schedulingCacheFileName,
+                                              "transport": schedulingCapture.transport
+                                          });
+        schedulingDecisionIndex = 0;
+        // Loading the corrupt seed schedules an empty replacement. Starting
+        // only after that save keeps the production FileView single-flight.
+        schedulingWaitingForCacheSave = true;
+    }
+
+    function startSchedulingDisplay(displayCount) {
+        schedulingDisplayCount = displayCount;
+        schedulingLocationVariant = 0;
+        schedulingCacheFileName = "weather-soak-" + runId + "-" + displayCount + ".json";
+        schedulingCachePath = Quickshell.shellDir + "/" + schedulingCacheFileName;
+        schedulingCorruptWritePending = true;
+        Qt.callLater(function () {
+            schedulingCacheWriter.setText("{corrupt-cache-" + displayCount);
+        });
+    }
+
+    function runSchedulingSoak() {
+        destroyTrackedWeather();
+        schedulingExpectedRequests = -1;
+        startSchedulingDisplay(1);
+    }
+
     function runCacheClearedStage() {
         sharedFourthCap = newCapture(null);
         sharedFourth = makeWeather({
@@ -860,9 +1304,40 @@ ShellRoot {
                 "a replaced location removes the previous location's cache record");
         require(sharedFourthCap.record.requests[0].headers["If-Modified-Since"] === undefined,
                 "removed records cannot produce conditional requests");
+        runSchedulingSoak();
+    }
+    Connections {
+        target: test.schedulingAdapter
+        ignoreUnknownSignals: true
 
-        console.log("weather state tests passed");
-        Qt.exit(0);
+        function onCacheSaved() {
+            test.continueSchedulingAfterCacheSave();
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: test.schedulingAdapter !== null
+        repeat: false
+        onTriggered: test.require(false, "weather soak progress timed out at decision "
+                                  + test.schedulingDecisionIndex + " waitingForCache="
+                                  + test.schedulingWaitingForCacheSave)
+    }
+
+    FileView {
+        id: schedulingCacheWriter
+
+        path: test.schedulingCachePath
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+        onSaved: {
+            if (test.schedulingCorruptWritePending) {
+                test.schedulingCorruptWritePending = false;
+                Qt.callLater(test.runSchedulingTable);
+            }
+        }
+        onSaveFailed: test.require(false, "weather soak corrupt-cache fixture write succeeds")
     }
 
     Component {

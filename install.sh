@@ -219,6 +219,7 @@ FAMILY="$(detect_family)"
 
 MISSING_CMDS=""
 MISSING_PKGS=""
+MISSING_FONTS=""
 # Both probes always return 0; absence is recorded in the globals so the
 # surrounding set -e context never treats "tool present" as a failure.
 note_missing_cmd() {
@@ -261,6 +262,12 @@ FONT_OK=0
 if command -v fc-match >/dev/null 2>&1; then
     [ "$(fc-match --format='%{family}' Inter 2>/dev/null)" = "Inter" ] && FONT_OK=1
 fi
+# A missing Inter font is a prerequisite like any other: it joins
+# MISSING_FONTS so the prompt below proposes the distribution package
+# instead of only warning after the fact.
+if [ "$FONT_OK" -eq 0 ]; then
+    MISSING_FONTS=" inter"
+fi
 
 # Map missing pieces onto the detected distribution's package names.
 family_packages() {
@@ -283,16 +290,29 @@ family_packages() {
     esac
 }
 
+# Inter package names verified for the mapped families; every other family
+# receives manual instructions instead of a guessed package name.
+font_package() {
+    case "$FAMILY" in
+        fedora) printf 'rsms-inter-fonts' ;;
+        arch)   printf 'inter-font' ;;
+        debian) printf 'fonts-inter' ;;
+    esac
+}
+
 needs_anything=0
-[ -n "$(printf '%s %s' "$MISSING_CMDS" "$MISSING_PKGS" | tr -d ' ')" ] && needs_anything=1
+[ -n "$(printf '%s %s %s' "$MISSING_CMDS" "$MISSING_PKGS" "$MISSING_FONTS" | tr -d ' ')" ] && needs_anything=1
 if [ "$QS_VERSION_OK" -eq 0 ]; then needs_anything=1; fi
 
 if [ "$needs_anything" -eq 1 ] && [ "$SKIP_PACKAGES" -eq 0 ]; then
     echo
-    echo "Missing components:$MISSING_CMDS$MISSING_PKGS"
+    echo "Missing components:$MISSING_CMDS$MISSING_PKGS$MISSING_FONTS"
     case "$FAMILY" in
         arch|fedora|debian)
             pkgs="$(family_packages)"
+            if [ -n "$MISSING_FONTS" ]; then
+                pkgs="$pkgs $(font_package)"
+            fi
             echo
             echo "The following distribution packages provide them ($FAMILY family):"
             echo "  $pkgs"
@@ -356,6 +376,10 @@ if [ "$needs_anything" -eq 1 ] && [ "$SKIP_PACKAGES" -eq 0 ]; then
             echo "Development tools to install manually (verify names with 'zypper se'):"
             echo "  $(family_packages) plus Qt6/KGlobalAccel/PipeWire/GLib development packages"
             echo "  such as qt6-base-devel qt6-declarative-devel kf6-kglobalaccel-devel pipewire-devel glib2-devel"
+            if [ -n "$MISSING_FONTS" ]; then
+                echo "Also install an Inter font package (no verified openSUSE package"
+                echo "  name is recorded here; search with 'zypper se inter')."
+            fi
             log_fatal "Install the requirements above and re-run this script."
             ;;
         *)
@@ -365,11 +389,14 @@ if [ "$needs_anything" -eq 1 ] && [ "$SKIP_PACKAGES" -eq 0 ]; then
             echo "  2. A C++20 toolchain, cmake, make, pkg-config"
             echo "  3. Development packages for Qt6 (Core, DBus, Gui, Widgets, Qml),"
             echo "     PipeWire, GIO/GLib, and KF6 GlobalAccel"
+            if [ -n "$MISSING_FONTS" ]; then
+                echo "  4. The Inter font family - install your distribution's Inter package"
+            fi
             log_fatal "Install the requirements above and re-run this script."
             ;;
     esac
 elif [ "$needs_anything" -eq 1 ]; then
-    log_fatal "Missing:$MISSING_CMDS$MISSING_PKGS (re-run without --skip-packages to resolve)."
+    log_fatal "Missing:$MISSING_CMDS$MISSING_PKGS$MISSING_FONTS (re-run without --skip-packages to resolve)."
 fi
 
 # Re-verify the hard requirements after any installation attempt.
@@ -380,8 +407,14 @@ done
 pkg-config --exists Qt6Core Qt6DBus Qt6Gui Qt6Widgets Qt6Qml libpipewire-0.3 gio-unix-2.0 ||
     log_fatal "Qt6/PipeWire/GIO development modules are still incomplete (see pkg-config output)."
 
+# Re-check the font after any installation attempt, mirroring the command
+# re-verification above; keep the warning as the last-resort fallback for
+# fontconfig setups the probe cannot confirm.
+if [ "$FONT_OK" -eq 0 ] && command -v fc-match >/dev/null 2>&1; then
+    [ "$(fc-match --format='%{family}' Inter 2>/dev/null)" = "Inter" ] && FONT_OK=1
+fi
 if [ "$FONT_OK" -eq 0 ]; then
-    log_warn "Inter font not found through Fontconfig. The UI falls back to another family; install your distribution's Inter package for the intended look (rsms-inter-fonts on Fedora, inter-font on Arch, fonts-inter on Debian)."
+    log_warn "Inter font still not found through Fontconfig. The UI falls back to another family; install your distribution's Inter package for the intended look (rsms-inter-fonts on Fedora, inter-font on Arch, fonts-inter on Debian)."
 fi
 
 # Locate Qt host tools on distributions that do not put them on PATH.

@@ -17,6 +17,7 @@ spec.loader.exec_module(fixture_module)
 
 BLUEZ = fixture_module.BLUEZ
 ADAPTER_PATH = fixture_module.ADAPTER_PATH
+ADAPTER = fixture_module.ADAPTER
 DEVICE_PATH = fixture_module.DEVICE_PATH
 DEVICE = fixture_module.DEVICE
 MOCK = fixture_module.MOCK
@@ -85,10 +86,19 @@ async def main():
     require(len(sys.argv) == 2, "helper path is required")
     bus = await MessageBus().connect()
     mock = MockBlueZ(bus)
-    bus.add_message_handler(mock.handle)
+    backend_calls = {"StartDiscovery": 0, "StopDiscovery": 0}
+
+    def handle_mock_message(message):
+        if message.path == ADAPTER_PATH and message.interface == ADAPTER:
+            if message.member in backend_calls:
+                backend_calls[message.member] += 1
+        return mock.handle(message)
+
+    bus.add_message_handler(handle_mock_message)
     name_reply = await bus.request_name(BLUEZ)
     require(name_reply in (RequestNameReply.PRIMARY_OWNER, RequestNameReply.ALREADY_OWNER),
             "could not own private BlueZ service")
+    agents_before_helper = len(mock.agents)
 
     environment = os.environ.copy()
     environment["NAGI_CONNECTIVITY_BUS"] = "session"
@@ -101,6 +111,7 @@ async def main():
         env=environment,
     )
     helper = Helper(process)
+    helper_pid = process.pid
     request_id = 10
 
     async def command(operation, **payload):
@@ -110,11 +121,33 @@ async def main():
         return request_id
 
     async def scan():
-        await command("bluetooth-scan")
+        generation = await command("bluetooth-scan")
         return await helper.wait_state(
             lambda state: state["bluetooth"]["discovering"]
+            and state["bluetooth"]["operationGeneration"] == generation
             and len(state["bluetooth"]["devices"]) == 1,
             "bounded discovery snapshot",
+        )
+
+    async def stop_scan():
+        generation = await command("bluetooth-stop-scan")
+        return await helper.wait_state(
+            lambda state: not state["bluetooth"]["discovering"]
+            and state["bluetooth"]["operation"] == "idle"
+            and state["bluetooth"]["operationGeneration"] == generation
+            and state["bluetooth"]["operationResult"] == "stopped",
+            "explicit discovery stop",
+        )
+
+    def require_pairing_clear(state, context):
+        bluetooth = state["bluetooth"]
+        require(
+            bluetooth["operation"] == "idle"
+            and bluetooth["pairingPrompt"] == "none"
+            and bluetooth["pairingValue"] == ""
+            and bluetooth["pairingEntered"] == 0
+            and bluetooth["pairingToken"] == 0,
+            f"{context} retained pairing secret or operation state",
         )
 
     async def unpair(token):
@@ -149,6 +182,7 @@ async def main():
             lambda state: state["bluetooth"]["operationResult"] == "paired-connected",
             "pair, trust, and one connect",
         )
+        require_pairing_clear(completed, "pair completion")
         require(mock.trusted and mock.connected and mock.default_owner is None,
                 "Nagi pairing did not trust/connect or stole default-agent ownership")
         return token, completed
@@ -162,6 +196,10 @@ async def main():
             "deterministic controller selection was not normalized")
     require(bluetooth["devices"] == [] and not bluetooth["discovering"],
             "closed manager exposed discovery work or fabricated devices")
+    active_agent_count = len(mock.agents)
+    require(agents_before_helper == 0 and active_agent_count == 1
+            and mock.default_owner is None and process.pid == helper_pid,
+            "helper did not establish exactly one scoped non-default agent")
 
     await command("bluetooth-interest", interested=True)
     await scan()
@@ -188,20 +226,20 @@ async def main():
     )
     await unpair(token)
 
-    await mock_call(bus, "SetPairMode", "s", ["confirmation"])
+    await mock_call(bus, "SetPairMode", "s", ["pin"])
     await mock_call(bus, "FailNextConnect")
     scanned = await scan()
     token = scanned["bluetooth"]["devices"][0]["token"]
     await command("bluetooth-pair", token=token)
     prompt_state = await helper.wait_state(
-        lambda state: state["bluetooth"]["pairingPrompt"] == "confirm-passkey",
-        "confirmation before synthetic connection failure",
+        lambda state: state["bluetooth"]["pairingPrompt"] == "enter-pin",
+        "PIN entry before synthetic connection failure",
     )
     await command(
         "bluetooth-agent-response",
         generation=prompt_state["bluetooth"]["operationGeneration"],
         accepted=True,
-        response="",
+        response="2468",
     )
     failed_connection = await helper.wait_state(
         lambda state: state["bluetooth"]["operationFailure"] == "connection-failed"
@@ -210,11 +248,30 @@ async def main():
     )
     require(failed_connection["bluetooth"]["devices"][0]["paired"],
             "connection failure discarded a completed pairing")
-    await command("bluetooth-connect", token=token)
-    await helper.wait_state(
-        lambda state: state["bluetooth"]["operationResult"] == "connected",
-        "retry after post-pair connection failure",
+    require_pairing_clear(failed_connection, "post-pair connection failure")
+
+    connect_calls_before_retry = mock.connect_calls
+    connect_generation = await command("bluetooth-connect", token=token)
+    connecting = await helper.wait_state(
+        lambda state: state["bluetooth"]["operation"] == "connecting"
+        and state["bluetooth"]["operationGeneration"] == connect_generation,
+        "mutable backend-owned connection generation",
     )
+    require(not connecting["bluetooth"]["devices"][0]["connected"],
+            "connection request mutated backend-owned state before confirmation")
+    await command("bluetooth-interest", interested=False)
+    for _ in range(32):
+        await command("bluetooth-connect", token=token)
+    connected_after_close = await helper.wait_state(
+        lambda state: state["bluetooth"]["operationResult"] == "connected"
+        and state["bluetooth"]["operationGeneration"] == connect_generation,
+        "accepted connection completion after page close",
+    )
+    require(mock.connect_calls == connect_calls_before_retry + 1
+            and connected_after_close["bluetooth"]["devices"][0]["connected"],
+            "mutable-generation flood queued a request or overrode backend confirmation")
+    require_pairing_clear(connected_after_close, "connection completion after close")
+    await command("bluetooth-interest", interested=True)
     await unpair(token)
 
     for mode, prompt, response, display in (
@@ -243,6 +300,7 @@ async def main():
     )
     require(not cancelled["bluetooth"]["discovering"],
             "page close left discovery active")
+    require_pairing_clear(cancelled, "page-close cancellation")
 
     await command("bluetooth-interest", interested=True)
     await scan()
@@ -256,28 +314,84 @@ async def main():
     )
     require(unexpected.message_type == MessageType.ERROR,
             "unrelated incoming agent request was not rejected")
-    await command("bluetooth-stop-scan")
+    await stop_scan()
 
-    await bus.release_name(BLUEZ)
-    unavailable = await helper.wait_state(
-        lambda state: not state["bluetooth"]["available"]
-        and state["bluetooth"]["operationFailure"] in ("unavailable", "replaced"),
-        "BlueZ owner loss cleanup",
-    )
-    require(unavailable["bluetooth"]["devices"] == [],
-            "backend loss retained device identity")
-    await bus.request_name(BLUEZ)
+    discovery_starts_before = backend_calls["StartDiscovery"]
+    discovery_stops_before = backend_calls["StopDiscovery"]
+    for cycle in range(50):
+        discovered = await scan()
+        device = discovered["bluetooth"]["devices"][0]
+        require(device["paired"] == mock.paired and device["connected"] == mock.connected,
+                "discovery cycle mutated backend-owned device state")
+        if cycle == 0:
+            for _ in range(32):
+                await command("bluetooth-scan")
+        stopped = await stop_scan()
+        require_pairing_clear(stopped, "explicit discovery stop")
+        require(
+            backend_calls["StartDiscovery"] == discovery_starts_before + cycle + 1
+            and backend_calls["StopDiscovery"] == discovery_stops_before + cycle + 1
+            and not mock.discovering,
+            "discovery flood queued backend work or a cycle did not stop exactly once",
+        )
+
+    await mock_call(bus, "SetPairMode", "s", ["pin"])
+    scanned = await scan()
+    token = scanned["bluetooth"]["devices"][0]["token"]
+    await command("bluetooth-pair", token=token)
     await helper.wait_state(
-        lambda state: state["bluetooth"]["available"],
-        "BlueZ replacement",
+        lambda state: state["bluetooth"]["pairingPrompt"] == "enter-pin",
+        "interactive pairing before owner-loss soak",
     )
+
+    for replacement in range(5):
+        await bus.release_name(BLUEZ)
+        unavailable = await helper.wait_state(
+            lambda state: not state["bluetooth"]["available"]
+            and state["bluetooth"]["operationFailure"] in ("unavailable", "replaced"),
+            f"BlueZ owner loss cleanup {replacement + 1}",
+        )
+        require(unavailable["bluetooth"]["devices"] == [],
+                "backend loss retained device identity")
+        require_pairing_clear(unavailable, "BlueZ owner loss")
+        require(len(mock.agents) == agents_before_helper and mock.default_owner is None
+                and process.pid == helper_pid and process.returncode is None,
+                "owner loss retained an agent or replaced the helper process")
+        mock.discovering = False
+
+        name_reply = await bus.request_name(BLUEZ)
+        require(name_reply in (RequestNameReply.PRIMARY_OWNER, RequestNameReply.ALREADY_OWNER),
+                "could not restore private BlueZ owner")
+        restored = await helper.wait_state(
+            lambda state: state["bluetooth"]["available"]
+            and state["bluetooth"]["operation"] == "idle",
+            f"BlueZ replacement {replacement + 1}",
+        )
+        require_pairing_clear(restored, "BlueZ owner replacement")
+        require(len(mock.agents) == active_agent_count and mock.default_owner is None
+                and process.pid == helper_pid,
+                "owner replacement duplicated the scoped agent or helper")
+
+    await command("bluetooth-interest", interested=False)
+    final_state = restored
+    require(
+        final_state["bluetooth"]["operation"] == "idle"
+        and not final_state["bluetooth"]["discovering"]
+        and final_state["bluetooth"]["pairingPrompt"] == "none",
+        "final clean Bluetooth state",
+    )
+    require_pairing_clear(final_state, "final fixture cleanup")
+    require(len(mock.agents) == active_agent_count and mock.default_owner is None,
+            "active fixture did not return to its pre-soak agent count")
 
     await helper.stop()
     stderr = (await process.stderr.read()).decode(errors="replace")
-    forbidden = ("01:02:03:04:05:06", "Private Fixture", "4821", "654321")
+    forbidden = ("01:02:03:04:05:06", "Private Fixture", "2468", "4821", "654321")
     require(all(value not in stderr for value in forbidden),
             "diagnostics leaked hardware identity, device name, PIN, or passkey")
-    require(process.returncode == 0, "connectivity helper exited unsuccessfully")
+    require(process.returncode == 0 and len(mock.agents) == agents_before_helper
+            and mock.default_owner is None and not mock.discovering,
+            "connectivity helper did not restore final process, agent, and operation counts")
     print("Bluetooth manager D-Bus tests passed")
     return 0
 

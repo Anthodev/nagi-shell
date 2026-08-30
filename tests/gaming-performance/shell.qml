@@ -135,6 +135,32 @@ ShellRoot {
                 && lastMessage() === "Gaming performance active",
                 "reenable creates a fresh aggregate generation");
 
+        let previousGeneration = service.generation;
+        for (let cycle = 0; cycle < 20; cycle += 1) {
+            service.enabled = false;
+            const messageCount = messages.length;
+            fake.publish(4, true, "registered", true, true);
+            require(!service.active && service.generation === 0
+                    && service.activeTimerCount === 0 && messages.length === messageCount,
+                    "disabled soak cycle retains zero work");
+            service.enabled = true;
+            fake.publish(1, false, "registered", true, true);
+            require(service.active && service.generation !== 0
+                    && service.generation !== previousGeneration,
+                    "owner replacement soak creates a fresh generation");
+            previousGeneration = service.generation;
+            const burstCount = messages.length;
+            fake.publish(2, false, "registered", true, true);
+            fake.publish(2, false, "registered", true, true);
+            require(messages.length === burstCount + 1,
+                    "burst soak coalesces an unchanged backend snapshot");
+            fake.publish(0, false, "sourceUnavailable", false, true);
+            require(!service.active && service.activeTimerCount === 0,
+                    "owner loss soak settles without inactive timer work");
+        }
+        service.enabled = true;
+        fake.publish(1, false, "registered", true, true);
+
         const presentation = service.resolveTransient(service.sourceToken, service.generation,
                                                       service.revision);
         const serialized = JSON.stringify(presentation);

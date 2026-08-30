@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "sources": {
+      "issue70": "docs/reports/issue70-v1-baseline.md",
+      "issue63Helpers": "docs/reports/issue63-perf-after.md",
+      "issue71Displays": "docs/reports/issue71-multi-island-performance.md"
+    },
+    "fingerprint": {
+      "architecture": "x86_64",
+      "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+      "distribution": "Fedora Linux 44",
+      "plasma": "6.7.4",
+      "kwin": "6.7.4",
+      "quickshell": "0.3.1",
+      "isolatedRenderer": "llvmpipe"
+    },
+    "settleSeconds": 20,
+    "sampleSeconds": {
+      "live": 60,
+      "isolated": 15,
+      "isolatedExtended": 30
+    }
+  },
+  "live": {
+    "oneIsland": {
+      "quickshellCpuPercentOneCoreMax": 3.1,
+      "quickshellRssKiBMax": 283944,
+      "warmStartupSecondsMax": 1.084
+    },
+    "persistentHelperCount": 9,
+    "inProcessNotificationPluginCount": 1,
+    "aggregateHelperRssKiBMax": 267346,
+    "helpers": {
+      "nagi-applications": { "rssKiBMax": 22280 },
+      "nagi-session": { "rssKiBMax": 17085 },
+      "nagi-connectivity": { "rssKiBMax": 17775 },
+      "nagi-brightness": { "rssKiBMax": 18010 },
+      "nagi-global-shortcut": { "rssKiBMax": 64870 },
+      "nagi-wallpaper": { "rssKiBMax": 83525 },
+      "nagi-kwin-virtual-desktops": { "rssKiBMax": 17670 },
+      "nagi-audio": { "rssKiBMax": 19645 },
+      "nagi-gaming-performance": { "rssKiBMax": 17625 }
+    }
+  },
+  "isolated": {
+    "persistentHelperCountWithoutPipeWire": 8,
+    "displayCountAddsHelpers": 0,
+    "displays": {
+      "1": {
+        "quickshellCpuPercentOneCoreMax": 0.35,
+        "schedulingSlicesPerSecondMax": 15,
+        "quickshellRssKiBMax": 524288,
+        "threadsMax": 34
+      },
+      "2": {
+        "quickshellCpuPercentOneCoreMax": 0.5,
+        "schedulingSlicesPerSecondMax": 18,
+        "quickshellRssKiBMax": 786432,
+        "threadsMax": 34
+      },
+      "3": {
+        "quickshellCpuPercentOneCoreMax": 0.65,
+        "schedulingSlicesPerSecondMax": 21,
+        "quickshellRssKiBMax": 983040,
+        "threadsMax": 34
+      }
+    }
+  },
+  "closedControlCenter": {
+    "loadedPages": 0,
+    "pageInterestWork": 0,
+    "pageOwnedActiveTimers": 0,
+    "pageAnimations": 0,
+    "hiddenFocusLoops": 0,
+    "easyEffectsInterest": 0
+  },
+  "idle": {
+    "defaultHelperActivity": {
+      "cpuTicksDeltaMax": 0,
+      "schedulingSlicesDeltaMax": 0
+    },
+    "eventDrivenHelperActivity": {
+      "nagi-applications": {
+        "cpuTicksDeltaMax": 1,
+        "schedulingSlicesDeltaMax": 20
+      }
+    },
+    "allowedRecurringWork": [
+      "event delivery",
+      "shared clock deadline"
+    ],
+    "displayCountAddsBoundedPerDisplayStateOnly": true
+  },
+  "soak": {
+    "cycles": 25,
+    "extendedCycles": 100,
+    "countsReturnExactlyToPreCycle": true,
+    "boundedCachesRemainWithinExistingLimits": true,
+    "finalSettledRssGrowthPercentMax": 5,
+    "finalSettledRssGrowthKiBMax": 16384,
+    "rssGrowthLimitUsesGreaterAllowance": true
+  },
+  "framePacing": {
+    "requiresHardwareCapableProbe": true,
+    "intervalsWithinTwoRefreshPeriodsPercentMin": 99,
+    "intervalsAboveThreeRefreshPeriodsMax": 0
+  },
+  "gpuStructural": {
+    "closedControlCenterPageOwnedWindowsOrEffects": 0,
+    "shadowLayersPerVisibleIslandMax": 1,
+    "requestedKwinBlurRegionsPerVisibleIslandMax": 1,
+    "extraGpuOrEffectObjectsPerProcessWideService": 0
+  },
+  "enforcement": {
+    "always": [
+      "structure",
+      "counts",
+      "privacy"
+    ],
+    "exactFingerprint": [
+      "isolated CPU",
+      "isolated RSS",
+      "isolated scheduling slices",
+      "isolated threads",
+      "isolated helper count"
+    ],
+    "forceEnvironmentVariable": "NAGI_ENFORCE_PERFORMANCE",
+    "forceEnvironmentValue": "1",
+    "liveProbePolicy": "read-only when the production checkout is already running"
+  },
+  "knownExternalGaps": [
+    "numeric GPU utilization",
+    "physical HDR/VRR",
+    "hardware frame pacing",
+    "physical hotplug",
+    "fractional client DPR",
+    "blur-unavailable hardware behavior"
+  ]
+}

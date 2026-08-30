@@ -389,8 +389,16 @@ private:
                     "mock Plasma owner reappears");
         } else if (stage == Stage::Reappearance) {
             expect(snapshot, true, "Ready", "#1E6FD9");
-            require(services.wallpaperCalls == 7,
-                    "only startup and applicable invalidations query wallpaper");
+            ++ownerReplacementCount;
+            if (ownerReplacementCount < 50) {
+                stage = Stage::OwnerLoss;
+                expectedGeneration += 1;
+                require(bus.unregisterService(QString::fromLatin1(PlasmaService)),
+                        "mock Plasma owner repeatedly unregisters");
+                return;
+            }
+            require(services.wallpaperCalls == 6 + ownerReplacementCount,
+                    "only startup and applicable owner replacements query wallpaper");
             stage = Stage::Preview;
             helper.write(QJsonDocument(QJsonObject{
                 {QStringLiteral("op"), QStringLiteral("interest")},
@@ -475,6 +483,7 @@ private:
     bool releaseOldAnalysis = false;
     bool restrictedFixtureReadable = false;
     qint64 expectedGeneration = 1;
+    int ownerReplacementCount = 0;
     Stage stage = Stage::Initial;
 };
 

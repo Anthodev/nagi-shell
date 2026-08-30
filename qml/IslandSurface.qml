@@ -182,6 +182,10 @@ PanelWindow {
                                                     === surface.height
     readonly property real backgroundRadius: surfaceBackground.radius
     readonly property bool blurRequested: Theme.snapshot.blurEnabled
+    readonly property int shadowLayerCount: shadowOutline.layer.enabled
+                                            && shadowOutline.layer.effect !== null ? 1 : 0
+    readonly property int requestedKwinBlurRegionCount: surface.BackgroundEffect.blurRegion
+                                                        === null ? 0 : 1
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
     readonly property bool launcherLoaded: launcherLoader.item !== null
@@ -795,7 +799,7 @@ PanelWindow {
         reducedMotion: surface.reducedMotion
         showWorkspace: UserConfig.snapshot.island.showWorkspace
         showWeather: UserConfig.snapshot.island.showWeather
-        showMedia: UserConfig.snapshot.media.compactVisible
+        showMedia: UserConfig.snapshot.island.showMedia && UserConfig.snapshot.media.compactVisible
         onWeatherRequested: surface.coordinator.openWeather(surface.hostSurfaceToken)
     }
 

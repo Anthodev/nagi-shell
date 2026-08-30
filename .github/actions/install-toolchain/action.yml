@@ -27,7 +27,6 @@ runs:
           done
         }
         packages=(
-          dnf-plugins-core
           git
           make
           gcc-c++
@@ -48,27 +47,20 @@ runs:
         )
         retry dnf -y --setopt=install_weak_deps=False install "${packages[@]}"
 
-    - name: 'Enable the stable Quickshell COPR'
+    - name: 'Configure the stable Quickshell COPR'
       shell: bash
       run: |
         set -euo pipefail
-        retry() {
-          local attempt status
-          for attempt in 1 2 3 4; do
-            if "$@"; then
-              return 0
-            else
-              status=$?
-            fi
-            if [ "$attempt" -eq 4 ]; then
-              return "$status"
-            fi
-            printf 'Network command failed; retrying in %s seconds (%s/4).\n' \
-              "$((attempt * 5))" "$attempt" >&2
-            sleep "$((attempt * 5))"
-          done
-        }
-        retry dnf -y copr enable errornointernet/quickshell
+        cat > /etc/yum.repos.d/errornointernet-quickshell.repo <<'EOF'
+        [copr:errornointernet:quickshell]
+        name=Quickshell stable COPR
+        baseurl=https://download.copr.fedorainfracloud.org/results/errornointernet/quickshell/fedora-$releasever-$basearch/
+        enabled=1
+        gpgcheck=1
+        repo_gpgcheck=0
+        gpgkey=https://download.copr.fedorainfracloud.org/results/errornointernet/quickshell/pubkey.gpg
+        skip_if_unavailable=False
+        EOF
 
     - name: 'Install Quickshell from the stable channel'
       shell: bash

@@ -22,11 +22,15 @@ Flickable {
     }
 
     function activeRows() {
+        if (!displayController)
+            return [];
         const ignored = displayController.revision;
         return displayController.activeDisplays();
     }
 
     function requestEnabled(screen, enabled) {
+        if (!displayController)
+            return;
         if (displayController.setEnabled(screen, enabled)) {
             failureText = "";
             return;
@@ -35,6 +39,8 @@ Flickable {
     }
 
     function requestFallback(screen) {
+        if (!displayController)
+            return;
         if (displayController.setFallback(screen)) {
             failureText = "";
             return;
@@ -91,8 +97,9 @@ Flickable {
                         label: activeRow.modelData.enabled ? qsTr("Disable island") : qsTr(
                                                                  "Enable island")
                         reducedMotion: root.reducedMotion
-                        enabled: !activeRow.modelData.enabled
-                                 || root.displayController.enabledDisplayCount > 1
+                        enabled: root.displayController && (!activeRow.modelData.enabled
+                                                            || root.displayController.enabledDisplayCount
+                                                            > 1)
                         onClicked: root.requestEnabled(activeRow.modelData.screen,
                                                        !activeRow.modelData.enabled)
                     }
@@ -127,7 +134,8 @@ Flickable {
 
         IslandText {
             Layout.fillWidth: true
-            visible: root.displayController.rememberedDisplays.length === 0
+            visible: !root.displayController || root.displayController.rememberedDisplays.length
+                     === 0
             text: qsTr("No disconnected displays can be remembered reliably on this platform.")
             size: "body"
             tone: "muted"
@@ -135,7 +143,7 @@ Flickable {
         }
 
         Repeater {
-            model: root.displayController.rememberedDisplays
+            model: root.displayController ? root.displayController.rememberedDisplays : []
 
             delegate: ControlCenterSettingRow {
                 id: rememberedRow

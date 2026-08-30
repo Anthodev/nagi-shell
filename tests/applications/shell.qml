@@ -9,6 +9,13 @@ ShellRoot {
     property string phase: Quickshell.env("NAGI_APPLICATION_TEST_PHASE")
     property string stage: "startup"
     property bool started: false
+    property string configuredHelperPath: Quickshell.env("NAGI_APPLICATION_HELPER")
+    property string activeHelperPath: configuredHelperPath
+    property int soakCycle: 0
+    property int soakRejectedCount: 0
+    property var soakApplicationIds: []
+    property var soakPinIds: []
+    property var soakRecencyIds: []
 
     function require(condition, message) {
         if (!condition) {
@@ -193,15 +200,150 @@ ShellRoot {
         }
     }
 
+    function beginApplicationSoak() {
+        stage = "soak-ready";
+        soakCycle = 0;
+        soakRejectedCount = 0;
+        soakApplicationIds = ids(applications.applications);
+        soakPinIds = applications.pinIds.slice();
+        soakRecencyIds = applications.recencyIds.slice();
+        if (!require(applications.available && applications.initialized
+                     && !applications.pinMutationPending && !applications.launchPending,
+                     "application soak starts from an available idle model")) {
+            return;
+        }
+        Qt.callLater(runApplicationSoakCycle);
+    }
+
+    function runApplicationSoakCycle() {
+        if (soakCycle >= 20) {
+            if (!require(activeHelperPath === configuredHelperPath && applications.available
+                         && applications.initialized && !applications.pinMutationPending
+                         && !applications.launchPending
+                         && equal(ids(applications.applications), soakApplicationIds)
+                         && equal(applications.pinIds, soakPinIds)
+                         && equal(applications.recencyIds, soakRecencyIds),
+                         "application soak finishes at its pre-cycle helper, model, store, and queue counts")) {
+                return;
+            }
+            console.log("application model mutation and lifecycle soak tests passed");
+            Qt.exit(0);
+            return;
+        }
+
+        const cycle = soakCycle;
+        if (!require(stage === "soak-ready" && applications.available
+                     && applications.initialized && !applications.pinMutationPending
+                     && !applications.launchPending
+                     && equal(ids(applications.applications), soakApplicationIds)
+                     && equal(applications.pinIds, soakPinIds)
+                     && equal(applications.recencyIds, soakRecencyIds),
+                     "cycle " + cycle + " starts from exact model, store, and queue counts")) {
+            return;
+        }
+
+        const malformedPins = applications.parseStore("pins", {
+                                                           "available": true,
+                                                           "category": "loaded",
+                                                           "text": "not json " + cycle
+                                                       }, applications.maximumPins);
+        const malformedRecency = applications.parseStore("recency", {
+                                                               "available": true,
+                                                               "category": "loaded",
+                                                               "text": "{\"version\":1}"
+                                                           }, applications.maximumRecency);
+        const oversizedIds = [];
+        for (let index = 0; index < 64; ++index) {
+            oversizedIds.push("cycle-" + cycle + "-" + index + ".desktop");
+        }
+        if (!require(malformedPins.length === 0 && malformedRecency.length === 0
+                     && applications.normalizeIds(oversizedIds,
+                                                  applications.maximumRecency).length
+                     === applications.maximumRecency
+                     && applications.maximumDiagnosticsPerStore === 4
+                     && equal(ids(applications.applications), soakApplicationIds)
+                     && equal(applications.pinIds, soakPinIds)
+                     && equal(applications.recencyIds, soakRecencyIds),
+                     "cycle " + cycle + " bounds malformed stores, diagnostics, and records")) {
+            return;
+        }
+
+        stage = "soak-denial";
+        const requestId = applications.dispatchLaunch("app9.desktop");
+        if (!require(requestId > 0 && applications.launchPending
+                     && applications.dispatchLaunch("app8.desktop") === 0,
+                     "cycle " + cycle + " admits one launch and rejects queueing")) {
+            return;
+        }
+        applications.acceptLaunchResult(requestId + 1, false, "launch");
+        if (!require(applications.launchPending,
+                     "cycle " + cycle + " ignores a stale launch completion")) {
+            return;
+        }
+        applications.acceptLaunchResult(requestId, false, "launch");
+        if (!require(!applications.launchPending && soakRejectedCount === cycle + 1
+                     && equal(applications.recencyIds, soakRecencyIds)
+                     && equal(applications.pinIds, soakPinIds),
+                     "cycle " + cycle + " denial leaves backend-owned stores unchanged")) {
+            return;
+        }
+
+        stage = "soak-losing";
+        activeHelperPath = "";
+    }
+
+    function restartApplicationSoakHelper() {
+        if (stage !== "soak-restarting") {
+            return;
+        }
+        stage = "soak-recovering";
+        activeHelperPath = configuredHelperPath;
+        applications.captureDiscoveryGeneration();
+    }
+
+    function completeApplicationSoakCycle() {
+        if (!require(stage === "soak-validating" && applications.available
+                     && applications.initialized && activeHelperPath === configuredHelperPath
+                     && !applications.pinMutationPending && !applications.launchPending
+                     && equal(ids(applications.applications), soakApplicationIds)
+                     && equal(applications.pinIds, soakPinIds)
+                     && equal(applications.recencyIds, soakRecencyIds),
+                     "cycle " + soakCycle + " replacement recovers exact records and clean queues")) {
+            return;
+        }
+        soakCycle += 1;
+        stage = "soak-ready";
+        Qt.callLater(runApplicationSoakCycle);
+    }
+
     ApplicationModel {
         id: applications
 
-        helperPath: Quickshell.env("NAGI_APPLICATION_HELPER")
+        helperPath: test.activeHelperPath
 
         onInitializedChanged: test.runInitialAssertions()
         onAvailableChanged: {
             if (test.stage === "restore-discovery" && applications.available) {
                 test.beginLifecycle();
+                return;
+            }
+            if (test.stage === "soak-losing" && !applications.available) {
+                if (!test.require(!applications.pinMutationPending && !applications.launchPending
+                                  && test.equal(test.ids(applications.applications),
+                                                test.soakApplicationIds)
+                                  && test.equal(applications.pinIds, test.soakPinIds)
+                                  && test.equal(applications.recencyIds, test.soakRecencyIds),
+                                  "cycle " + test.soakCycle
+                                  + " owner loss retains bounded records and clears queued work")) {
+                    return;
+                }
+                test.stage = "soak-restarting";
+                Qt.callLater(test.restartApplicationSoakHelper);
+                return;
+            }
+            if (test.stage === "soak-recovering" && applications.available) {
+                test.stage = "soak-validating";
+                Qt.callLater(test.completeApplicationSoakCycle);
             }
         }
         onApplicationsChanged: test.checkLifecycle()
@@ -243,6 +385,10 @@ ShellRoot {
             }
         }
         onLaunchRejected: (requestId, category) => {
+            if (test.stage === "soak-denial" && category === "launch") {
+                test.soakRejectedCount += 1;
+                return;
+            }
             test.require(false, "structured launch was rejected: " + category);
         }
         onRecencyPersisted: {
@@ -263,8 +409,8 @@ ShellRoot {
                                                                                             "recent rows do not follow MRU order")) {
                 return;
             }
-            console.log("application model mutation tests passed");
-            Qt.exit(0);
+            test.beginApplicationSoak();
+            return;
         }
     }
 
