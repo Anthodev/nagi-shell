@@ -21,6 +21,7 @@ PanelWindow {
     property var media: null
     property var gamingPerformance: null
     property bool reducedMotion: false
+    property bool hoverInputEnabled: true
     property var sessionService: null
     property var polkitController: null
     property var notificationService: null
@@ -166,8 +167,15 @@ PanelWindow {
                                                                                   transientLoader.item.detailText
     readonly property int geometryAnimationDuration: reducedMotion ? 0 :
                                                                      Theme.motion.durationExpansion
-    readonly property bool geometryAnimationRunning: geometryHeightAnimation.running
-                                                     || geometryWidthAnimation.running
+    readonly property bool geometryAnimationRunning: morphState.active
+    readonly property bool pointerHovered: hoverHandler.hovered
+    readonly property real morphProgress: morphState.progress
+    readonly property int morphSequence: morphState.sequence
+    readonly property real morphSegmentFromWidth: morphState.fromWidth
+    readonly property real morphSegmentFromHeight: morphState.fromHeight
+    readonly property real morphSegmentToWidth: morphState.toWidth
+    readonly property real morphSegmentToHeight: morphState.toHeight
+    readonly property bool morphFollowUpPending: morphState.followUpPending
     readonly property point backgroundMappedTopLeft: surfaceBackground.mapToItem(surface.contentItem,
                                                                                  0, 0)
     readonly property point backgroundMappedBottomRight: surfaceBackground.mapToItem(
@@ -531,6 +539,282 @@ PanelWindow {
         const available = Math.max(1, screenSize * fraction - edgeInset * 2);
         return Math.min(preferredSize, available);
     }
+
+    QtObject {
+        id: morphState
+
+        readonly property real tolerance: 1
+        readonly property real canonicalWidth: surface.safeLogicalSize(surface.preferredWidth,
+                                                                       surface.screen === null ? 0 :
+                                                                                                 surface.screen.width,
+                                                                       surface.largeContent
+                                                                       ? UserConfig.snapshot.island.expandedWidthPercent :
+                                                                         1)
+        readonly property real canonicalHeight: surface.safeLogicalSize(surface.preferredHeight,
+                                                                        surface.screen === null ? 0 :
+                                                                                                  surface.screen.height,
+                                                                        surface.largeContent
+                                                                        ? UserConfig.snapshot.island.expandedHeightPercent :
+                                                                          1)
+        readonly property string currentOwnerKey: surface.hostSurfaceGeneration + ":"
+                                                  + surface.surfaceState.ownerKind + ":"
+                                                  + surface.surfaceState.ownerEpoch + ":"
+                                                  + surface.surfaceState.revision
+        readonly property size currentScreenBounds: Qt.size(surface.screen === null ? 0 :
+                                                                                      surface.screen.width,
+                                                            surface.screen === null ? 0 :
+                                                                                      surface.screen.height)
+
+        property bool initialized: false
+        property bool active: false
+        property real progress: 1
+        property int sequence: 0
+        property bool followUpPending: false
+        property bool reconcileQueued: false
+
+        property int segmentSurfaceGeneration: 0
+        property int segmentOwnerKind: surface.coordinator.ownerNone
+        property real segmentOwnerEpoch: 0
+        property real segmentOwnerRevision: 0
+        property var segmentScreen: null
+        property real segmentScreenWidth: 0
+        property real segmentScreenHeight: 0
+        property real fromWidth: 0
+        property real fromHeight: 0
+        property real toWidth: 0
+        property real toHeight: 0
+
+        function targetsDiffer(firstWidth, firstHeight, secondWidth, secondHeight) {
+            return Math.abs(firstWidth - secondWidth) > tolerance || Math.abs(firstHeight
+                                                                              - secondHeight)
+                    > tolerance;
+        }
+
+        function currentWidth() {
+            return fromWidth + (toWidth - fromWidth) * progress;
+        }
+
+        function currentHeight() {
+            return fromHeight + (toHeight - fromHeight) * progress;
+        }
+
+        function recordIdentity() {
+            segmentSurfaceGeneration = surface.hostSurfaceGeneration;
+            segmentOwnerKind = surface.surfaceState.ownerKind;
+            segmentOwnerEpoch = surface.surfaceState.ownerEpoch;
+            segmentOwnerRevision = surface.surfaceState.revision;
+            segmentScreen = surface.screen;
+            segmentScreenWidth = currentScreenBounds.width;
+            segmentScreenHeight = currentScreenBounds.height;
+        }
+
+        function identityBaseMatches() {
+            return segmentSurfaceGeneration === surface.hostSurfaceGeneration && segmentOwnerKind
+                    === surface.surfaceState.ownerKind && segmentOwnerEpoch
+                    === surface.surfaceState.ownerEpoch && segmentScreen === surface.screen
+                    && segmentScreenWidth === currentScreenBounds.width && segmentScreenHeight
+                    === currentScreenBounds.height;
+        }
+
+        function identityMatches() {
+            return identityBaseMatches() && segmentOwnerRevision === surface.surfaceState.revision;
+        }
+
+        function settleAt(width, height) {
+            morphProgressAnimation.stop();
+            reconcileQueued = false;
+            fromWidth = width;
+            fromHeight = height;
+            toWidth = width;
+            toHeight = height;
+            progress = 1;
+            followUpPending = false;
+            recordIdentity();
+            active = false;
+        }
+
+        function settleSynchronously() {
+            if (!initialized) {
+                return;
+            }
+            settleAt(canonicalWidth, canonicalHeight);
+        }
+
+        function initialize() {
+            if (initialized) {
+                return;
+            }
+            const width = canonicalWidth;
+            const height = canonicalHeight;
+            fromWidth = width;
+            fromHeight = height;
+            toWidth = width;
+            toHeight = height;
+            progress = 1;
+            followUpPending = false;
+            recordIdentity();
+            initialized = true;
+        }
+
+        function beginSegment(startWidth, startHeight, endWidth, endHeight) {
+            if (surface.reducedMotion || !targetsDiffer(startWidth, startHeight, endWidth,
+                                                        endHeight)) {
+                settleAt(endWidth, endHeight);
+                return;
+            }
+
+            morphProgressAnimation.stop();
+            reconcileQueued = false;
+            recordIdentity();
+            fromWidth = startWidth;
+            fromHeight = startHeight;
+            toWidth = endWidth;
+            toHeight = endHeight;
+            progress = 0;
+            followUpPending = false;
+            sequence += 1;
+            active = true;
+            morphProgressAnimation.restart();
+        }
+
+        function interruptSemantic(force) {
+            if (!initialized || (!force && identityMatches())) {
+                return;
+            }
+
+            const startWidth = currentWidth();
+            const startHeight = currentHeight();
+            reconcileQueued = false;
+            beginSegment(startWidth, startHeight, canonicalWidth, canonicalHeight);
+        }
+
+        function handleIdentityChanged() {
+            if (!initialized || identityMatches()) {
+                return;
+            }
+            if (surface.reducedMotion) {
+                settleSynchronously();
+                return;
+            }
+            if (active && !identityBaseMatches()) {
+                interruptSemantic(false);
+                return;
+            }
+            queueCanonicalReconcile();
+        }
+
+        function forceScreenBoundInterrupt() {
+            interruptSemantic(true);
+        }
+
+        function reconcileCanonicalTarget() {
+            if (!initialized) {
+                return;
+            }
+            if (surface.reducedMotion) {
+                settleSynchronously();
+                return;
+            }
+            if (!identityMatches()) {
+                interruptSemantic(false);
+                return;
+            }
+            if (active) {
+                followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
+                return;
+            }
+
+            beginSegment(currentWidth(), currentHeight(), canonicalWidth, canonicalHeight);
+        }
+
+        function queueCanonicalReconcile() {
+            if (reconcileQueued) {
+                return;
+            }
+            reconcileQueued = true;
+            Qt.callLater(function () {
+                if (!morphState.reconcileQueued) {
+                    return;
+                }
+                morphState.reconcileQueued = false;
+                morphState.reconcileCanonicalTarget();
+            });
+        }
+
+        function handleCanonicalTargetChanged() {
+            if (!initialized) {
+                return;
+            }
+            if (surface.reducedMotion) {
+                settleSynchronously();
+                return;
+            }
+            if (!identityMatches()) {
+                handleIdentityChanged();
+                return;
+            }
+            if (active) {
+                followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
+                return;
+            }
+            queueCanonicalReconcile();
+        }
+
+        function finishSegment() {
+            if (!active) {
+                return;
+            }
+
+            progress = 1;
+            if (surface.reducedMotion) {
+                settleSynchronously();
+                return;
+            }
+            if (!identityMatches()) {
+                if (identityBaseMatches()) {
+                    queueCanonicalReconcile();
+                } else {
+                    beginSegment(toWidth, toHeight, canonicalWidth, canonicalHeight);
+                }
+                return;
+            }
+
+            followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
+            if (followUpPending) {
+                const chainedFromWidth = toWidth;
+                const chainedFromHeight = toHeight;
+                beginSegment(chainedFromWidth, chainedFromHeight, canonicalWidth, canonicalHeight);
+                return;
+            }
+
+            toWidth = canonicalWidth;
+            toHeight = canonicalHeight;
+            followUpPending = false;
+            recordIdentity();
+            active = false;
+        }
+
+        onCanonicalWidthChanged: handleCanonicalTargetChanged()
+        onCanonicalHeightChanged: handleCanonicalTargetChanged()
+        onCurrentOwnerKeyChanged: handleIdentityChanged()
+        onCurrentScreenBoundsChanged: handleIdentityChanged()
+    }
+
+    function interruptMorphForScreenBounds() {
+        morphState.forceScreenBoundInterrupt();
+    }
+
+    NumberAnimation {
+        id: morphProgressAnimation
+
+        target: morphState
+        property: "progress"
+        from: 0
+        to: 1
+        duration: surface.geometryAnimationDuration
+        easing.type: Theme.motion.easingExpansion
+        onFinished: morphState.finishSegment()
+    }
     function syncDashboardReveal() {
         dashboardReveal.stop();
         if (!expanded) {
@@ -550,6 +834,7 @@ PanelWindow {
     }
 
     onExpandedChanged: syncDashboardReveal()
+    onScreenChanged: morphState.handleIdentityChanged()
     onBackingWindowChanged: {
         shellWindowWasActive = false;
         if (backingWindow !== null) {
@@ -557,6 +842,9 @@ PanelWindow {
         }
     }
     onReducedMotionChanged: {
+        if (reducedMotion) {
+            morphState.settleSynchronously();
+        }
         syncDashboardReveal();
         if (reducedMotion && exitingOwnerKind >= 0) {
             completeInteractiveExit();
@@ -565,6 +853,7 @@ PanelWindow {
 
     Component.onCompleted: {
         refreshSurfaceState();
+        morphState.initialize();
         previousOwnerKind = ownerKind;
         syncDashboardReveal();
         queuePresentationAcknowledgement();
@@ -582,7 +871,7 @@ PanelWindow {
     }
     onHostSurfaceGenerationChanged: {
         queuePresentationAcknowledgement();
-        if (hostSurfaceGeneration > 0 && hoverHandler.hovered) {
+        if (hoverInputEnabled && hostSurfaceGeneration > 0 && hoverHandler.hovered) {
             reportHover(true);
         }
     }
@@ -685,33 +974,12 @@ PanelWindow {
                                                                                                || (polkit
                                                                                                    && focusTarget
                                                                                                    === coordinator.focusPolkitModal)))
-    implicitHeight: safeLogicalSize(preferredHeight, screen === null ? 0 : screen.height,
-                                    largeContent ? UserConfig.snapshot.island.expandedHeightPercent :
-                                                   1)
-    implicitWidth: safeLogicalSize(preferredWidth, screen === null ? 0 : screen.width, largeContent
-                                   ? UserConfig.snapshot.island.expandedWidthPercent : 1)
-
-    Behavior on implicitHeight {
-        enabled: !surface.reducedMotion
-
-        NumberAnimation {
-            id: geometryHeightAnimation
-
-            duration: Theme.motion.durationExpansion
-            easing.type: Theme.motion.easingExpansion
-        }
-    }
-
-    Behavior on implicitWidth {
-        enabled: !surface.reducedMotion
-
-        NumberAnimation {
-            id: geometryWidthAnimation
-
-            duration: Theme.motion.durationExpansion
-            easing.type: Theme.motion.easingExpansion
-        }
-    }
+    implicitHeight: morphState.initialized ? morphState.fromHeight + (morphState.toHeight
+                                                                      - morphState.fromHeight)
+                                             * morphState.progress : morphState.canonicalHeight
+    implicitWidth: morphState.initialized ? morphState.fromWidth + (morphState.toWidth
+                                                                    - morphState.fromWidth)
+                                            * morphState.progress : morphState.canonicalWidth
 
     margins.top: edgeInset
     margins.left: Math.round(horizontalSlack / 2)
@@ -1089,13 +1357,17 @@ PanelWindow {
 
     HoverHandler {
         id: hoverHandler
-
-        onHoveredChanged: surface.reportHover(hovered)
+        enabled: surface.hoverInputEnabled
+        onHoveredChanged: {
+            if (surface.hoverInputEnabled) {
+                surface.reportHover(hovered);
+            }
+        }
     }
 
     TapHandler {
         acceptedButtons: Qt.LeftButton
-        enabled: surface.expanded && !surface.coordinator.explicitExpandedIntent
+        enabled: surface.expanded && !surface.surfaceState.explicitExpandedIntent
         onTapped: surface.requestDeliberateExpansion()
     }
 }

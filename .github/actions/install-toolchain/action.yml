@@ -1,8 +1,8 @@
 name: 'Install Fedora 44 toolchain'
 description: >-
   Installs the pinned Fedora 44 CI toolchain: native Qt, KF6 GlobalAccel,
-  PipeWire and GIO development dependencies, Python D-Bus fixtures, typography
-  fonts, QML tools, and Quickshell from the stable COPR.
+  PipeWire and GIO development dependencies, systemd unit verification,
+  Python D-Bus fixtures, typography fonts, QML tools, and Quickshell from the stable COPR.
 runs:
   using: composite
   steps:
@@ -38,6 +38,7 @@ runs:
           qt6-qtbase-devel
           qt6-qtdeclarative-devel
           dbus-daemon
+          systemd
           python3-dbus-next
           rsms-inter-fonts
           google-noto-sans-fonts

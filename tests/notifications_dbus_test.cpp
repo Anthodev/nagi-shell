@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QDir>
@@ -136,6 +137,50 @@ private:
         }
     }
 
+    QDBusConnectionInterface *busInterface()
+    {
+        QDBusConnectionInterface *interface = QDBusConnection::sessionBus().interface();
+        if (interface == nullptr) {
+            fail("session-bus-interface");
+        }
+        return interface;
+    }
+
+    void verifyFakePlasmaCannotReplaceNagi()
+    {
+        const QDBusReply<QDBusConnectionInterface::RegisterServiceReply> reply =
+            busInterface()->registerService(
+                QString::fromLatin1(Service),
+                QDBusConnectionInterface::ReplaceExistingService,
+                QDBusConnectionInterface::DontAllowReplacement);
+        if (!reply.isValid()
+            || reply.value() != QDBusConnectionInterface::ServiceNotRegistered) {
+            fail("fake-plasma-replaced-nagi");
+        }
+    }
+
+    void registerFakePlasmaMaster()
+    {
+        const QDBusReply<QDBusConnectionInterface::RegisterServiceReply> reply =
+            busInterface()->registerService(
+                QString::fromLatin1(Service),
+                QDBusConnectionInterface::ReplaceExistingService,
+                QDBusConnectionInterface::DontAllowReplacement);
+        if (!reply.isValid()
+            || reply.value() != QDBusConnectionInterface::ServiceRegistered) {
+            fail("fake-plasma-registration");
+        }
+    }
+
+    void unregisterFakePlasmaMaster()
+    {
+        const QDBusReply<bool> reply =
+            busInterface()->unregisterService(QString::fromLatin1(Service));
+        if (!reply.isValid() || !reply.value()) {
+            fail("fake-plasma-release");
+        }
+    }
+
     void verifyCapabilities()
     {
         QDBusInterface notifications(QString::fromLatin1(Service), QString::fromLatin1(Path),
@@ -223,6 +268,7 @@ private:
             std::fprintf(stderr, "%s\n", line.constData());
         }
         if (phase == Phase::Ready && line.contains("notification-harness-ready")) {
+            verifyFakePlasmaCannotReplaceNagi();
             verifyCapabilities();
             currentId = notify(0, QStringLiteral("Initial"), hints(), 0);
             phase = Phase::Received;
@@ -338,9 +384,7 @@ private:
             process.terminate();
         } else if (phase == Phase::OwnershipFailed
                    && line.contains("notification-harness-ownership-failed")) {
-            if (!QDBusConnection::sessionBus().unregisterService(QString::fromLatin1(Service))) {
-                fail("ownership-release");
-            }
+            unregisterFakePlasmaMaster();
             phase = Phase::OwnershipRecovered;
         } else if (phase == Phase::OwnershipRecovered
                    && line.contains("notification-harness-ownership-recovered")) {
@@ -360,9 +404,7 @@ private:
             return;
         }
         if (phase == Phase::StopForOwnership) {
-            if (!QDBusConnection::sessionBus().registerService(QString::fromLatin1(Service))) {
-                fail("ownership-fixture");
-            }
+            registerFakePlasmaMaster();
             phase = Phase::OwnershipFailed;
             startQuickshell(QStringLiteral("ownership"));
             return;

@@ -1,0 +1,262 @@
+(function() {
+    "use strict";
+
+    var helperDestination = @NAGI_HELPER_DESTINATION@;
+    var scriptGeneration = @NAGI_SCRIPT_GENERATION@;
+    var callbackPath = "/WorkspaceConsensus";
+    var callbackInterface = "io.github.Anthodev.NagiShell.WorkspaceConsensus";
+    var previousAvailable = false;
+    var previousCurrentId = "";
+
+    function unavailableSnapshot() {
+        return {
+            available: false,
+            currentId: null,
+            showTransient: false,
+            desktops: []
+        };
+    }
+
+    function publish(snapshot) {
+        var encoded;
+        try {
+            encoded = JSON.stringify(snapshot);
+        } catch (error) {
+            encoded = JSON.stringify(unavailableSnapshot());
+        }
+        if (typeof encoded !== "string" || encoded.length > 65536) {
+            encoded = JSON.stringify(unavailableSnapshot());
+        }
+        callDBus(helperDestination,
+                 callbackPath,
+                 callbackInterface,
+                 "Publish",
+                 scriptGeneration,
+                 encoded);
+    }
+
+    function publishUnavailable() {
+        previousAvailable = false;
+        previousCurrentId = "";
+        publish(unavailableSnapshot());
+    }
+
+    function validString(value, maximumLength, allowEmpty) {
+        return typeof value === "string"
+                && value.length <= maximumLength
+                && (allowEmpty || value.length > 0);
+    }
+
+    function readDesktopList() {
+        var source = workspace.desktops;
+        if (source === null || source === undefined
+                || typeof source.length !== "number"
+                || source.length < 1 || source.length > 256) {
+            return null;
+        }
+
+        var desktops = [];
+        var ids = Object.create(null);
+        var positions = Object.create(null);
+        for (var index = 0; index < source.length; ++index) {
+            var desktop = source[index];
+            if (desktop === null || desktop === undefined
+                    || !validString(desktop.id, 1024, false)
+                    || !validString(desktop.name, 256, true)
+                    || typeof desktop.x11DesktopNumber !== "number") {
+                return null;
+            }
+
+            var position = desktop.x11DesktopNumber - 1;
+            if (!Number.isInteger(position) || position < 0 || position >= source.length
+                    || ids[desktop.id] === true || positions[position] === true) {
+                return null;
+            }
+
+            ids[desktop.id] = true;
+            positions[position] = true;
+            desktops.push({
+                id: desktop.id,
+                name: desktop.name,
+                position: position
+            });
+        }
+        return desktops;
+    }
+
+    function readConsensus(desktops) {
+        var screens = workspace.screens;
+        if (screens === null || screens === undefined
+                || typeof screens.length !== "number" || screens.length < 1
+                || typeof workspace.currentDesktopForScreen !== "function") {
+            return null;
+        }
+
+        var currentId = "";
+        for (var index = 0; index < screens.length; ++index) {
+            var screen = screens[index];
+            if (screen === null || screen === undefined) {
+                return null;
+            }
+
+            var desktop = workspace.currentDesktopForScreen(screen);
+            if (desktop === null || desktop === undefined
+                    || !validString(desktop.id, 1024, false)) {
+                return null;
+            }
+            if (index === 0) {
+                currentId = desktop.id;
+            } else if (desktop.id !== currentId) {
+                return null;
+            }
+        }
+
+        for (var desktopIndex = 0; desktopIndex < desktops.length; ++desktopIndex) {
+            if (desktops[desktopIndex].id === currentId) {
+                return currentId;
+            }
+        }
+        return null;
+    }
+
+    function recompute(desktopChange) {
+        try {
+            var desktops = readDesktopList();
+            if (desktops === null) {
+                publishUnavailable();
+                return;
+            }
+
+            var currentId = readConsensus(desktops);
+            if (currentId === null) {
+                publishUnavailable();
+                return;
+            }
+
+            var showTransient = desktopChange === true
+                    && previousAvailable
+                    && previousCurrentId !== currentId;
+            previousAvailable = true;
+            previousCurrentId = currentId;
+            publish({
+                available: true,
+                currentId: currentId,
+                showTransient: showTransient,
+                desktops: desktops
+            });
+        } catch (error) {
+            publishUnavailable();
+        }
+    }
+
+    var pendingDesktopChange = false;
+    var pendingStructuralChange = false;
+    var recomputeTimer = new QTimer();
+    recomputeTimer.singleShot = true;
+    recomputeTimer.interval = 0;
+    recomputeTimer.timeout.connect(function() {
+        var desktopChange = pendingDesktopChange && !pendingStructuralChange;
+        pendingDesktopChange = false;
+        pendingStructuralChange = false;
+        recompute(desktopChange);
+    });
+
+    function scheduleRecompute(desktopChange) {
+        if (desktopChange) {
+            pendingDesktopChange = true;
+        } else {
+            pendingStructuralChange = true;
+        }
+        if (!recomputeTimer.active) {
+            recomputeTimer.start();
+        }
+    }
+
+    var desktopNameSubscriptions = [];
+
+    function createDesktopNameSubscription(desktop) {
+        var subscription = {
+            active: true,
+            callback: null,
+            desktop: desktop
+        };
+        subscription.callback = function() {
+            if (subscription.active) {
+                scheduleRecompute(false);
+            }
+        };
+        desktop.nameChanged.connect(subscription.callback);
+        return subscription;
+    }
+
+    function disconnectDesktopNameSubscription(subscription) {
+        subscription.active = false;
+        subscription.desktop.nameChanged.disconnect(subscription.callback);
+    }
+
+    function refreshDesktopNameSubscriptions() {
+        var source = workspace.desktops;
+        var validSource = source !== null && source !== undefined
+                && typeof source.length === "number"
+                && source.length >= 1 && source.length <= 256;
+        if (validSource) {
+            for (var sourceIndex = 0; sourceIndex < source.length; ++sourceIndex) {
+                var desktop = source[sourceIndex];
+                if (desktop === null || desktop === undefined
+                        || desktop.nameChanged === null || desktop.nameChanged === undefined
+                        || typeof desktop.nameChanged.connect !== "function"
+                        || typeof desktop.nameChanged.disconnect !== "function") {
+                    validSource = false;
+                    break;
+                }
+            }
+        }
+        if (!validSource) {
+            source = [];
+        }
+
+        var retained = [];
+        var next = [];
+        for (var index = 0; index < source.length; ++index) {
+            var subscription = null;
+            for (var previousIndex = 0;
+                 previousIndex < desktopNameSubscriptions.length;
+                 ++previousIndex) {
+                if (retained[previousIndex] !== true
+                        && desktopNameSubscriptions[previousIndex].desktop === source[index]) {
+                    subscription = desktopNameSubscriptions[previousIndex];
+                    retained[previousIndex] = true;
+                    break;
+                }
+            }
+            next.push(subscription);
+        }
+
+        for (var retiredIndex = 0;
+             retiredIndex < desktopNameSubscriptions.length;
+             ++retiredIndex) {
+            if (retained[retiredIndex] !== true) {
+                disconnectDesktopNameSubscription(desktopNameSubscriptions[retiredIndex]);
+            }
+        }
+        for (var nextIndex = 0; nextIndex < next.length; ++nextIndex) {
+            if (next[nextIndex] === null) {
+                next[nextIndex] = createDesktopNameSubscription(source[nextIndex]);
+            }
+        }
+        desktopNameSubscriptions = next;
+    }
+
+    workspace.currentDesktopChanged.connect(function(previous, current, output) {
+        scheduleRecompute(true);
+    });
+    workspace.screensChanged.connect(function() {
+        scheduleRecompute(false);
+    });
+    workspace.desktopsChanged.connect(function() {
+        refreshDesktopNameSubscriptions();
+        scheduleRecompute(false);
+    });
+    refreshDesktopNameSubscriptions();
+    recompute(false);
+})();

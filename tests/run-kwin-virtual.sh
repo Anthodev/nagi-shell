@@ -150,6 +150,9 @@ run_one() {
 
     mkdir -p "$root/config" "$root/state" "$root/cache" "$root/data" "$root/home" "$runtime"
     chmod 0700 "$runtime"
+    if [[ "${KWIN_TEST_PER_OUTPUT_DESKTOPS:-0}" == "1" ]]; then
+        printf '%s\n' '[Windows]' 'PerOutputVirtualDesktops=true' >"$root/config/kwinrc"
+    fi
     write_session_launcher "$launcher"
 
     printf 'run-kwin-virtual: scale=%s outputs=%s geometry=%sx%s root=%s\n' \
