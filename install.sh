@@ -4,8 +4,9 @@
 #
 #   Installs the checked-out configuration and its native helpers into a
 #   system or user location, registers the "Nagi Shell" section with
-#   KGlobalAccel so it appears in KDE shortcut settings immediately, creates
-#   a private default settings.conf for the invoking user, and installs launcher files.
+#   KGlobalAccel, creates a private default settings.conf for the invoking user,
+#   installs the desktop launcher, and enables an ordered per-user systemd
+#   service for the next login.
 #
 #   Works on any distribution running a KDE Plasma 6 Wayland session. Package
 #   installation adapts to the detected distribution family; unmapped cases
@@ -24,7 +25,6 @@ DEST="$DEFAULT_DEST"
 ASSUME_YES=0
 SKIP_PACKAGES=0
 SKIP_SHORTCUTS=0
-AUTOSTART=1
 
 log_info() { printf '[INFO]  %s\n' "$*"; }
 log_ok()   { printf '[OK]    %s\n' "$*"; }
@@ -43,15 +43,15 @@ Options:
       --dest DIR       Installation directory (default: $DEFAULT_DEST)
       --skip-packages  Never propose installing missing dependencies
       --skip-shortcuts Do not pre-register the KDE shortcut section
-      --no-autostart   Do not register the launcher for session autostart
   -h, --help           Show this help
 
 The script verifies prerequisites, offers to install anything missing,
 builds the native helpers in this checkout, copies the shell tree into
 --dest, generates a launcher wrapper and desktop entry, pre-registers the
-"Nagi Shell" section in KDE keyboard settings, and creates a private default
-~/.config/nagi-shell/settings.conf for the invoking user. Existing V2 settings
-or legacy theme.conf are preserved for runtime migration.
+"Nagi Shell" section in KDE keyboard settings, creates a private default
+~/.config/nagi-shell/settings.conf for the invoking user, and enables its
+per-user service for the next Plasma Wayland login. Existing V2 settings or
+legacy theme.conf are preserved for runtime migration.
 EOF
 }
 
@@ -61,7 +61,6 @@ while [ $# -gt 0 ]; do
         --dest) [ $# -ge 2 ] || log_fatal "--dest requires a value"; DEST="$2"; shift ;;
         --skip-packages) SKIP_PACKAGES=1 ;;
         --skip-shortcuts) SKIP_SHORTCUTS=1 ;;
-        --no-autostart) AUTOSTART=0 ;;
         -h|--help) usage; exit 0 ;;
         *) log_fatal "Unknown option: $1 (see --help)" ;;
     esac
@@ -148,7 +147,12 @@ require_write_access() {
 require_write_access "$DEST"
 
 # Resolve the human account even when running under sudo, so user-level
-# configuration lands in the invoking user's home, never in /root.
+# configuration lands in the invoking user's home, never in /root. The target
+# user's XDG roots follow the same rule: explicit values passed through sudo
+# win; when sudo strips them, the roots are recovered from the target user's
+# systemd manager environment (the unit search path that manager really
+# uses); otherwise the target user's home defaults apply — exactly as in an
+# unprivileged run.
 REAL_USER="${SUDO_USER:-$(id -un)}"
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
     REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
@@ -156,18 +160,10 @@ else
     REAL_HOME="${HOME}"
 fi
 real_user_config_home() {
-    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-        printf '%s/.config' "$REAL_HOME"
-    else
-        printf '%s' "${XDG_CONFIG_HOME:-$REAL_HOME/.config}"
-    fi
+    printf '%s' "${XDG_CONFIG_HOME:-${SUDO_MANAGER_CONFIG_HOME:-$REAL_HOME/.config}}"
 }
 real_user_state_home() {
-    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-        printf '%s/.local/state' "$REAL_HOME"
-    else
-        printf '%s' "${XDG_STATE_HOME:-$REAL_HOME/.local/state}"
-    fi
+    printf '%s' "${XDG_STATE_HOME:-${SUDO_MANAGER_STATE_HOME:-$REAL_HOME/.local/state}}"
 }
 run_as_real_user() {
     if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
@@ -176,6 +172,8 @@ run_as_real_user() {
         bus="/run/user/$uid/bus"
         runuser -u "$REAL_USER" -- env \
             HOME="$REAL_HOME" \
+            XDG_CONFIG_HOME="$(real_user_config_home)" \
+            XDG_STATE_HOME="$(real_user_state_home)" \
             DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
             XDG_RUNTIME_DIR="/run/user/$uid" \
             "$@"
@@ -183,6 +181,77 @@ run_as_real_user() {
         "$@"
     fi
 }
+
+# Sudo normally strips XDG_CONFIG_HOME/XDG_STATE_HOME. When it does, ask the
+# target user's manager to launch printenv so the manager's decoded values cross
+# the privilege boundary as data, never as shell source. This is best-effort;
+# the manager gate below still hard-fails when the user manager is unavailable.
+SUDO_MANAGER_CONFIG_HOME=""
+SUDO_MANAGER_STATE_HOME=""
+MANAGER_PRINTENV=""
+manager_environment_root() {
+    local variable="$1" output
+    if ! output="$(
+        run_as_real_user timeout --signal=TERM 5 \
+            systemd-run --user --wait --pipe --quiet --collect \
+            --service-type=exec "$MANAGER_PRINTENV" "$variable" \
+            2>/dev/null &&
+            printf '\034'
+    )"; then
+        return 1
+    fi
+
+    # The sentinel prevents command substitution from stripping whitespace at
+    # the end of the value. Remove it and printenv's one record terminator.
+    output="${output%$'\034'}"
+    output="${output%$'\n'}"
+    [ -n "$output" ] || return 1
+    case "$output" in
+        /*) printf '%s' "$output" ;;
+        *)
+            log_warn "Ignoring non-absolute $variable from the target user's systemd manager."
+            return 1
+            ;;
+    esac
+}
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ] &&
+        { [ -z "${XDG_CONFIG_HOME:-}" ] || [ -z "${XDG_STATE_HOME:-}" ]; }; then
+    MANAGER_PRINTENV="$(type -P printenv 2>/dev/null || true)"
+    manager_reader_available=0
+    if command -v systemd-run >/dev/null 2>&1; then
+        case "$MANAGER_PRINTENV" in
+            /*) [ -x "$MANAGER_PRINTENV" ] && manager_reader_available=1 ;;
+        esac
+    fi
+    if [ "$manager_reader_available" -eq 1 ]; then
+        if [ -z "${XDG_CONFIG_HOME:-}" ]; then
+            SUDO_MANAGER_CONFIG_HOME="$(
+                manager_environment_root XDG_CONFIG_HOME || true
+            )"
+        fi
+        if [ -z "${XDG_STATE_HOME:-}" ]; then
+            SUDO_MANAGER_STATE_HOME="$(
+                manager_environment_root XDG_STATE_HOME || true
+            )"
+        fi
+    else
+        log_warn "Could not safely read stripped XDG roots from the target user's systemd manager; using home defaults."
+    fi
+fi
+
+USER_CONFIG_HOME="$(real_user_config_home)"
+SYSTEMD_USER_DIR="$USER_CONFIG_HOME/systemd/user"
+UNIT_FILE="$SYSTEMD_USER_DIR/nagi-shell.service"
+LEGACY_AUTOSTART_FILE="$USER_CONFIG_HOME/autostart/io.github.Anthodev.NagiShell.desktop"
+
+command -v systemctl >/dev/null 2>&1 ||
+    log_fatal "systemctl is required to install the Nagi user service."
+command -v timeout >/dev/null 2>&1 ||
+    log_fatal "timeout is required to verify and control the Nagi user service."
+if ! run_as_real_user timeout --signal=TERM 5 systemctl --user show-environment \
+        >/dev/null 2>&1; then
+    log_fatal "The per-user systemd manager is unavailable. Install from the logged-in Plasma user session; no autostart fallback is supported."
+fi
 
 # --- distribution family ------------------------------------------------------
 
@@ -438,10 +507,10 @@ echo "  destination       : $DEST"
 echo "  launcher          : generated 'nagi-shell' wrapper on PATH"
 echo "  desktop entry     : share/applications/io.github.Anthodev.NagiShell.desktop"
 echo "  KDE shortcuts     : 'Nagi Shell' section registered in KGlobalAccel$([ "$SKIP_SHORTCUTS" -eq 1 ] && echo ' (skipped)')"
-echo "  default config    : $(real_user_config_home)/nagi-shell/settings.conf (created only if no V2 or legacy config exists)"
-echo "  notifications     : the wrapper hands org.freedesktop.Notifications from"
-echo "                      plasmashell to Nagi while it runs; Plasma regains it on its next restart."
-echo "  autostart         : launcher registered for session startup$([ "$AUTOSTART" -eq 0 ] && echo ' (skipped)')"
+echo "  default config    : $USER_CONFIG_HOME/nagi-shell/settings.conf (created only if no V2 or legacy config exists)"
+echo "  user service      : enabled; an active installed Nagi service is restarted"
+echo "  notifications     : no inactive service is started in this session; active"
+echo "                      Nagi upgrades resume after replacement; Plasma is untouched."
 if [ "$(id -u)" -ne 0 ]; then
     echo "  privilege prompts : sudo will be used for '$DEST' and any approved packages"
 fi
@@ -473,7 +542,7 @@ log_info "Building native helpers in the checkout..."
 
 # Required artifacts, relative to the checkout root (paths mirror what
 # shell.qml resolves through Quickshell.shellPath("build/...")).
-ARTIFACTS="
+EXECUTABLE_ARTIFACTS="
 build/nagi-kwin-virtual-desktops
 build/nagi-pipewire-audio
 build/nagi-easyeffects-status
@@ -490,12 +559,37 @@ build/qml/Nagi/Notifications/qmldir
 build/qml/Nagi/Platform/libnagiplatformplugin.so
 build/qml/Nagi/Platform/qmldir
 "
-for artifact in $ARTIFACTS; do
+DATA_ARTIFACTS="
+build/nagi-kwin-workspace-consensus.js.in
+"
+for artifact in $EXECUTABLE_ARTIFACTS $DATA_ARTIFACTS; do
     [ -f "$SOURCE_DIR/$artifact" ] || log_fatal "Expected artifact is missing after build: $artifact"
 done
 log_ok "Native helpers built."
 
 # --- install tree ---------------------------------------------------------------
+
+INSTALL_WAS_UPGRADE=0
+if [ -d "$DEST" ] || [ -e "$UNIT_FILE" ] || [ -L "$UNIT_FILE" ]; then
+    INSTALL_WAS_UPGRADE=1
+fi
+
+SERVICE_WAS_ACTIVE=0
+if [ -e "$UNIT_FILE" ] || [ -L "$UNIT_FILE" ]; then
+    if run_as_real_user timeout --signal=TERM 5 \
+            systemctl --user is-active --quiet nagi-shell.service; then
+        SERVICE_WAS_ACTIVE=1
+        log_info "Stopping the active Nagi user service for upgrade..."
+        run_as_real_user timeout --signal=TERM 15 \
+            systemctl --user stop nagi-shell.service ||
+            log_fatal "Could not stop the active nagi-shell.service."
+    else
+        active_status=$?
+        [ "$active_status" -ne 124 ] ||
+            log_fatal "Timed out while checking whether nagi-shell.service is active."
+        log_info "The installed Nagi user service is inactive; it will remain stopped until the next login."
+    fi
+fi
 
 STOP_OUTPUT=""
 if [ -d "$DEST" ]; then
@@ -517,12 +611,58 @@ for item in shell.qml qml assets; do
         priv "$DEST" cp -f "$SOURCE_DIR/$item" "$DEST/$item"
     fi
 done
-for artifact in $ARTIFACTS; do
+for artifact in $EXECUTABLE_ARTIFACTS; do
     priv "$DEST" mkdir -p "$DEST/$(dirname "$artifact")"
     priv "$DEST" cp -f "$SOURCE_DIR/$artifact" "$DEST/$artifact"
     priv "$DEST" chmod 0755 "$DEST/$artifact"
 done
+for artifact in $DATA_ARTIFACTS; do
+    priv "$DEST" mkdir -p "$DEST/$(dirname "$artifact")"
+    priv "$DEST" cp -f "$SOURCE_DIR/$artifact" "$DEST/$artifact"
+    priv "$DEST" chmod 0644 "$DEST/$artifact"
+done
 log_ok "Shell tree installed."
+
+escape_embedded_path() {
+    local mode="$1"
+    local value="$2"
+    local result="" character index
+    for ((index = 0; index < ${#value}; index += 1)); do
+        character="${value:index:1}"
+        case "$character" in
+            \\) result+='\\' ;;
+            '"') result+='\"' ;;
+            '$')
+                if [ "$mode" = "systemd" ]; then
+                    # Hex quoting survives ExecStart expansion and decodes to a
+                    # literal dollar in the executable path.
+                    result+='\x24'
+                else
+                    result+='\$'
+                fi
+                ;;
+            '`')
+                if [ "$mode" = "systemd" ]; then
+                    result+='`'
+                else
+                    result+='\`'
+                fi
+                ;;
+            '%')
+                if [ "$mode" = "shell" ]; then
+                    result+='%'
+                else
+                    result+='%%'
+                fi
+                ;;
+            $'\n'|$'\r')
+                log_fatal "Installation paths must not contain line breaks."
+                ;;
+            *) result+="$character" ;;
+        esac
+    done
+    printf '%s' "$result"
+}
 
 # --- launcher wrapper -----------------------------------------------------------
 
@@ -538,8 +678,20 @@ BIN_DIR="$(cd "$BIN_DIR" && pwd)"
 BIN_PATH="$BIN_DIR/nagi-shell"
 LAUNCHER_TEMPLATE="$SOURCE_DIR/packaging/nagi-shell.in"
 [ -f "$LAUNCHER_TEMPLATE" ] || log_fatal "packaging/nagi-shell.in is missing from the checkout."
-sed "s|@NAGI_DEST@|$DEST|g" "$LAUNCHER_TEMPLATE" > "$SOURCE_DIR/.nagi-launcher.tmp"
-priv "$BIN_PATH" mv "$SOURCE_DIR/.nagi-launcher.tmp" "$BIN_PATH"
+DEST_ESCAPED="$(escape_embedded_path shell "$DEST")"
+LAUNCHER_TMP="$SOURCE_DIR/.nagi-launcher.tmp"
+launcher_replacements=0
+while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$line" = 'NAGI_DEST="@NAGI_DEST@"' ]; then
+        printf 'NAGI_DEST="%s"\n' "$DEST_ESCAPED"
+        launcher_replacements=$((launcher_replacements + 1))
+    else
+        printf '%s\n' "$line"
+    fi
+done < "$LAUNCHER_TEMPLATE" > "$LAUNCHER_TMP"
+[ "$launcher_replacements" -eq 1 ] ||
+    log_fatal "packaging/nagi-shell.in has an invalid @NAGI_DEST@ contract."
+priv "$BIN_PATH" mv "$LAUNCHER_TMP" "$BIN_PATH"
 priv "$BIN_PATH" chmod 0755 "$BIN_PATH"
 log_ok "Launcher wrapper installed at $BIN_PATH."
 
@@ -550,9 +702,22 @@ APPLICATIONS_DIR="$SHARE_DIR/applications"
 DESKTOP_SRC="$SOURCE_DIR/packaging/io.github.Anthodev.NagiShell.desktop"
 [ -f "$DESKTOP_SRC" ] || log_fatal "packaging/io.github.Anthodev.NagiShell.desktop is missing from the checkout."
 priv "$APPLICATIONS_DIR" mkdir -p "$APPLICATIONS_DIR"
-sed "s|^Exec=.*|Exec=$BIN_PATH --control-center|" "$DESKTOP_SRC" > "$SOURCE_DIR/.nagi-desktop-entry.tmp"
+DESKTOP_BIN_ESCAPED="$(escape_embedded_path desktop "$BIN_PATH")"
+DESKTOP_TMP="$SOURCE_DIR/.nagi-desktop-entry.tmp"
+desktop_replacements=0
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        Exec=*)
+            printf 'Exec="%s" --control-center\n' "$DESKTOP_BIN_ESCAPED"
+            desktop_replacements=$((desktop_replacements + 1))
+            ;;
+        *) printf '%s\n' "$line" ;;
+    esac
+done < "$DESKTOP_SRC" > "$DESKTOP_TMP"
+[ "$desktop_replacements" -eq 1 ] ||
+    log_fatal "The desktop template must contain exactly one Exec entry."
 priv "$APPLICATIONS_DIR/io.github.Anthodev.NagiShell.desktop" \
-    mv "$SOURCE_DIR/.nagi-desktop-entry.tmp" "$APPLICATIONS_DIR/io.github.Anthodev.NagiShell.desktop"
+    mv "$DESKTOP_TMP" "$APPLICATIONS_DIR/io.github.Anthodev.NagiShell.desktop"
 if command -v update-desktop-database >/dev/null 2>&1; then
     priv "$APPLICATIONS_DIR" update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
 fi
@@ -560,7 +725,7 @@ log_ok "Desktop entry installed at $APPLICATIONS_DIR/io.github.Anthodev.NagiShel
 
 # --- default user configuration ----------------------------------------------------
 
-CONFIG_DIR="$(real_user_config_home)/nagi-shell"
+CONFIG_DIR="$USER_CONFIG_HOME/nagi-shell"
 CONFIG_FILE="$CONFIG_DIR/settings.conf"
 LEGACY_CONFIG_FILE="$CONFIG_DIR/theme.conf"
 SETTINGS_TEMPLATE="$SOURCE_DIR/packaging/settings.conf"
@@ -606,26 +771,75 @@ else
     esac
 fi
 
+# --- ordered user service ------------------------------------------------------------
+
+SERVICE_TEMPLATE="$SOURCE_DIR/packaging/nagi-shell.service.in"
+[ -f "$SERVICE_TEMPLATE" ] ||
+    log_fatal "packaging/nagi-shell.service.in is missing from the checkout."
+
+if [ -e "$LEGACY_AUTOSTART_FILE" ] || [ -L "$LEGACY_AUTOSTART_FILE" ]; then
+    if ! run_as_real_user rm -f -- "$LEGACY_AUTOSTART_FILE"; then
+        priv "$LEGACY_AUTOSTART_FILE" rm -f -- "$LEGACY_AUTOSTART_FILE"
+    fi
+    log_info "Removed the legacy Nagi XDG autostart entry."
+fi
+
+run_as_real_user mkdir -p "$SYSTEMD_USER_DIR"
+UNIT_TMP="$(run_as_real_user mktemp "$SYSTEMD_USER_DIR/.nagi-shell.service.XXXXXX")"
+cleanup_unit_tmp() {
+    if [ -n "${UNIT_TMP:-}" ]; then
+        run_as_real_user rm -f -- "$UNIT_TMP" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_unit_tmp EXIT
+
+SYSTEMD_BIN_ESCAPED="$(escape_embedded_path systemd "$BIN_PATH")"
+unit_replacements=0
+while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$line" = 'ExecStart="@NAGI_BIN@" --session-service' ]; then
+        printf 'ExecStart="%s" --session-service\n' "$SYSTEMD_BIN_ESCAPED"
+        unit_replacements=$((unit_replacements + 1))
+    else
+        printf '%s\n' "$line"
+    fi
+done < "$SERVICE_TEMPLATE" > "$UNIT_TMP"
+if [ "$unit_replacements" -ne 1 ]; then
+    log_fatal "packaging/nagi-shell.service.in has an invalid @NAGI_BIN@ contract."
+fi
+run_as_real_user chmod 0644 "$UNIT_TMP"
+run_as_real_user mv -f -- "$UNIT_TMP" "$UNIT_FILE"
+UNIT_TMP=""
+trap - EXIT
+
+run_as_real_user timeout --signal=TERM 10 systemctl --user daemon-reload ||
+    log_fatal "systemctl --user daemon-reload failed."
+run_as_real_user timeout --signal=TERM 10 \
+    systemctl --user enable nagi-shell.service ||
+    log_fatal "Could not enable nagi-shell.service; no autostart fallback was installed."
+if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
+    run_as_real_user timeout --signal=TERM 40 \
+        systemctl --user start nagi-shell.service ||
+        log_fatal "The upgraded nagi-shell.service could not be restarted."
+    log_ok "Restarted the previously active nagi-shell.service."
+else
+    log_ok "Enabled nagi-shell.service for the next Plasma Wayland login."
+fi
+
 # --- done -------------------------------------------------------------------------------
 
 echo
-log_ok "Nagi Shell installed."
-echo "  Open the Control Center from the application menu ('Nagi Control Center') or run: $BIN_PATH --control-center"
-echo "  Or directly: qs -p $DEST --no-duplicate"
-echo "  Session startup   : handled by the installed autostart entry$([ "$AUTOSTART" -eq 0 ] && echo ' (disabled; add it via System Settings -> Autostart)')"
-
-if [ "$AUTOSTART" -eq 1 ]; then
-    AUTOSTART_DIR="$(real_user_config_home)/autostart"
-    AUTOSTART_FILE="$AUTOSTART_DIR/io.github.Anthodev.NagiShell.desktop"
-    priv "$AUTOSTART_FILE" mkdir -p "$AUTOSTART_DIR"
-    sed -e "s|^Name=.*|Name=Nagi Shell|" \
-        -e "s|^Comment=.*|Comment=Start the Nagi Shell desktop island|" \
-        -e "s|^Exec=.*|Exec=$BIN_PATH|" "$DESKTOP_SRC" > "$SOURCE_DIR/.nagi-autostart.tmp"
-    priv "$AUTOSTART_FILE" mv "$SOURCE_DIR/.nagi-autostart.tmp" "$AUTOSTART_FILE"
-    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-        as_root chown -R "$REAL_USER:" "$AUTOSTART_DIR"
-    fi
-    log_ok "Session autostart registered at $AUTOSTART_FILE."
+if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
+    log_ok "Nagi Shell upgraded and its active notification service was restored."
+    echo "  plasmashell and every foreign notification owner were left untouched."
+elif [ "$INSTALL_WAS_UPGRADE" -eq 1 ]; then
+    log_ok "Nagi Shell upgraded with nagi-shell.service left inactive."
+    echo "  No notification service was started; plasmashell and foreign owners were not contacted."
+    echo "  Log out and back in to activate Nagi before plasmashell."
 else
-    log_info "Autostart not registered (--no-autostart). Start Nagi from the menu when wanted."
+    log_ok "Nagi Shell installed without starting a notification service."
+    echo "  The current notification owner was neither contacted nor changed."
+    echo "  Log out and back in to start Nagi before plasmashell and activate notification delivery."
 fi
+printf '  Installed launcher: %q\n' "$BIN_PATH"
+echo "  Open 'Nagi Control Center' from the application menu"
+echo "  or run the installed launcher with --control-center."

@@ -24,11 +24,14 @@ ShellRoot {
     property int compactTransientWidth: 0
     property int compactTransientHeight: 0
     property real modalRevisionBeforeReplacement: 0
+    property int notificationRevisionProbeStage: 0
+    property var notificationRevisionProbe: null
+    property var notificationRevisionSegment: null
     property real launcherExitAnchorX: 0
     property real launcherExitMappedX: 0
     property bool launcherExitTransformObserved: false
     readonly property int maximumRetryAttempts: 500
-    readonly property int soakCycleCount: 20
+    readonly property int soakCycleCount: 100
     property int soakCycle: 0
     property var soakSurfaceTokens: []
     property var soakSurfaceGenerations: []
@@ -38,8 +41,8 @@ ShellRoot {
     property real soakInteractiveEpoch: 0
     property var soakControlCenterToken: null
     property int soakControlCenterRehomeCount: 0
-    readonly property int testRegionImplicitWidth: 120
-    readonly property int testRegionImplicitHeight: 72
+    property int testRegionImplicitWidth: 120
+    property int testRegionImplicitHeight: 72
     readonly property int maximumGeometryDurationMs: 5000
     property string geometryDirection: ""
     property int geometrySampleCount: 0
@@ -58,6 +61,17 @@ ShellRoot {
     property real maximumCenteringError: 0
     property real maximumTopMarginDelta: 0
     property bool geometryMonotonic: true
+    property var geometrySegmentSnapshot: null
+    property int motionProbeStage: 0
+    property bool motionEntryRequested: false
+    property int motionEntryBaselineSequence: 0
+    property int motionResetStage: 0
+    property bool motionProbeSampling: false
+    property var motionObservedSegment: null
+    property var motionFrozenSegment: null
+    property bool motionChainExpectedActive: false
+    property bool motionChainGapObserved: false
+    property bool motionFollowUpObserved: false
     readonly property string polkitVisualState: Quickshell.env("NAGI_POLKIT_VISUAL_STATE") ?? ""
 
     function advance() {
@@ -294,6 +308,72 @@ ShellRoot {
                 label + " PanelWindow geometry must equal the view's natural implicit size");
     }
 
+    function currentMorphSegment() {
+        const surface = host.fallbackSurface;
+        require(surface !== null, "the live surface exists for morph inspection");
+        return Object.freeze({
+                                 "sequence": surface.morphSequence,
+                                 "fromWidth": surface.morphSegmentFromWidth,
+                                 "fromHeight": surface.morphSegmentFromHeight,
+                                 "toWidth": surface.morphSegmentToWidth,
+                                 "toHeight": surface.morphSegmentToHeight
+                             });
+    }
+
+    function requireMorphSegmentUnchanged(segment, label) {
+        const surface = host.fallbackSurface;
+        require(surface !== null && segment !== null
+                && surface.morphSequence === segment.sequence
+                && Math.abs(surface.morphSegmentFromWidth - segment.fromWidth) < 0.001
+                && Math.abs(surface.morphSegmentFromHeight - segment.fromHeight) < 0.001
+                && Math.abs(surface.morphSegmentToWidth - segment.toWidth) < 0.001
+                && Math.abs(surface.morphSegmentToHeight - segment.toHeight) < 0.001,
+                label + " keeps one immutable geometry segment");
+    }
+
+    function requireCoupledMorphSample(label) {
+        const surface = host.fallbackSurface;
+        require(surface !== null && surface.morphProgress >= 0 && surface.morphProgress <= 1,
+                label + " keeps normalized morph progress");
+        const widthDelta = surface.morphSegmentToWidth - surface.morphSegmentFromWidth;
+        const heightDelta = surface.morphSegmentToHeight - surface.morphSegmentFromHeight;
+        if (Math.abs(widthDelta) <= 1 || Math.abs(heightDelta) <= 1) {
+            return;
+        }
+
+        const widthProgress = (surface.implicitWidth - surface.morphSegmentFromWidth) / widthDelta;
+        const heightProgress = (surface.implicitHeight - surface.morphSegmentFromHeight)
+                             / heightDelta;
+        require(Math.abs(widthProgress - heightProgress) <= 0.05
+                && Math.abs(widthProgress - surface.morphProgress) <= 0.05
+                && Math.abs(heightProgress - surface.morphProgress) <= 0.05,
+                label + " drives width and height from the same progress");
+    }
+
+    function requireMorphSettled(label) {
+        const surface = host.fallbackSurface;
+        require(surface !== null && !surface.geometryAnimationRunning
+                && surface.morphProgress === 1 && !surface.morphFollowUpPending
+                && Math.abs(surface.implicitWidth - surface.morphSegmentToWidth) < 0.001
+                && Math.abs(surface.implicitHeight - surface.morphSegmentToHeight) < 0.001
+                && surface.interactiveExitOffset === 0,
+                label + " settles at the exact endpoint without pending work or transforms");
+    }
+
+    function sampleMotionProbeFrame() {
+        const surface = host.fallbackSurface;
+        if (surface === null || !surface.geometryAnimationRunning) {
+            return;
+        }
+        if (motionObservedSegment === null
+                || motionObservedSegment.sequence !== surface.morphSequence) {
+            motionObservedSegment = currentMorphSegment();
+        } else {
+            requireMorphSegmentUnchanged(motionObservedSegment, "sampled morph");
+        }
+        requireCoupledMorphSample("sampled morph");
+    }
+
     function startGeometrySampling(direction, transition) {
         geometryDirection = direction;
         geometrySampleCount = 0;
@@ -311,16 +391,25 @@ ShellRoot {
         maximumTopMarginDelta = 0;
         geometryMonotonic = true;
         require(transition(), direction + " geometry transition was rejected");
+        geometrySegmentSnapshot = null;
         geometryTargetWidth = host.surfacePreferredWidth;
         geometryTargetHeight = host.surfacePreferredHeight;
     }
 
     function sampleGeometry() {
         geometrySampleCount += 1;
+        if (geometrySegmentSnapshot === null) {
+            if (!host.fallbackSurface.geometryAnimationRunning) {
+                return;
+            }
+            geometrySegmentSnapshot = currentMorphSegment();
+        }
         // Headless compositors can render frames faster than wall-clock animation time.
         require(Date.now() - geometryStartTimeMs <= maximumGeometryDurationMs,
                 geometryDirection + " geometry morph timed out");
 
+        requireMorphSegmentUnchanged(geometrySegmentSnapshot, geometryDirection);
+        requireCoupledMorphSample(geometryDirection);
         const width = host.surfaceWidth;
         const height = host.surfaceHeight;
         const expectedLeftMargin = (geometryScreenWidth - width) / 2;
@@ -368,11 +457,263 @@ ShellRoot {
         require(Math.abs(width - geometryTargetWidth) <= 1
                 && Math.abs(height - geometryTargetHeight) <= 1,
                 geometryDirection + " must reach its preferred end geometry");
+        requireMorphSettled(geometryDirection);
 
         const completedDirection = geometryDirection;
         geometryDirection = "";
         step = completedDirection === "expanding" ? 1 : 5;
         advance();
+    }
+
+    function runMorphContractStep() {
+        const surface = host.fallbackSurface;
+        require(surface !== null, "motion contract keeps one live surface");
+
+        if (motionProbeStage === 0) {
+            if (!motionEntryRequested) {
+                if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                                && !surface.geometryAnimationRunning,
+                                "motion probe baseline did not settle at Idle")) {
+                    return false;
+                }
+                host.reducedMotion = false;
+                testRegionImplicitWidth = 120;
+                testRegionImplicitHeight = 72;
+                requireMorphSettled("motion probe baseline");
+                motionEntryBaselineSequence = surface.morphSequence;
+                require(coordinator.setHover(host.surfaceGeneration, true),
+                        "motion probe enters Expanded through hover");
+                surface.refreshSurfaceState();
+                motionEntryRequested = true;
+                retry.restart();
+                return false;
+            }
+            if (!awaitState(surface.geometryAnimationRunning
+                            && surface.morphSequence > motionEntryBaselineSequence
+                            && surface.morphSequence <= motionEntryBaselineSequence + 2,
+                            "hover entry did not capture one coupled geometry segment: running="
+                            + surface.geometryAnimationRunning + " sequence="
+                            + surface.morphSequence + " baseline=" + motionEntryBaselineSequence
+                            + " owner=" + coordinator.ownerName + " duration="
+                            + surface.geometryAnimationDuration + " size=" + surface.implicitWidth
+                            + "x" + surface.implicitHeight)) {
+                return false;
+            }
+            motionFrozenSegment = currentMorphSegment();
+            motionObservedSegment = null;
+            motionProbeSampling = true;
+            motionProbeStage = 1;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 1) {
+            if (!awaitState(surface.geometryAnimationRunning && surface.morphProgress > 0.05
+                            && surface.morphProgress < 0.85,
+                            "motion probe did not reach a running expansion sample")) {
+                return false;
+            }
+            requireMorphSegmentUnchanged(motionFrozenSegment, "preferred-size drift baseline");
+            requireCoupledMorphSample("preferred-size drift baseline");
+            testRegionImplicitWidth = 152;
+            testRegionImplicitHeight = 84;
+            motionProbeStage = 2;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 2) {
+            if (!awaitState(surface.geometryAnimationRunning && surface.morphFollowUpPending,
+                            "preferred-size drift did not queue one follow-up")) {
+                return false;
+            }
+            requireMorphSegmentUnchanged(motionFrozenSegment, "first preferred-size drift");
+            testRegionImplicitWidth = 168;
+            testRegionImplicitHeight = 96;
+            require(surface.morphFollowUpPending,
+                    "multiple preferred-size drifts coalesce into the pending follow-up");
+            requireMorphSegmentUnchanged(motionFrozenSegment, "multiple preferred-size drifts");
+            testRegionImplicitWidth = 120;
+            testRegionImplicitHeight = 72;
+            motionProbeStage = 3;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 3) {
+            if (!awaitState(surface.geometryAnimationRunning && !surface.morphFollowUpPending,
+                            "drifting back to the frozen endpoint did not clear the follow-up")) {
+                return false;
+            }
+            requireMorphSegmentUnchanged(motionFrozenSegment, "preferred-size drift-back");
+            motionChainGapObserved = false;
+            motionFollowUpObserved = false;
+            motionChainExpectedActive = true;
+            testRegionImplicitWidth = 176;
+            testRegionImplicitHeight = 104;
+            motionProbeStage = 4;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 4) {
+            if (surface.morphSequence === motionFrozenSegment.sequence) {
+                requireMorphSegmentUnchanged(motionFrozenSegment, "queued follow-up");
+            }
+            if (!awaitState(motionFollowUpObserved && !motionChainGapObserved
+                            && surface.geometryAnimationRunning
+                            && surface.morphSequence === motionFrozenSegment.sequence + 1
+                            && surface.morphProgress > 0.05 && surface.morphProgress < 0.85,
+                            "one immediate chained segment did not start without a running gap")) {
+                return false;
+            }
+            require(Math.abs(surface.morphSegmentFromWidth - motionFrozenSegment.toWidth) < 0.001
+                    && Math.abs(surface.morphSegmentFromHeight
+                                - motionFrozenSegment.toHeight) < 0.001
+                    && !surface.morphFollowUpPending,
+                    "the single follow-up starts at the exact frozen endpoint");
+            requireCoupledMorphSample("single preferred-size follow-up");
+
+            const followUpWidth = surface.implicitWidth;
+            const followUpHeight = surface.implicitHeight;
+            const followUpSequence = surface.morphSequence;
+            require(coordinator.openLauncher(host.surfaceToken),
+                    "owner interruption replaces the running follow-up with Launcher");
+            surface.refreshSurfaceState();
+            require(coordinator.ownerName === "launcher" && surface.geometryAnimationRunning
+                    && surface.morphSequence === followUpSequence + 1
+                    && Math.abs(surface.morphSegmentFromWidth - followUpWidth) <= 1
+                    && Math.abs(surface.morphSegmentFromHeight - followUpHeight) <= 1,
+                    "owner replacement samples the current interpolated geometry once: owner="
+                    + coordinator.ownerName + " running=" + surface.geometryAnimationRunning
+                    + " sequence=" + surface.morphSequence + "/" + (followUpSequence + 1)
+                    + " width=" + surface.morphSegmentFromWidth + "/" + followUpWidth
+                    + " height=" + surface.morphSegmentFromHeight + "/" + followUpHeight);
+
+            const launcherEpoch = coordinator.ownerEpoch;
+            const launcherWidth = surface.implicitWidth;
+            const launcherHeight = surface.implicitHeight;
+            const launcherSequence = surface.morphSequence;
+            require(coordinator.cancelInteractive(launcherEpoch),
+                    "rapid Launcher cancellation restores its Expanded predecessor");
+            require(coordinator.ownerName === "expanded" && surface.geometryAnimationRunning
+                    && surface.morphSequence === launcherSequence + 1
+                    && Math.abs(surface.morphSegmentFromWidth - launcherWidth) <= 1
+                    && Math.abs(surface.morphSegmentFromHeight - launcherHeight) <= 1,
+                    "same-epoch predecessor restore interrupts from current geometry");
+            require(host.interactiveExitRunning && host.launcherLoaded
+                    && !host.interactiveExitLoaderEnabled && host.interactiveExitLoaderZ > 0,
+                    "rapid restore retains an inert outgoing Loader above its replacement: exit="
+                    + host.interactiveExitRunning + " loaded=" + host.launcherLoaded
+                    + " enabled=" + host.interactiveExitLoaderEnabled + " z="
+                    + host.interactiveExitLoaderZ);
+            motionProbeStage = 5;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 5) {
+            if (surface.geometryAnimationRunning) {
+                requireCoupledMorphSample("restored Expanded interruption");
+            }
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinator.presentationVisible && host.dashboardFocused
+                            && !surface.geometryAnimationRunning && !host.interactiveExitRunning
+                            && !host.launcherLoaded,
+                            "interrupted predecessor did not settle, focus, and acknowledge")) {
+                return false;
+            }
+            requireMorphSettled("interrupted Expanded predecessor");
+            require(surface.hostSurfaceGeneration === initialSurfaceGeneration
+                    && surface.surfaceState.ownerEpoch === coordinator.ownerEpoch
+                    && surface.surfaceState.revision === coordinator.revision
+                    && surface.surfaceState.presentationVisible,
+                    "settled interruption preserves the exact surface and acknowledgement tuple");
+            testRegionImplicitWidth = 520;
+            testRegionImplicitHeight = 320;
+            motionProbeStage = 6;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 6) {
+            if (!awaitState(surface.geometryAnimationRunning && surface.morphProgress > 0.05
+                            && surface.morphProgress < 0.85,
+                            "large preferred geometry did not begin one coupled segment")) {
+                return false;
+            }
+            requireCoupledMorphSample("pre-shrink geometry");
+            const candidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            candidate.island.expandedWidthPercent = 0.6;
+            candidate.island.expandedHeightPercent = 0.6;
+            const normalized = UserConfig.validateCandidate(candidate);
+            require(normalized !== null && UserConfig.publish(normalized),
+                    "screen-shrink probe publishes valid tighter geometry bounds");
+            motionProbeStage = 7;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 7) {
+            if (!awaitState(surface.geometryAnimationRunning && surface.morphFollowUpPending,
+                            "tighter live bounds did not supersede the running endpoint")) {
+                return false;
+            }
+            const shrinkStartWidth = surface.implicitWidth;
+            const shrinkStartHeight = surface.implicitHeight;
+            const shrinkSequence = surface.morphSequence;
+            const expectedWidth = surface.safeLogicalSize(surface.preferredWidth,
+                                                          host.surfaceScreenWidth, 0.6);
+            const expectedHeight = surface.safeLogicalSize(surface.preferredHeight,
+                                                           host.surfaceScreenHeight, 0.6);
+            surface.interruptMorphForScreenBounds();
+            require(surface.geometryAnimationRunning && surface.morphSequence
+                    === shrinkSequence + 1
+                    && Math.abs(surface.morphSegmentFromWidth - shrinkStartWidth) <= 1
+                    && Math.abs(surface.morphSegmentFromHeight - shrinkStartHeight) <= 1
+                    && Math.abs(surface.morphSegmentToWidth - expectedWidth) < 0.001
+                    && Math.abs(surface.morphSegmentToHeight - expectedHeight) < 0.001,
+                    "screen-bound shrink interrupts from current geometry to the new safe bound");
+            requireCoupledMorphSample("screen-bound interruption");
+
+            host.reducedMotion = true;
+            requireMorphSettled("minimal-motion interruption");
+            require(surface.geometryAnimationDuration === 0
+                    && surface.morphSegmentFromWidth === expectedWidth
+                    && surface.morphSegmentFromHeight === expectedHeight
+                    && surface.morphSegmentToWidth === expectedWidth
+                    && surface.morphSegmentToHeight === expectedHeight,
+                    "Minimal motion synchronously snaps both axes and clears the segment");
+
+            testRegionImplicitWidth = 120;
+            testRegionImplicitHeight = 72;
+            require(UserConfig.publish(UserConfig.defaultSnapshot(0)),
+                    "motion probe restores default geometry settings");
+            require(host.cancelDashboard(),
+                    "motion probe returns the hover-expanded surface to Idle");
+            motionProbeStage = 8;
+            retry.restart();
+            return false;
+        }
+
+        if (motionProbeStage === 8) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !surface.geometryAnimationRunning && !host.interactiveExitRunning
+                            && host.surfaceWidth === host.surfacePreferredWidth
+                            && host.surfaceHeight === host.surfacePreferredHeight,
+                            "motion probe cleanup did not settle at exact Idle geometry")) {
+                return false;
+            }
+            requireMorphSettled("motion probe cleanup");
+            host.reducedMotion = false;
+            motionProbeSampling = false;
+            motionObservedSegment = null;
+            motionChainExpectedActive = false;
+            motionProbeStage = 9;
+            return true;
+        }
+
+        return true;
     }
 
     function configurePolkitVisualState() {
@@ -469,8 +810,16 @@ ShellRoot {
                     && host.geometryAnimationDuration <= 210,
                     "expanded geometry uses the responsive 170–210 ms interpolation");
             hoverExpandedEpoch = coordinator.ownerEpoch;
-            require(coordinator.setExplicitExpanded(host.surfaceGeneration, true),
-                    "deliberate keyboard intent joins the visible dashboard");
+            const background = findObject(host.fallbackSurface.contentItem, "surfaceBackground");
+            const revisionBeforePromotion = coordinator.revision;
+            const focusSerialBeforePromotion = coordinator.focusRequestSerial;
+            require(background !== null, "hover-expanded surface exposes its background");
+            inputDriver.click(background);
+            require(coordinator.explicitExpandedIntent
+                    && coordinator.ownerEpoch === hoverExpandedEpoch
+                    && coordinator.revision === revisionBeforePromotion
+                    && coordinator.focusRequestSerial === focusSerialBeforePromotion + 1,
+                    "one background tap promotes hover expansion without replacing its owner");
         } else if (step === 2) {
             if (!awaitState(host.surfaceFocusable && host.dashboardFocused,
                             "deliberate expansion did not receive focus within five seconds")) {
@@ -480,6 +829,19 @@ ShellRoot {
                     "deliberate intent updates the visible dashboard in place");
             require(coordinator.focusTarget === coordinator.focusExpandedDashboard,
                     "coordinator targets dashboard focus only after deliberate intent");
+            const explicitBackground = findObject(host.fallbackSurface.contentItem,
+                                                  "surfaceBackground");
+            const explicitOwnerEpoch = coordinator.ownerEpoch;
+            const explicitRevision = coordinator.revision;
+            const explicitFocusSerial = coordinator.focusRequestSerial;
+            require(explicitBackground !== null,
+                    "explicit Expanded keeps the shared background mounted");
+            inputDriver.click(explicitBackground);
+            require(coordinator.explicitExpandedIntent
+                    && coordinator.ownerEpoch === explicitOwnerEpoch
+                    && coordinator.revision === explicitRevision
+                    && coordinator.focusRequestSerial === explicitFocusSerial,
+                    "explicit Expanded background taps are inert and request no duplicate focus");
             require(coordinator.openLauncher(host.surfaceToken),
                     "higher-priority interaction interrupts Expanded");
         } else if (step === 3) {
@@ -510,8 +872,7 @@ ShellRoot {
             focusSerialBeforeRestore = coordinator.focusRequestSerial;
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
-            require(host.interactiveExitRunning && host.geometryAnimationRunning
-                    && host.launcherLoaded && host.surfaceFocusable
+            require(host.interactiveExitRunning && host.launcherLoaded && host.surfaceFocusable
                     && host.interactiveExitLoaderZ > 0,
                     "reverse exit retains focus and layers Launcher above the restored dashboard");
             require(!host.interactiveExitLoaderEnabled,
@@ -821,19 +1182,102 @@ ShellRoot {
             require(!coordinator.presentationVisible,
                     "notification hold waits for its taller entry completion");
         } else if (step === 15) {
-            if (!awaitState(coordinator.ownerName === "notification"
-                            && coordinator.presentationVisible && host.transientCommitted,
-                            "notification transient did not commit visibly")) {
+            const surface = host.fallbackSurface;
+            require(surface !== null, "notification revision probe keeps one live surface");
+            if (notificationRevisionProbeStage === 0) {
+                if (!awaitState(coordinator.ownerName === "notification"
+                                && surface.geometryAnimationRunning
+                                && surface.morphProgress > 0.05 && surface.morphProgress < 0.85
+                                && !surface.morphFollowUpPending
+                                && host.transientDetailText === "Review requested"
+                                && Math.abs(surface.morphSegmentToHeight
+                                            - host.surfacePreferredHeight) < 0.001,
+                                "notification entry did not expose one stable running segment")) {
+                    return;
+                }
+                const oldSegment = currentMorphSegment();
+                notificationRevisionProbe = Object.freeze({
+                                                               "epoch": surface.ownerEpoch,
+                                                               "revision": surface.ownerRevision,
+                                                               "sequence": surface.morphSequence,
+                                                               "width": surface.implicitWidth,
+                                                               "height": surface.implicitHeight,
+                                                               "oldTargetWidth": oldSegment.toWidth,
+                                                               "oldTargetHeight": oldSegment.toHeight
+                                                           });
+                require(coordinator.requestNotification("surface-notification", 2, 2,
+                                                        host.surfaceToken),
+                        "newer notification revision replaces the visible event in place");
+                surface.refreshSurfaceState();
+                require(surface.ownerEpoch === notificationRevisionProbe.epoch
+                        && surface.ownerRevision === notificationRevisionProbe.revision + 1
+                        && surface.morphSequence === notificationRevisionProbe.sequence
+                        && !surface.morphFollowUpPending,
+                        "same-epoch revision waits for one coalesced semantic interruption");
+                requireMorphSegmentUnchanged(oldSegment, "queued notification replacement");
+                notificationRevisionProbeStage = 1;
+                retry.restart();
                 return;
             }
+            if (notificationRevisionProbeStage === 1) {
+                if (!awaitState(surface.geometryAnimationRunning
+                                && surface.morphSequence
+                                === notificationRevisionProbe.sequence + 1
+                                && surface.ownerEpoch === notificationRevisionProbe.epoch
+                                && surface.ownerRevision
+                                === notificationRevisionProbe.revision + 1,
+                                "notification revision did not start exactly one new segment")) {
+                    return;
+                }
+                require(Math.abs(surface.morphSegmentFromWidth
+                                 - notificationRevisionProbe.width) <= 1
+                        && Math.abs(surface.morphSegmentFromHeight
+                                    - notificationRevisionProbe.height) <= 1
+                        && Math.abs(surface.morphSegmentToWidth
+                                    - host.surfacePreferredWidth) < 0.001
+                        && Math.abs(surface.morphSegmentToHeight
+                                    - host.surfacePreferredHeight) < 0.001
+                        && !surface.morphFollowUpPending,
+                        "revision interruption samples the current pose and freezes its new endpoint: from="
+                        + surface.morphSegmentFromWidth + "x" + surface.morphSegmentFromHeight
+                        + " observed=" + notificationRevisionProbe.width + "x"
+                        + notificationRevisionProbe.height + " to=" + surface.morphSegmentToWidth
+                        + "x" + surface.morphSegmentToHeight + " preferred="
+                        + host.surfacePreferredWidth + "x" + host.surfacePreferredHeight
+                        + " oldTarget=" + notificationRevisionProbe.oldTargetWidth + "x"
+                        + notificationRevisionProbe.oldTargetHeight + " pending="
+                        + surface.morphFollowUpPending);
+                notificationRevisionSegment = currentMorphSegment();
+                notificationRevisionProbeStage = 2;
+                retry.restart();
+                return;
+            }
+            if (surface.geometryAnimationRunning) {
+                requireMorphSegmentUnchanged(notificationRevisionSegment,
+                                             "running notification replacement");
+            }
+            if (!awaitState(!surface.geometryAnimationRunning && coordinator.presentationVisible
+                            && host.transientCommitted,
+                            "replacement notification did not settle and acknowledge")) {
+                return;
+            }
+            requireMorphSegmentUnchanged(notificationRevisionSegment,
+                                         "settled notification replacement");
+            requireMorphSettled("notification revision replacement");
+            require(surface.morphSequence === notificationRevisionProbe.sequence + 1
+                    && !surface.morphFollowUpPending,
+                    "one semantic revision produces one sequence with no ordinary drift follow-up");
             require(host.transientPrimaryText === "Messages" && host.transientDetailText
-                    === "Review requested",
-                    "notification transient replaces compact content without stale text");
+                    === "Updated review",
+                    "notification revision replaces content without stale text");
             require(host.surfacePreferredWidth > compactTransientWidth
                     && host.surfacePreferredHeight > compactTransientHeight
                     && host.surfacePreferredHeight
                     > Theme.size.islandTransientNotificationHeight,
-                    "notification body grows the existing island beyond compact OSD geometry");
+                    "replacement notification body grows the existing island");
+            notificationRevisionProbeStage = 0;
+            notificationRevisionProbe = null;
+            notificationRevisionSegment = null;
             require(coordinator.invalidateTransient("surface-notification", 2),
                     "notification source invalidation releases current ownership");
         } else if (step === 16) {
@@ -1085,6 +1529,8 @@ ShellRoot {
                     && Theme.snapshot.contrast.statusOnSurface >= 4.5
                     && Theme.snapshot.contrast.dangerOnFills >= 4.5,
                     "live customization updates one surface with complete readable roles and no service recreation");
+            require(coordinator.setHover(host.surfaceGeneration, false),
+                    "custom geometry clears stale hover intent before explicit expansion");
             require(host.requestDeliberateExpansion(),
                     "custom geometry expands through the existing coordinator path");
         } else if (step === 34) {
@@ -1098,16 +1544,47 @@ ShellRoot {
                     && host.geometryAnimationDuration === 0 && host.backgroundCoversSurface,
                     "custom expanded bounds remain screen-safe and Minimal motion settles");
             require(host.cancelDashboard(), "customized dashboard remains cancellable");
+            require(coordinator.setHover(host.surfaceGeneration, false),
+                    "customized dashboard clears hover restoration before reset");
             Theme.wallpaperPalette = null;
             UserConfig.publish(UserConfig.defaultSnapshot(0));
         } else if (step === 35) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
-                            "reset customization did not restore Idle")) {
+            if (motionProbeStage === 0 && !motionEntryRequested) {
+                if (motionResetStage === 0) {
+                    host.fallbackSurface.hoverInputEnabled = false;
+                    require(!host.fallbackSurface.hoverInputEnabled,
+                            "motion contract suspends live pointer input");
+                    require(coordinatorCore.setHover(host.surfaceToken,
+                                                     host.surfaceGeneration, false),
+                            "motion contract clears pointer hover before its Idle baseline");
+                    host.reducedMotion = true;
+                    require(coordinatorCore.resetToIdle(host.surfaceToken),
+                            "motion contract resets live pointer intent before its Idle baseline");
+                    host.fallbackSurface.refreshSurfaceState();
+                    host.fallbackSurface.queuePresentationAcknowledgement();
+                    require(!coordinatorCore.surfaceSnapshot(host.surfaceToken).hoverIntent,
+                            "motion reset publishes cleared hover intent immediately");
+                    motionResetStage = 1;
+                }
+                host.fallbackSurface.refreshSurfaceState();
+                if (!awaitState(coordinator.ownerName === "idle"
+                                && coordinator.presentationVisible,
+                                "reset customization did not restore Idle: owner="
+                                + coordinator.ownerName + " visible="
+                                + coordinator.presentationVisible + " hover="
+                                + coordinator.hoverIntent + " explicit="
+                                + coordinator.explicitExpandedIntent + " input="
+                                + host.fallbackSurface.hoverInputEnabled + " pointer="
+                                + host.fallbackSurface.pointerHovered)) {
+                    return;
+                }
+                require(host.surfaceGeneration === initialSurfaceGeneration
+                        && host.backgroundRadius === Theme.radius.outer && !host.blurRequested,
+                        "reset restores versioned appearance without recreating the live surface");
+            }
+            if (!runMorphContractStep()) {
                 return;
             }
-            require(host.surfaceGeneration === initialSurfaceGeneration
-                    && host.backgroundRadius === Theme.radius.outer && !host.blurRequested,
-                    "reset restores versioned appearance without recreating the live surface");
             captureSoakRegistry();
             requireSoakRegistry("surface soak baseline");
             startSurfaceSoakCycle();
@@ -1489,6 +1966,17 @@ ShellRoot {
                     "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
                     "body": "A bounded plain-text notification body that grows the island.",
                     "detail": "Review requested",
+                    "iconName": "preferences-desktop-notification-symbolic",
+                    "primary": "Messages",
+                    "value": ""
+                };
+            }
+            if (sourceToken === "surface-notification" && sourceGeneration === 2 && sourceRevision
+                    === 2) {
+                return {
+                    "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
+                    "body": "The replacement keeps the same event identity.\nIts taller body changes the endpoint.\nRelated bindings must settle together.\nNo ordinary drift segment may follow.",
+                    "detail": "Updated review",
                     "iconName": "preferences-desktop-notification-symbolic",
                     "primary": "Messages",
                     "value": ""
@@ -1908,9 +2396,35 @@ ShellRoot {
         }
     }
 
+    Connections {
+        target: host.fallbackSurface
+        ignoreUnknownSignals: true
+
+        function onGeometryAnimationRunningChanged() {
+            if (test.motionChainExpectedActive && !target.geometryAnimationRunning) {
+                test.motionChainGapObserved = true;
+            }
+        }
+
+        function onMorphSequenceChanged() {
+            if (test.motionChainExpectedActive && test.motionFrozenSegment !== null
+                    && target.morphSequence === test.motionFrozenSegment.sequence + 1) {
+                test.motionFollowUpObserved = true;
+                test.motionChainExpectedActive = false;
+            }
+        }
+    }
+
     FrameAnimation {
-        running: test.geometryDirection !== ""
-        onTriggered: Qt.callLater(test.sampleGeometry)
+        running: test.geometryDirection !== "" || test.motionProbeSampling
+        onTriggered: {
+            if (test.geometryDirection !== "") {
+                Qt.callLater(test.sampleGeometry);
+            }
+            if (test.motionProbeSampling) {
+                Qt.callLater(test.sampleMotionProbeFrame);
+            }
+        }
     }
     Timer {
         id: retry

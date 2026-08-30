@@ -2,12 +2,18 @@
 
 #include <QByteArray>
 #include <QString>
-#include <QVariant>
 #include <QVector>
 
 #include <optional>
 
 namespace nagi::kwin {
+
+inline constexpr int SnapshotProtocolVersion = 1;
+inline constexpr qsizetype MaximumSnapshotLength = 65536;
+inline constexpr qsizetype MaximumDesktopCount = 256;
+inline constexpr qsizetype MaximumDesktopIdLength = 1024;
+inline constexpr qsizetype MaximumDesktopNameLength = 256;
+inline constexpr qsizetype HelperEpochLength = 32;
 
 struct Desktop {
     QString id;
@@ -17,32 +23,19 @@ struct Desktop {
     bool operator==(const Desktop &) const = default;
 };
 
-struct SignedDesktopTuple {
-    qint32 position;
-    QString id;
-    QString name;
-};
+bool isValidHelperEpoch(const QString &helperEpoch);
+std::optional<QByteArray> canonicalizeScriptSnapshot(
+    const QString &payload,
+    const QString &helperEpoch,
+    QString *error);
+QByteArray unavailableSnapshotJson(const QString &helperEpoch);
 
-struct UnsignedDesktopTuple {
-    quint32 position;
-    QString id;
-    QString name;
-};
+class SnapshotDeduplicator final {
+public:
+    bool shouldPublish(const QByteArray &snapshot);
 
-std::optional<QVector<Desktop>> normalizeSignedDesktops(
-    const QVector<SignedDesktopTuple> &tuples,
-    QString *error);
-std::optional<QVector<Desktop>> normalizeUnsignedDesktops(
-    const QVector<UnsignedDesktopTuple> &tuples,
-    QString *error);
-std::optional<QVector<Desktop>> decodeDesktopTuples(
-    const QVariant &value,
-    QString *error);
-std::optional<QByteArray> availableSnapshotJson(
-    const QVector<Desktop> &desktops,
-    const QString &currentId,
-    bool showTransient,
-    QString *error);
-QByteArray unavailableSnapshotJson();
+private:
+    QByteArray lastSnapshot;
+};
 
 } // namespace nagi::kwin

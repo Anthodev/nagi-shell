@@ -52,34 +52,29 @@ ShellRoot {
         }
 
         function requireSoakBounds(label) {
-            return require(service.generation === 1, label + "-stale-generation")
-                    && require(service.liveCount >= 0
-                               && service.liveCount <= maximumLiveCount,
-                               label + "-live-bound")
-                    && require(service.historyCount >= 0
-                               && service.historyCount <= maximumHistoryCount,
-                               label + "-history-bound")
-                    && require(historyView.rowCount === service.historyCount,
-                               label + "-history-model-bound")
-                    && require(dashboardModelCount()
-                               === Math.min(service.historyCount, maximumDashboardCount),
-                               label + "-dashboard-model-bound")
-                    && require(objectCount(service.watchers) === service.liveCount,
-                               label + "-watcher-bound")
-                    && require(objectCount(service.admittedPopups) === service.liveCount,
-                               label + "-mailbox-bound")
-                    && require(service.activeTimerCount >= 0
-                               && service.activeTimerCount <= 1,
-                               label + "-scheduler-bound");
+            return require(service.generation === 1, label + "-stale-generation") && require(
+                        service.liveCount >= 0 && service.liveCount <= maximumLiveCount, label
+                        + "-live-bound") && require(service.historyCount >= 0
+                                                    && service.historyCount <= maximumHistoryCount,
+                                                    label + "-history-bound") && require(
+                        historyView.rowCount === service.historyCount, label
+                        + "-history-model-bound") && require(dashboardModelCount() === Math.min(
+                                                                 service.historyCount,
+                                                                 maximumDashboardCount), label
+                                                             + "-dashboard-model-bound") && require(
+                        objectCount(service.watchers) === service.liveCount, label
+                        + "-watcher-bound") && require(objectCount(service.admittedPopups)
+                                                       === service.liveCount, label
+                                                       + "-mailbox-bound") && require(
+                        service.activeTimerCount >= 0 && service.activeTimerCount <= 1, label
+                        + "-scheduler-bound");
         }
 
         function requireSoakState(expectedLive, expectedHistory, expectedTimer, label) {
-            return requireSoakBounds(label)
-                    && require(service.liveCount === expectedLive, label + "-live-count")
-                    && require(service.historyCount === expectedHistory,
-                               label + "-history-count")
-                    && require(service.activeTimerCount === expectedTimer,
-                               label + "-timer-count");
+            return requireSoakBounds(label) && require(service.liveCount === expectedLive, label
+                                                       + "-live-count") && require(
+                        service.historyCount === expectedHistory, label + "-history-count")
+                    && require(service.activeTimerCount === expectedTimer, label + "-timer-count");
         }
 
         function historyContains(recordKey) {
@@ -94,8 +89,8 @@ ShellRoot {
 
         function rememberBoundSequence(snapshot, label) {
             const sequence = Number(snapshot.firstAdmissionSequence);
-            if (!require(Number.isInteger(sequence) && sequence > lastSoakSequence,
-                         label + "-fresh-sequence")) {
+            if (!require(Number.isInteger(sequence) && sequence > lastSoakSequence, label
+                         + "-fresh-sequence")) {
                 return false;
             }
             lastSoakSequence = sequence;
@@ -110,20 +105,17 @@ ShellRoot {
             soakTransientToken = transientToken;
             soakTransientGeneration = transientGeneration;
             soakTransientRevision = transientRevision;
-            return require(soakTransientToken !== ""
-                           && service.resolveTransient(soakTransientToken,
-                                                       soakTransientGeneration,
-                                                       soakTransientRevision) !== null,
-                           label + "-transient-owned");
+            return require(soakTransientToken !== "" && service.resolveTransient(soakTransientToken,
+                                                                                 soakTransientGeneration,
+                                                                                 soakTransientRevision)
+                           !== null, label + "-transient-owned");
         }
 
         function requireSoakTransientReleased(label) {
-            return require(service.resolveTransient(soakTransientToken,
-                                                    soakTransientGeneration,
-                                                    soakTransientRevision) === null,
-                           label + "-transient-retained");
+            return require(service.resolveTransient(soakTransientToken, soakTransientGeneration,
+                                                    soakTransientRevision) === null, label
+                           + "-transient-retained");
         }
-
 
         function start() {
             if (mode === "ownership") {
@@ -139,12 +131,11 @@ ShellRoot {
             started = true;
             if (mode === "restart") {
                 if (require(service.liveCount === 0 && service.historyCount === 0,
-                            "restart-not-empty")
-                        && require(objectCount(service.watchers) === 0
-                                   && objectCount(service.admittedPopups) === 0
-                                   && service.activeTimerCount === 0
-                                   && dashboardModelCount() === 0,
-                                   "restart-cleanup-not-empty")) {
+                            "restart-not-empty") && require(objectCount(service.watchers) === 0
+                                                            && objectCount(service.admittedPopups)
+                                                            === 0 && service.activeTimerCount === 0
+                                                            && dashboardModelCount() === 0,
+                                                            "restart-cleanup-not-empty")) {
                     console.warn("notification-harness-restarted");
                 }
                 return;
@@ -160,12 +151,9 @@ ShellRoot {
         }
 
         function verifyReload() {
-            const reconciled = service.liveCount === 1
-                    && service.historyCount === 1
-                    && objectCount(service.watchers) === 1
-                    && objectCount(service.admittedPopups) === 0
-                    && service.activeTimerCount === 1
-                    && dashboardModelCount() === 1;
+            const reconciled = service.liveCount === 1 && service.historyCount === 1 && objectCount(
+                      service.watchers) === 1 && objectCount(service.admittedPopups) === 0
+                  && service.activeTimerCount === 1 && dashboardModelCount() === 1;
             if (!reconciled) {
                 reloadSettleAttempts += 1;
                 if (reloadSettleAttempts > maximumReloadSettleAttempts) {
@@ -186,8 +174,8 @@ ShellRoot {
                 Qt.callLater(test.advance);
                 return;
             }
-            if (stage >= 12 && stage <= 20
-                    && !requireSoakBounds("soak-" + soakCycle + "-stage-" + stage)) {
+            if (stage >= 12 && stage <= 20 && !requireSoakBounds("soak-" + soakCycle + "-stage-"
+                                                                 + stage)) {
                 return;
             }
             const snapshot = NotificationRuntime.historySnapshot(0);
@@ -198,31 +186,32 @@ ShellRoot {
                                       "urgency"];
                 const transient = service.resolveTransient(transientToken, transientGeneration,
                                                            transientRevision);
-                if (!require(nativeTransientRequests > 0, "native-transient-signal-missing")
-                        || !require(nativeTransientRequests === 1,
-                                    "native-transient-signal-duplicated")
-                        || !require(transientRequests === 1 && transientToken !== "",
-                                    "transient-wrapper-signal-missing")) {
+                if (!require(nativeTransientRequests === 1,
+                             "nagi-first-notify-native-admission-count") || !require(
+                            transientRequests === 1 && transientToken !== "",
+                            "nagi-first-notify-popup-request-count")) {
                     return;
                 }
                 if (!require(Object.keys(snapshot).sort().join(",") === expectedKeys.sort().join(","),
                              "snapshot-fields") || !require(snapshot.appName === "App�Name",
                                                             "app-normalization") || !require(
-                            snapshot.body === "Bold linkALT", "body-normalization")
-                        || !require(transient !== null, "transient-projection-missing")
-                        || !require(transient.body === snapshot.body,
-                                    "transient-body-projection")
-                        || !require(transient.appIconName === snapshot.appIconName,
-                                    "transient-icon-projection")
-                        || !require(transient.primary === snapshot.appName,
-                                    "transient-app-projection")
+                            snapshot.body === "Bold linkALT", "body-normalization") || !require(
+                            transient !== null, "transient-projection-missing") || !require(
+                            transient.body === snapshot.body, "transient-body-projection") ||
+                        !require(transient.appIconName === snapshot.appIconName,
+                                 "transient-icon-projection") || !require(transient.primary
+                                                                          === snapshot.appName,
+                                                                          "transient-app-projection")
                         || !require(transient.detail === snapshot.summary,
-                                    "transient-summary-projection")
-                        || !require(snapshot.state === "live" && !service.actionsSupported
-                                    && !service.canAct(snapshot.firstAdmissionSequence)
-                                    && service.actionsFor(snapshot.firstAdmissionSequence).length
-                                    === 0 && historyView.visibleActionCount === 0,
-                                    "initial-contract")) {
+                                    "transient-summary-projection") || !require(snapshot.state
+                                                                                === "live" &&
+                                                                                !service.actionsSupported
+                                                                                && !service.canAct(
+                                                                                    snapshot.firstAdmissionSequence)
+                                                                                && service.actionsFor(
+                                                                                    snapshot.firstAdmissionSequence).length
+                                                                                === 0 && historyView.visibleActionCount
+                                                                                === 0, "initial-contract")) {
                     return;
                 }
                 firstKey = snapshot.firstAdmissionSequence;
@@ -230,10 +219,8 @@ ShellRoot {
                 service.doNotDisturb = true;
                 const dndInvalidations = transientInvalidations;
                 service.doNotDisturb = false;
-                if (!require(dndInvalidations > 0,
-                             "dnd-did-not-invalidate-normal-popup")
-                        || !require(dndInvalidations === 1,
-                                    "dnd-invalidated-popup-more-than-once")) {
+                if (!require(dndInvalidations > 0, "dnd-did-not-invalidate-normal-popup") ||
+                        !require(dndInvalidations === 1, "dnd-invalidated-popup-more-than-once")) {
                     return;
                 }
                 stage = 1;
@@ -306,31 +293,27 @@ ShellRoot {
                 return;
             }
             if (stage === 11 && service.historyCount === 0 && service.liveCount === 0) {
-                if (!require(service.activeTimerCount === 0
-                             && objectCount(service.watchers) === 0
-                             && objectCount(service.admittedPopups) === 0,
-                             "pre-soak-cleanup")) {
+                if (!require(service.activeTimerCount === 0 && objectCount(service.watchers) === 0
+                             && objectCount(service.admittedPopups) === 0, "pre-soak-cleanup")) {
                     return;
                 }
                 stage = 12;
                 console.warn("notification-harness-dismissed");
                 return;
             }
-            if (stage === 12 && soakPreloadIndex < maximumHistoryCount
-                    && service.historyCount === soakPreloadIndex + 1
-                    && service.liveCount === soakPreloadIndex + 1
+            if (stage === 12 && soakPreloadIndex < maximumHistoryCount && service.historyCount
+                    === soakPreloadIndex + 1 && service.liveCount === soakPreloadIndex + 1
                     && snapshot.summary === "Retained " + soakPreloadIndex) {
                 const completedPreload = soakPreloadIndex;
                 if (!requireSoakState(completedPreload + 1, completedPreload + 1, 1,
-                                      "soak-preload-" + completedPreload)
-                        || !rememberBoundSequence(snapshot,
-                                                  "soak-preload-" + completedPreload)) {
+                                      "soak-preload-" + completedPreload) || !rememberBoundSequence(
+                            snapshot, "soak-preload-" + completedPreload)) {
                     return;
                 }
                 soakPreloadIndex += 1;
                 if (soakPreloadIndex === maximumHistoryCount) {
-                    soakOldestKey = NotificationRuntime.historySnapshot(
-                                maximumHistoryCount - 1).firstAdmissionSequence;
+                    soakOldestKey = NotificationRuntime.historySnapshot(maximumHistoryCount
+                                                                        - 1).firstAdmissionSequence;
                     if (!require(soakOldestKey !== "", "soak-preload-oldest-key")) {
                         return;
                     }
@@ -339,33 +322,32 @@ ShellRoot {
                 console.warn("notification-harness-soak-preload:" + completedPreload + ":");
                 return;
             }
-            if (stage === 13 && soakCycle < 100
-                    && service.historyCount === maximumHistoryCount
-                    && service.liveCount === maximumLiveCount
-                    && snapshot.summary === "Soak " + soakCycle + " admitted") {
-                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1,
-                                      "soak-" + soakCycle + "-admitted")
-                        || !require(!historyContains(soakOldestKey),
-                                    "soak-" + soakCycle + "-oldest-history-not-pruned")
-                        || !rememberSoakAdmission(snapshot,
-                                                  "soak-" + soakCycle + "-admitted")) {
+            if (stage === 13 && soakCycle < 100 && service.historyCount === maximumHistoryCount
+                    && service.liveCount === maximumLiveCount && snapshot.summary === "Soak "
+                    + soakCycle + " admitted") {
+                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1, "soak-" + soakCycle
+                                      + "-admitted") || !require(!historyContains(soakOldestKey),
+                                                                 "soak-" + soakCycle
+                                                                 + "-oldest-history-not-pruned") ||
+                        !rememberSoakAdmission(snapshot, "soak-" + soakCycle + "-admitted")) {
                     return;
                 }
                 stage = 14;
                 console.warn("notification-harness-soak-admitted:" + soakCycle + ":");
                 return;
             }
-            if (stage === 14 && service.historyCount === maximumHistoryCount
-                    && service.liveCount === maximumLiveCount
-                    && snapshot.summary === "Soak " + soakCycle + " replaced") {
-                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1,
-                                      "soak-" + soakCycle + "-replaced")
-                        || !require(snapshot.firstAdmissionSequence === soakAdmissionKey,
-                                    "soak-" + soakCycle + "-replacement-key-changed")
-                        || !require(transientToken === soakTransientToken
-                                    && transientGeneration === soakTransientGeneration
-                                    && transientRevision > soakTransientRevision,
-                                    "soak-" + soakCycle + "-replacement-generation")) {
+            if (stage === 14 && service.historyCount === maximumHistoryCount && service.liveCount
+                    === maximumLiveCount && snapshot.summary === "Soak " + soakCycle
+                    + " replaced") {
+                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1, "soak-" + soakCycle
+                                      + "-replaced") || !require(snapshot.firstAdmissionSequence
+                                                                 === soakAdmissionKey, "soak-"
+                                                                 + soakCycle
+                                                                 + "-replacement-key-changed") ||
+                        !require(transientToken === soakTransientToken && transientGeneration
+                                 === soakTransientGeneration && transientRevision
+                                 > soakTransientRevision, "soak-" + soakCycle
+                                 + "-replacement-generation")) {
                     return;
                 }
                 soakTransientRevision = transientRevision;
@@ -373,12 +355,13 @@ ShellRoot {
                 console.warn("notification-harness-soak-replaced:" + soakCycle + ":");
                 return;
             }
-            if (stage === 15 && service.historyCount === maximumHistoryCount - 1
-                    && service.liveCount === maximumLiveCount - 1) {
-                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount - 1, 1,
-                                      "soak-" + soakCycle + "-closed")
-                        || !require(!historyContains(soakAdmissionKey),
-                                    "soak-" + soakCycle + "-closed-history-retained")
+            if (stage === 15 && service.historyCount === maximumHistoryCount - 1 && service.liveCount
+                    === maximumLiveCount - 1) {
+                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount - 1, 1, "soak-"
+                                      + soakCycle + "-closed") || !require(!historyContains(
+                                                                               soakAdmissionKey),
+                                                                           "soak-" + soakCycle
+                                                                           + "-closed-history-retained")
                         || !requireSoakTransientReleased("soak-" + soakCycle + "-closed")) {
                     return;
                 }
@@ -386,27 +369,24 @@ ShellRoot {
                 console.warn("notification-harness-soak-closed:" + soakCycle + ":");
                 return;
             }
-            if (stage === 16 && service.historyCount === maximumHistoryCount
-                    && service.liveCount === maximumLiveCount
-                    && snapshot.summary === "Soak " + soakCycle + " expiry"
+            if (stage === 16 && service.historyCount === maximumHistoryCount && service.liveCount
+                    === maximumLiveCount && snapshot.summary === "Soak " + soakCycle + " expiry"
                     && snapshot.state === "live") {
-                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1,
-                                      "soak-" + soakCycle + "-expiry-admitted")
-                        || !rememberSoakAdmission(snapshot,
-                                                  "soak-" + soakCycle
-                                                  + "-expiry-admitted")) {
+                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1, "soak-" + soakCycle
+                                      + "-expiry-admitted") || !rememberSoakAdmission(snapshot,
+                                                                                      "soak-" + soakCycle
+                                                                                      + "-expiry-admitted")) {
                     return;
                 }
                 stage = 17;
                 console.warn("notification-harness-soak-expiry-admitted:" + soakCycle + ":");
                 return;
             }
-            if (stage === 17 && service.historyCount === maximumHistoryCount
-                    && service.liveCount === maximumLiveCount - 1
-                    && snapshot.state === "expired") {
-                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount, 1,
-                                      "soak-" + soakCycle + "-expired")
-                        || !requireSoakTransientReleased("soak-" + soakCycle + "-expired")) {
+            if (stage === 17 && service.historyCount === maximumHistoryCount && service.liveCount
+                    === maximumLiveCount - 1 && snapshot.state === "expired") {
+                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount, 1, "soak-"
+                                      + soakCycle + "-expired") || !requireSoakTransientReleased(
+                            "soak-" + soakCycle + "-expired")) {
                     return;
                 }
                 stage = 18;
@@ -416,12 +396,13 @@ ShellRoot {
                 }
                 return;
             }
-            if (stage === 18 && service.historyCount === maximumHistoryCount - 1
-                    && service.liveCount === maximumLiveCount - 1) {
-                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount - 1, 1,
-                                      "soak-" + soakCycle + "-cleared")
-                        || !require(!historyContains(soakAdmissionKey),
-                                    "soak-" + soakCycle + "-expired-history-retained")
+            if (stage === 18 && service.historyCount === maximumHistoryCount - 1 && service.liveCount
+                    === maximumLiveCount - 1) {
+                if (!requireSoakState(maximumLiveCount - 1, maximumHistoryCount - 1, 1, "soak-"
+                                      + soakCycle + "-cleared") || !require(!historyContains(
+                                                                                soakAdmissionKey),
+                                                                            "soak-" + soakCycle
+                                                                            + "-expired-history-retained")
                         || !requireSoakTransientReleased("soak-" + soakCycle + "-cleared")) {
                     return;
                 }
@@ -429,20 +410,19 @@ ShellRoot {
                 console.warn("notification-harness-soak-cleared:" + soakCycle + ":");
                 return;
             }
-            if (stage === 19 && service.historyCount === maximumHistoryCount
-                    && service.liveCount === maximumLiveCount
-                    && snapshot.summary === "Soak " + soakCycle + " retained") {
+            if (stage === 19 && service.historyCount === maximumHistoryCount && service.liveCount
+                    === maximumLiveCount && snapshot.summary === "Soak " + soakCycle
+                    + " retained") {
                 const completedCycle = soakCycle;
-                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1,
-                                      "soak-" + completedCycle + "-retained")
-                        || !rememberBoundSequence(snapshot,
-                                                  "soak-" + completedCycle + "-retained")) {
+                if (!requireSoakState(maximumLiveCount, maximumHistoryCount, 1, "soak-"
+                                      + completedCycle + "-retained") || !rememberBoundSequence(
+                            snapshot, "soak-" + completedCycle + "-retained")) {
                     return;
                 }
-                soakOldestKey = NotificationRuntime.historySnapshot(
-                            maximumHistoryCount - 1).firstAdmissionSequence;
-                if (!require(soakOldestKey !== "" && historyContains(soakOldestKey),
-                             "soak-" + completedCycle + "-next-oldest-key")) {
+                soakOldestKey = NotificationRuntime.historySnapshot(maximumHistoryCount
+                                                                    - 1).firstAdmissionSequence;
+                if (!require(soakOldestKey !== "" && historyContains(soakOldestKey), "soak-"
+                             + completedCycle + "-next-oldest-key")) {
                     return;
                 }
                 soakCycle += 1;
@@ -512,7 +492,6 @@ ShellRoot {
         ownerEpoch: 1
     }
 
-
     Connections {
         target: NotificationRuntime
 
@@ -532,11 +511,9 @@ ShellRoot {
         require(service.popupAllowed("critical"),
                 "critical notifications did not bypass Do Not Disturb by default");
         service.admitPopup("policy-normal", 1, 1, "normal");
-        require(transientRequests === 0,
-                "Do Not Disturb admitted a normal notification transient");
+        require(transientRequests === 0, "Do Not Disturb admitted a normal notification transient");
         service.admitPopup("policy-critical", 1, 1, "critical");
-        require(transientRequests === 1,
-                "critical notification did not bypass Do Not Disturb");
+        require(transientRequests === 1, "critical notification did not bypass Do Not Disturb");
         service.criticalMode = "silence";
         require(!service.popupAllowed("critical") && transientInvalidations === 1,
                 "total silence did not invalidate the admitted critical transient");

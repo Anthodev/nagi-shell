@@ -130,6 +130,16 @@ ShellRoot {
         require(islandFull.workspaceBlock.width === islandFull.workspaceIndicatorWidth
                 && islandFull.workspaceBlock.height === islandFull.workspaceIndicatorHeight,
                 "workspace position uses the compact rectangular indicator geometry");
+        require(!islandNoWorkspace.workspaceBlock.visible
+                && !islandNoWorkspace.workspaceBoundary.visible
+                && islandNoWorkspace.workspaceText === "",
+                "globally unavailable workspace state collapses its Idle group and separator");
+        require(islandFull.implicitWidth - islandNoWorkspace.implicitWidth
+                === islandFull.workspaceBlock.width + islandFull.boundaryWidth,
+                "workspace unavailability frees its complete Idle geometry");
+        require(islandNoWorkspace.clockGroupBlock.x === 0
+                && islandNoWorkspace.clockBoundary.visible,
+                "Clock becomes the leading Idle group without workspace residue");
         require(islandFull.clockBlock.text === "13:45", "clock renders normalized time text");
         require(!islandFull.clockDateBlock.visible && islandFull.clockGroupBlock.width
                 === islandFull.clockBlock.width,
@@ -435,6 +445,12 @@ ShellRoot {
         id: fullDesktops
     }
 
+    FakeDesktops {
+        id: unavailableDesktops
+
+        available: false
+    }
+
     FakeWeather {
         id: islandFullWeather
     }
@@ -458,6 +474,15 @@ ShellRoot {
         weather: islandFullWeather
         media: FakeMedia {}
         onWeatherRequested: test.weatherRequests += 1
+    }
+
+    IdleIsland {
+        id: islandNoWorkspace
+
+        virtualDesktops: unavailableDesktops
+        clock: FakeClock {}
+        weather: FakeWeather {}
+        media: FakeMedia {}
     }
 
     IdleIsland {

@@ -21,6 +21,7 @@ KWIN_TEST_HEIGHT ?= 720
 KWIN_TEST_SCALE_ARGS = $(if $(filter 1,$(KWIN_TEST_MATRIX)),--matrix,--scale '$(KWIN_TEST_SCALE)')
 KWIN_TEST_ARGS = $(KWIN_TEST_SCALE_ARGS) --outputs '$(KWIN_TEST_OUTPUTS)' --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)'
 HELPER := $(BUILD_DIR)/nagi-kwin-virtual-desktops
+WORKSPACE_CONSENSUS_SCRIPT := $(BUILD_DIR)/nagi-kwin-workspace-consensus.js.in
 HELPER_TEST := $(BUILD_DIR)/kwin-virtual-desktops-test
 HELPER_MOC := $(BUILD_DIR)/main.moc
 OWNER_TEST := $(BUILD_DIR)/kwin-owner-lifecycle-test
@@ -169,7 +170,8 @@ FEDORA_QUICKSHELL_PACKAGE := quickshell
 .PHONY: test-wallpaper-write-contract
 .PHONY: test-easyeffects-contract
 .PHONY: easyeffects-status-helper test-easyeffects-status test-easyeffects-status-protocol
-.PHONY: stability-prerequisites test-stability test-stability-soak
+.PHONY: check-stability stability-prerequisites test-stability test-stability-soak
+.PHONY: test-notification-startup test-workspace-consensus
 
 
 help:
@@ -190,6 +192,7 @@ help:
 		'make wallpaper-helper  Build the Plasma wallpaper service helper' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
+		'make test-workspace-consensus  Test shared/divergent KWin workspace truth' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-easyeffects-contract  Test EasyEffects capability and lifecycle contracts' \
@@ -213,6 +216,7 @@ help:
 		'make test-global-shortcut  Test KGlobalAccel conflict, persistence, activation, and lifecycle' \
 		'make test-global-shortcut-live  Verify KGlobalAccel assignments and activation on live KDE' \
 		'make test-notifications  Test notification lifecycle, bounds, and history view' \
+		'make test-notification-startup  Test ordered notification ownership packaging' \
 		'make test-adapter    Test the QML adapter boundary' \
 		'make test-coordinator  Test island ownership and restoration' \
 		'make test-transients  Test workspace, brightness, audio, and notification routing' \
@@ -258,7 +262,8 @@ help:
 		'make test-stability   Run the 25-cycle stability, performance, and privacy gate' \
 		'make test-stability-soak  Run the manual 100-cycle extended stability gate' \
 		'make check-nondisplay  Run checks that need no display server' \
-		'make check           Run repository-defined non-visual checks'
+		'make check           Run repository-defined checks excluding stability' \
+		'make check-stability  Run the routine stability gate explicitly (outside make check)'
 
 requirements:
 	@printf 'Quickshell >= %s from the %s release channel\n' '$(QUICKSHELL_MIN_VERSION)' '$(QUICKSHELL_CHANNEL)'
@@ -378,7 +383,11 @@ $(NOTIFICATION_TEST_MOC): tests/notification_runtime_test.cpp | $(NOTIFICATION_B
 $(NOTIFICATION_DBUS_TEST_MOC): tests/notifications_dbus_test.cpp | $(NOTIFICATION_BUILD_DIR)
 	$(MOC) $< -o $@
 
-$(HELPER): $(HELPER_SOURCES) $(HELPER_HEADERS) $(HELPER_MOC) | $(BUILD_DIR)
+$(WORKSPACE_CONSENSUS_SCRIPT): src/kwin-virtual-desktops/workspace_consensus.js.in | $(BUILD_DIR)
+	cp $< $@
+	chmod 0644 $@
+
+$(HELPER): $(HELPER_SOURCES) $(HELPER_HEADERS) $(HELPER_MOC) $(WORKSPACE_CONSENSUS_SCRIPT) | $(BUILD_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(NATIVE_CXXFLAGS) $(QT_CFLAGS) -I$(BUILD_DIR) -Isrc/kwin-virtual-desktops $(HELPER_SOURCES) -o $@ $(LDFLAGS) $(QT_LIBS)
 
 $(HELPER_TEST): tests/kwin_virtual_desktops_test.cpp src/kwin-virtual-desktops/desktop_snapshot.cpp $(HELPER_HEADERS) | $(BUILD_DIR)
@@ -524,6 +533,9 @@ test-notifications: check-quickshell check-notification-toolchain $(NOTIFICATION
 	cp assets/icons/nagi/*.svg $(NOTIFICATION_QML_TEST_DIR)/assets/icons/nagi/
 	QT_QPA_PLATFORM='offscreen' GTK_USE_PORTAL='0' $(DBUS_RUN_SESSION) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(NOTIFICATION_DBUS_TEST) '$(QS)' '$(abspath $(NOTIFICATION_QML_TEST_DIR))'
 
+test-notification-startup:
+	bash tests/notification-startup/run-probe.sh
+
 test-native: check-helper-toolchain $(HELPER_TEST)
 	$(HELPER_TEST)
 
@@ -543,6 +555,17 @@ test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(OWNER_TEST) $(abspath $(HELPER))
 
+test-workspace-consensus: check-quickshell check-helper-toolchain $(HELPER)
+	@set -eu; \
+	for outputs in 1 2 3; do \
+		KWIN_TEST_PER_OUTPUT_DESKTOPS=1 $(KWIN_VIRTUAL_RUNNER) \
+			--scale 1 --outputs "$$outputs" --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- \
+			env NAGI_WORKSPACE_HELPER='$(abspath $(HELPER))' \
+				NAGI_WORKSPACE_CONTROLLER='$(abspath tests/workspace-consensus/controller.js)' \
+				KWIN_TEST_OUTPUTS="$$outputs" \
+				$(QS) -p '$(abspath tests/workspace-consensus)' --no-duplicate; \
+	done
+
 test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTIVITY_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(CONNECTIVITY_DBUS_TEST) $(abspath $(CONNECTIVITY_HELPER))
@@ -550,7 +573,7 @@ test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTI
 test-bluetooth-manager-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	@$(PYTHON) -c 'import dbus_next'
-	$(DBUS_RUN_SESSION) -- $(PYTHON) tests/bluetooth_manager_test.py $(abspath $(CONNECTIVITY_HELPER))
+	$(DBUS_RUN_SESSION) -- env PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -B tests/bluetooth_manager_test.py $(abspath $(CONNECTIVITY_HELPER))
 
 test-brightness-dbus: check-helper-toolchain $(BRIGHTNESS_HELPER) $(BRIGHTNESS_DBUS_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
@@ -952,9 +975,11 @@ test-stability-soak: stability-prerequisites
 	@NAGI_STABILITY_EXTENDED=1 bash $(CURDIR)/tests/stability/run-performance.sh
 	@PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -B $(CURDIR)/tests/stability/privacy_sweep.py --root $(CURDIR)/build/stability --fixture-artifact-dir $(CURDIR)/build/control-center-test/privacy-artifacts --capture-dir $(CURDIR)/build/control-center-test
 
-check: check-nondisplay test-stability test-surface-state test-ui-primitives test-typography test-control-center test-display-orchestration test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
+check: check-nondisplay test-surface-state test-ui-primitives test-typography test-control-center test-display-orchestration test-workspace-consensus test-multi-surface test-ipc-activation test-appearance-watcher test-settings-writer test-networkmanager-contract test-bluez-contract test-gaming-power-contract test-wallpaper-write-contract test-wallpaper-service
 
-check-nondisplay: check-quickshell format-check audio-helper easyeffects-status-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-easyeffects-status test-easyeffects-contract test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-wallpaper-dbus test-wallpaper test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-polkit-ui test-dashboard test-idle
+check-stability: test-stability
+
+check-nondisplay: check-quickshell format-check audio-helper easyeffects-status-helper connectivity-helper brightness-helper gaming-performance-helper session-helper application-helper settings-helper global-shortcut-helper wallpaper-helper notification-plugin platform-plugin test-native test-owner-lifecycle test-audio-protocol test-audio-volume test-easyeffects-status test-easyeffects-contract test-connectivity-dbus test-bluetooth-manager-dbus test-brightness-dbus test-gaming-performance-dbus test-wallpaper-dbus test-wallpaper test-brightness test-gaming-performance test-session-dbus test-session test-applications test-launcher test-global-shortcut test-notifications test-notification-startup test-adapter test-coordinator test-transients test-weather test-media test-audio test-connectivity test-tray test-theme-config test-settings-helper test-onboarding test-icons test-subview-frame test-polkit-ui test-dashboard test-idle
 
 clean:
 	rm -rf $(BUILD_DIR)

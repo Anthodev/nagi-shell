@@ -32,10 +32,10 @@ dbus-run-session -- sh -eu -c '
     }
     trap cleanup_inner EXIT HUP INT TERM
 
-    python3 "$here/mock_bluez.py" >"$fixture_root/mock.log" 2>&1 &
+    python3 -B "$here/mock_bluez.py" >"$fixture_root/mock.log" 2>&1 &
     mock_pid=$!
     gdbus wait --session --timeout 5 org.bluez
-    python3 "$here/client_probe.py"
+    python3 -B "$here/client_probe.py"
     wait "$mock_pid"
     mock_pid=
 ' sh "$here" "$fixture_root"
