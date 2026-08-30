@@ -95,7 +95,7 @@ ShellRoot {
     }
     function beginTooltipChecks() {
         const statusButtons = [];
-        findObjects(quickView, "dashboardStatusItem", statusButtons);
+        findObjects(statusView, "dashboardStatusItem", statusButtons);
         tooltipChecks = [
                     {
                         "control": findObject(mediaView, "dashboardMediaPrevious"),
@@ -305,6 +305,130 @@ ShellRoot {
         return true;
     }
 
+    function requireGlanceGeometry(label, expectedMedia, expectedGaming) {
+        const mediaRegion = test.findObject(dashboard, "dashboardMediaRegion");
+        const clockRegion = test.findObject(dashboard, "dashboardClockRegion");
+        const gamingRegion = test.findObject(dashboard, "dashboardGamingRegion");
+        const quickRegion = test.findObject(dashboard, "dashboardQuickControlsRegion");
+        const glanceStage = test.findObject(dashboard, "dashboardGlanceStage");
+        const commandsStage = test.findObject(dashboard, "dashboardCommandsStage");
+        const stageColumn = test.findObject(dashboard, "dashboardStageColumn");
+        require(mediaRegion !== null && clockRegion !== null && gamingRegion !== null
+                && quickRegion !== null && glanceStage !== null && commandsStage !== null
+                && stageColumn !== null, label + " exposes stable glance geometry objects");
+        const loadedClock = clockRegion.item;
+        const clockBounds = dashboard.clockPresentationItem;
+        const dashboardTime = test.findObject(loadedClock, "dashboardTime");
+        const dashboardDate = test.findObject(loadedClock, "dashboardDate");
+        require(loadedClock !== null && clockBounds !== null
+                && loadedClock.clockBoundsItem === clockBounds && clockBounds !== loadedClock
+                && dashboardTime !== null && dashboardDate !== null,
+                label + " exposes the tight loaded clock bounds and rendered text");
+        require(dashboard.mediaReady === expectedMedia && dashboard.gamingReady === expectedGaming
+                && dashboard.glanceMode === (expectedMedia ? "media" : "clock"),
+                label + " publishes the expected media and gaming readiness");
+
+        const expectedColumnWidth = expectedMedia ? Math.max(dashboard.spineNaturalWidth,
+                                                              dashboard.mediaNaturalWidth) :
+                                                    dashboard.spineNaturalWidth;
+        const expectedGamingSpan = expectedGaming ? dashboard.gamingBadgeGap
+                                                    + gamingRegion.implicitWidth : 0;
+        require(Math.abs(dashboard.glanceColumnWidth - expectedColumnWidth) <= 0.5
+                && Math.abs(dashboard.gamingBadgeSpan - expectedGamingSpan) <= 0.5
+                && Math.abs(dashboard.naturalWidth - (Theme.spacing.xl * 2
+                                                      + dashboard.mainContentWidth
+                                                      + dashboard.navigationSpan)) <= 0.5,
+                label + " accounts for columns, gaming span, padding, and navigation exactly");
+
+        if (expectedMedia) {
+            require(Math.abs(dashboard.glanceSpineWidth - expectedColumnWidth) <= 0.5
+                    && Math.abs(dashboard.glanceMediaWidth - expectedColumnWidth) <= 0.5
+                    && Math.abs(dashboard.glanceSpineX) <= 0.5
+                    && Math.abs(dashboard.glanceMediaX - (dashboard.glanceSpineX
+                                                         + dashboard.glanceSpineWidth
+                                                         + dashboard.glanceColumnGap)) <= 0.5
+                    && Math.abs(dashboard.mainContentWidth
+                                - (expectedColumnWidth * 2 + dashboard.glanceColumnGap
+                                   + expectedGamingSpan)) <= 0.5,
+                    label + " renders an exact 50:50 clock/media pair");
+            require(dashboard.glanceSpineX + dashboard.glanceSpineWidth
+                    <= dashboard.glanceMediaX + 0.5,
+                    label + " keeps equal glance columns non-overlapping");
+            if (dashboard.mediaNaturalWidth > dashboard.spineNaturalWidth + 0.5) {
+                require(Math.abs(loadedClock.width - clockRegion.width) <= 0.5
+                        && clockBounds.width < clockRegion.width - 0.5,
+                        label + " keeps the 50:50 region full-width while the clock presentation stays tight");
+            }
+            const loadedMedia = mediaRegion.item;
+            const loadedArtwork = test.findObject(loadedMedia, "dashboardMediaArtwork");
+            require(loadedMedia !== null && loadedArtwork !== null
+                    && Math.abs(loadedArtwork.x + loadedArtwork.width - loadedMedia.width) <= 1,
+                    label + " keeps artwork anchored to the media column's right edge");
+        } else {
+            const expectedMainWidth = Math.max(dashboard.spineNaturalWidth
+                                               + expectedGamingSpan * 2,
+                                               dashboard.commandsNaturalWidth);
+            require(Math.abs(dashboard.mainContentWidth - expectedMainWidth) <= 0.5
+                    && dashboard.glanceMediaWidth === 0 && mediaRegion.width === 0
+                    && Math.abs(dashboard.glanceSpineX + dashboard.glanceSpineWidth / 2
+                                - dashboard.mainContentWidth / 2) <= 0.5,
+                    label + " centers the clock/status spine with symmetric gaming reserve");
+            require(Math.abs(quickRegion.width - quickRegion.implicitWidth) <= 0.5
+                    && Math.abs(quickRegion.x + quickRegion.width / 2
+                                - commandsStage.width / 2) <= 0.5 && quickRegion.x >= -0.5
+                    && quickRegion.x + quickRegion.width <= commandsStage.width + 0.5,
+                    label + " centers the natural-width quick controls inside Commands");
+        }
+
+        if (expectedGaming) {
+            const predecessorRight = expectedMedia ? dashboard.glanceMediaX
+                                                     + dashboard.glanceMediaWidth :
+                                                     dashboard.glanceSpineX
+                                                     + dashboard.glanceSpineWidth;
+            const gamingBadge = gamingRegion.item;
+            const gamingIcon = test.findObject(gamingBadge, "dashboardGamingPerformanceIcon");
+            require(Math.abs(dashboard.glanceGamingX
+                             - (predecessorRight + dashboard.gamingBadgeGap)) <= 0.5
+                    && Math.abs(dashboard.glanceGamingWidth - gamingRegion.implicitWidth) <= 0.5
+                    && predecessorRight <= dashboard.glanceGamingX + 0.5
+                    && dashboard.glanceGamingX + dashboard.glanceGamingWidth
+                    <= dashboard.mainContentWidth + 0.5,
+                    label + " places the gaming badge immediately after its glance predecessor");
+            require(gamingBadge !== null && gamingIcon !== null && !gamingBadge.focus
+                    && !gamingBadge.activeFocus && !gamingBadge.activeFocusOnTab
+                    && typeof gamingBadge.clicked !== "function"
+                    && gamingBadge.Accessible.role === Accessible.StaticText
+                    && gamingBadge.Accessible.name === "Gaming performance indicator active"
+                    && gamingBadge.Accessible.description
+                    === "Passive status badge. No action is available."
+                    && gamingBadge.ToolTip.text === "Gaming performance active"
+                    && gamingIcon.meaning === "gamingPerformance"
+                    && gamingIcon.semanticState === "active",
+                    label + " keeps the Idle gaming semantics passive and accessible");
+        } else {
+            require(dashboard.glanceGamingWidth === 0 && dashboard.gamingBadgeSpan === 0
+                    && gamingRegion.item === null,
+                    label + " reserves no gaming width or loaded content when absent");
+        }
+
+        const clockPosition = clockBounds.mapToItem(dashboard, 0, 0);
+        const timePosition = dashboardTime.mapToItem(dashboard, 0, 0);
+        const datePosition = dashboardDate.mapToItem(dashboard, 0, 0);
+        const clockCenter = clockPosition.x + clockBounds.width / 2;
+        const timeCenter = timePosition.x + dashboardTime.width / 2;
+        const dateCenter = datePosition.x + dashboardDate.width / 2;
+        require(Math.abs(clockCenter - dashboard.clockStatusAxisX) <= 1
+                && Math.abs(timeCenter - dashboard.clockStatusAxisX) <= 1
+                && Math.abs(dateCenter - dashboard.clockStatusAxisX) <= 1
+                && Math.abs(dashboardTime.width - dashboardDate.width) <= 0.5,
+                label + " maps tight clock, time, and localized date onto the rendered spine axis");
+        if (!expectedMedia) {
+            const stagePosition = stageColumn.mapToItem(dashboard, 0, 0);
+            require(Math.abs(clockCenter - (stagePosition.x + stageColumn.width / 2)) <= 1,
+                    label + " centers the clock itself on the rendered main-content axis");
+        }
+    }
+
     function runChecks() {
         if (!muteSamplesSettled()) {
             settleTimer.restart();
@@ -336,46 +460,62 @@ ShellRoot {
                 && mutedInputSample.icon.accessibleName === "Muted microphone",
                 "input mute changes source shape and accessibility label independently of tint");
 
-        require(dashboard.loadedRegionCount === 6, "all implemented dashboard regions mount");
-        require(dashboard.implicitWidth === Math.min(dashboard.naturalWidth,
-                                                     dashboard.availableWidth)
-                && dashboard.implicitHeight === Math.min(dashboard.naturalHeight,
-                                                         dashboard.availableHeight),
-                "dashboard implicit geometry is content-derived and screen-bounded");
+        require(dashboard.loadedRegionCount === 8 && dashboard.semanticStageCount === 3,
+                "seven functional regions plus the active gaming badge mount across three stages");
+        require(dashboard.implicitWidth === dashboard.naturalWidth
+                && dashboard.implicitHeight === dashboard.naturalHeight
+                && dashboard.width === dashboard.boundedWidth
+                && dashboard.height === dashboard.boundedHeight
+                && dashboard.width <= dashboard.availableWidth
+                && dashboard.height <= dashboard.availableHeight
+                && dashboard.horizontalOverflow && dashboard.verticalOverflow,
+                "dashboard preserves natural geometry inside a scrollable 60% visible-panel cap");
         const mediaRegion = test.findObject(dashboard, "dashboardMediaRegion");
         const clockRegion = test.findObject(dashboard, "dashboardClockRegion");
+        const statusRegion = test.findObject(dashboard, "dashboardStatusRegion");
         const quickRegion = test.findObject(dashboard, "dashboardQuickControlsRegion");
-        const primaryRow = test.findObject(dashboard, "dashboardPrimaryRow");
         const audioRegion = test.findObject(dashboard, "dashboardAudioRegion");
         const notificationsRegion = test.findObject(dashboard, "dashboardNotificationsRegion");
         const navigationRegion = test.findObject(dashboard, "dashboardNavigationRegion");
+        const glanceStage = test.findObject(dashboard, "dashboardGlanceStage");
+        const commandsStage = test.findObject(dashboard, "dashboardCommandsStage");
+        const instrumentsFeedStage = test.findObject(dashboard,
+                                                     "dashboardInstrumentsFeedStage");
         const outputSection = test.findObject(dashboard, "dashboardOutputSection");
         const inputSection = test.findObject(dashboard, "dashboardInputSection");
-        require(mediaRegion !== null && clockRegion !== null && primaryRow !== null && quickRegion
-                !== null && audioRegion !== null && notificationsRegion !== null,
-                "dashboard exposes every composed main-column region");
-        require(mediaRegion.x === quickRegion.x && quickRegion.x === audioRegion.x && audioRegion.x
-                === notificationsRegion.x,
-                "media, quick controls, audio, and recents share one left edge");
-        require(notificationsRegion.y >= audioRegion.y + audioRegion.height + Theme.spacing.lg - 1
-                && notificationsRegion.width === audioRegion.width && notificationsRegion.width
-                === quickRegion.width,
-                "recent notifications span the main column below the audio row");
+        require(mediaRegion !== null && clockRegion !== null && statusRegion !== null
+                && quickRegion !== null && audioRegion !== null && notificationsRegion !== null
+                && navigationRegion !== null && glanceStage !== null && commandsStage !== null
+                && instrumentsFeedStage !== null,
+                "dashboard exposes every relational stage and composed region");
+        requireGlanceGeometry("media with gaming", true, true);
+        require(commandsStage.y >= glanceStage.y + glanceStage.height + Theme.spacing.lg - 1
+                && instrumentsFeedStage.y
+                >= commandsStage.y + commandsStage.height + Theme.spacing.lg - 1,
+                "glance, commands, and instruments/feed remain three ordered stages");
+        require(quickRegion.width === commandsStage.width
+                && audioRegion.width === instrumentsFeedStage.width
+                && notificationsRegion.width === instrumentsFeedStage.width,
+                "utility regions fill their stage without publishing a competing width");
         require(outputSection !== null && inputSection !== null && outputSection.y
                 === inputSection.y && Math.abs(outputSection.width - inputSection.width) < 1,
                 "Output and Input are equal top-aligned audio columns");
-        require(dashboard.primaryRowMode === "media-and-clock" && clockRegion.x + clockRegion.width
-                === primaryRow.width && clockRegion.x - mediaRegion.width >= Theme.spacing.lg - 1,
-                "media and clock occupy opposite edges with their natural gap");
         const dashboardTime = test.findObject(dashboard, "dashboardTime");
         const dashboardDate = test.findObject(dashboard, "dashboardDate");
-        require(dashboardTime !== null && dashboardDate !== null && Math.abs(dashboardTime.x
-                                                                             + dashboardTime.width
-                                                                             / 2 - dashboardDate.x
-                                                                             - dashboardDate.width
-                                                                             / 2) < 0.5,
-                "expanded time and localized date share one horizontal center");
-
+        const clockPresentation = dashboard.clockPresentationItem;
+        const timePosition = dashboardTime.mapToItem(dashboard, 0, 0);
+        const datePosition = dashboardDate.mapToItem(dashboard, 0, 0);
+        const clockPresentationPosition = clockPresentation.mapToItem(dashboard, 0, 0);
+        require(dashboardTime !== null && dashboardDate !== null && clockPresentation !== null
+                && Math.abs(timePosition.x + dashboardTime.width / 2
+                            - dashboard.clockStatusAxisX) <= 0.5
+                && Math.abs(datePosition.x + dashboardDate.width / 2
+                            - dashboard.clockStatusAxisX) <= 0.5
+                && Math.abs(clockPresentationPosition.x + clockPresentation.width / 2
+                            - dashboard.clockStatusAxisX) <= 0.5
+                && clockPresentation === clockRegion.item.clockBoundsItem
+                && clockPresentation.width < clockRegion.width - 0.5,
+                "expanded time, localized date, and tight morph bounds share the clock/status axis");
         require(mediaView.previous() === "dispatched" && mediaView.togglePlayback()
                 === "dispatched" && mediaView.next() === "dispatched" && mediaActions.join(",")
                 === "previous,toggle,next",
@@ -448,49 +588,74 @@ ShellRoot {
                 && applications.pinIds[0] === "dormant.desktop" && test.findObject(quickView,
                                                                                    "dashboardPinnedApplication")
                 !== null, "eligible pins stay visible while dormant persistence slots remain untouched");
-        const attentionGroup = test.findObject(quickView, "dashboardStatusItems");
-        const attentionButton = test.findObject(quickView, "dashboardStatusItem");
+        const attentionGroup = test.findObject(statusView, "dashboardStatusItems");
+        const attentionButton = test.findObject(statusView, "dashboardStatusItem");
         const statusIcons = [];
-        test.findObjects(quickView, "dashboardStatusIcon", statusIcons);
+        test.findObjects(statusView, "dashboardStatusIcon", statusIcons);
         const statusButtons = [];
-        test.findObjects(quickView, "dashboardStatusItem", statusButtons);
-        const quickRow = test.findObject(quickView, "dashboardQuickControlRow");
-        require(quickView.statusItems.length === 4 && Object.isFrozen(quickView.statusItems)
-                && quickView.statusItems.map(item => item.token).join(",") === "11,12,21,22"
+        test.findObjects(statusView, "dashboardStatusItem", statusButtons);
+        require(statusView.statusItems.length === 4 && Object.isFrozen(statusView.statusItems)
+                && statusView.statusItems.map(item => item.token).join(",") === "11,12,21,22"
                 && attentionGroup.visible && attentionButton.Accessible.name === "Mail"
                 && statusIcons.length === 4 && statusIcons.every(icon => icon.resolved.kind
-                                                                         === "application" &&
-                                                                         !icon.resolved.tintable)
+                                                                         === "application"
+                                                                         && !icon.resolved.tintable)
                 && statusIcons.map(icon => icon.semanticState).join(",")
                 === "attention,attention,active,active",
-                "attention precedes active items, duplicates/passive items are excluded, and the frozen projection is capped at four untinted icons without fake attention state");
+                "status projection is frozen, attention-first, deduplicated, and capped at four untinted icons");
         const dashboardStatusGroup = test.findObject(dashboard, "dashboardStatusItems");
         const fourItemPosition = dashboardStatusGroup.mapToItem(dashboard, 0, 0);
         const clockPosition = clockRegion.mapToItem(dashboard, 0, 0);
         const clockCenterX = clockPosition.x + clockRegion.width / 2;
-        require(Math.abs(fourItemPosition.x + dashboardStatusGroup.width / 2 - clockCenterX) <= 1,
-                "four projected tray icons center beneath the time/date lane");
+        require(Math.abs(fourItemPosition.x + dashboardStatusGroup.width / 2 - clockCenterX) <= 1
+                && Math.abs(clockCenterX - dashboard.clockStatusAxisX) <= 1,
+                "clock and projected status share the fixed leading spine axis");
+        const expandedMediaPosition = mediaRegion.mapToItem(dashboard, 0, 0);
+        const mediaTextColumn = test.findObject(mediaView, "dashboardMediaTextColumn");
+        const mediaTitle = test.findObject(mediaView, "dashboardMediaTitle");
+        const mediaArtist = test.findObject(mediaView, "dashboardMediaArtist");
+        const mediaArtwork = test.findObject(mediaView, "dashboardMediaArtwork");
+        require(mediaTextColumn !== null && mediaTitle !== null && mediaArtist !== null
+                && mediaArtwork !== null, "mirrored media exposes its visual regions");
+        const mediaTextPosition = mediaTextColumn.mapToItem(mediaView, 0, 0);
+        const mediaArtworkPosition = mediaArtwork.mapToItem(mediaView, 0, 0);
+        require(clockCenterX + 1 < expandedMediaPosition.x + mediaRegion.width / 2,
+                "expanded places the clock before media like Idle so matched paths cannot cross");
+        require(mediaTextPosition.x + mediaTextColumn.width < mediaArtworkPosition.x
+                && Math.abs(mediaArtworkPosition.x + mediaArtwork.width - mediaView.width) <= 1
+                && mediaTitle.horizontalAlignment === Text.AlignLeft
+                && mediaArtist.horizontalAlignment === Text.AlignLeft
+                && mediaTitle.elide === Text.ElideRight && mediaArtist.elide === Text.ElideRight,
+                "trailing Expanded media reads left-to-right with elided text and right-anchored artwork");
         attentionButton.clicked();
         require(trayActions.length === 1 && trayActions[0] === 11
                 && quickExternalActionCount === 2,
                 "projected tray activation reports one external focus transfer");
         const projectedItems = trayAdapter.items;
         const passiveItem = projectedItems[2];
-        require(quickView.openStatusMenu(quickView.statusItems[0], attentionButton)
+        require(statusView.openStatusMenu(statusView.statusItems[0], attentionButton)
                 === "dispatched" && trayMenuActions.length === 1
                 && trayMenuActions[0].token === 11
-                && trayMenuActions[0].parentWindow === quickView.menuParentWindow
+                && trayMenuActions[0].parentWindow === statusView.menuParentWindow
                 && quickExternalActionCount === 2 && quickMenuOpeningCount === 1
-                && quickView.openedMenuToken === 11,
+                && statusView.openedMenuToken === 11,
                 "opening a projected tray menu retains its exact token without external focus transfer");
         trayAdapter.items = [passiveItem];
-        require(quickView.statusItems.length === 0,
+        require(statusView.statusItems.length === 0,
                 "menu action may remove its icon from the current Expanded projection");
         trayAdapter.menuActionTriggered(11);
-        require(quickExternalActionCount === 3 && quickView.openedMenuToken === 0,
+        require(quickExternalActionCount === 3 && statusView.openedMenuToken === 0,
                 "the retained Expanded menu token survives projection changes and resets on selection");
+        statusView.active = false;
+        trayAdapter.items = projectedItems;
+        require(statusView.statusItems.length === 0 && statusView.delegateCount === 0
+                && !statusView.visible,
+                "inactive status projection releases its model and delegates");
         trayAdapter.items = [projectedItems[1]];
-        const quickRowHeight = quickRow.height;
+        require(statusView.statusItems.length === 0 && statusView.delegateCount === 0,
+                "inactive status projection ignores adapter churn");
+        statusView.active = true;
+        trayAdapter.items = [projectedItems[1]];
 
         require(audioView.outputDeviceName === "Built-in Audio" && audioView.inputDeviceName
                 === "Desk Microphone" && test.findObject(audioView, "dashboardOutputCandidate")
@@ -552,7 +717,7 @@ ShellRoot {
                                                                                        Theme.radius.md,
                                                                                        "input mute"]];
         const focusStatusButtons = [];
-        findObjects(quickView, "dashboardStatusItem", focusStatusButtons);
+        findObjects(statusView, "dashboardStatusItem", focusStatusButtons);
         for (let index = 0; index < focusStatusButtons.length; ++index) {
             dashboardFocusControls.push([focusStatusButtons[index], Theme.radius.md, "status item "
                                          + index]);
@@ -679,8 +844,8 @@ ShellRoot {
 
         dashboard.focusInitialControl();
         require(dashboardWindow.activeFocusItem !== null
-                && dashboardWindow.activeFocusItem.objectName !== "dashboardCloseButton",
-                "dashboard initial keyboard focus enters real content");
+                && dashboardWindow.activeFocusItem.objectName === "dashboardMediaPrevious",
+                "dashboard initial keyboard focus enters the first media transport");
         const names = focusNames(dashboardWindow.activeFocusItem);
         const expected = ["dashboardMediaPrevious", "dashboardMediaToggle", "dashboardWifi",
                           "dashboardBluetooth", "dashboardPinnedApplication",
@@ -688,6 +853,11 @@ ShellRoot {
                           "dashboardInputMute", "dashboardTray", "dashboardLauncher",
                           "dashboardHistory", "dashboardSettings", "dashboardSystemSettings",
                           "dashboardSession"];
+        require(focusStatusButtons.length > 0
+                && names.indexOf("dashboardMediaToggle") < names.indexOf("dashboardStatusItem")
+                && names.indexOf("dashboardStatusItem") < names.indexOf("dashboardWifi")
+                && names.indexOf("dashboardGamingPerformanceBadge") === -1,
+                "focus traversal stays media-first and skips the passive gaming badge");
         require(names.indexOf("dashboardTray") < names.indexOf("dashboardLauncher") && names.indexOf(
                     "dashboardLauncher") < names.indexOf("dashboardHistory") && names.indexOf(
                     "dashboardHistory") < names.indexOf("dashboardSettings") && names.indexOf(
@@ -697,107 +867,142 @@ ShellRoot {
         for (let index = 0; index < expected.length; ++index) {
             require(names.indexOf(expected[index]) !== -1, "focus traversal reaches "
                     + expected[index]);
+            const control = test.findObject(dashboard, expected[index]);
+            require(control !== null && dashboard.revealItem(control)
+                    && dashboard.itemVisibleInViewport(control),
+                    "bounded dashboard can reveal " + expected[index]);
         }
 
         Qt.callLater(function () {
             const oneItemPosition = dashboardStatusGroup.mapToItem(dashboard, 0, 0);
-            require(quickView.statusItems.length === 1 && Math.abs(oneItemPosition.x
-                                                                   + dashboardStatusGroup.width / 2
-                                                                   - clockCenterX) <= 1,
-                    "one projected tray icon stays centered beneath the time/date lane");
+            require(statusView.statusItems.length === 1 && Math.abs(oneItemPosition.x
+                                                                    + dashboardStatusGroup.width
+                                                                    / 2
+                                                                    - dashboard.clockStatusAxisX) <= 1,
+                    "one projected tray icon stays centered on the clock/status spine");
             require(test.containsText(recentView, "Replaced in place"),
                     "notification replacement updates the live delegate without a view copy");
 
-            const mediaNaturalWidth = dashboard.naturalWidth;
+            const mediaGamingNaturalWidth = dashboard.naturalWidth;
             const mediaNaturalHeight = dashboard.naturalHeight;
-            mediaAdapter.available = false;
-            dashboard.mediaContent = null;
+            const mediaGamingSpan = dashboard.gamingBadgeSpan;
+            gamingPerformance.active = false;
             Qt.callLater(function () {
-                const primaryPosition = primaryRow.mapToItem(dashboard, 0, 0);
-                const noMediaClockPosition = clockRegion.mapToItem(dashboard, 0, 0);
-                const noMediaClockCenter = noMediaClockPosition.x + clockRegion.width / 2;
-                const mainLaneCenter = primaryPosition.x + primaryRow.width / 2;
-                const noMediaStatusPosition = dashboardStatusGroup.mapToItem(dashboard, 0, 0);
-                const dashboardBluetooth = test.findObject(dashboard, "dashboardBluetooth");
-                const dashboardBluetoothPosition = dashboardBluetooth.mapToItem(dashboard, 0, 0);
+                require(dashboard.loadedRegionCount === 7,
+                        "media without gaming loads only the seven functional regions");
+                requireGlanceGeometry("media without gaming", true, false);
+                require(Math.abs(mediaGamingNaturalWidth - dashboard.naturalWidth
+                                 - mediaGamingSpan) <= 0.5,
+                        "media gaming span contributes exactly once to natural width");
 
-                require(dashboard.loadedRegionCount === 5 && dashboard.primaryRowMode
-                        === "clock-only" && dashboard.primaryRowWidth === clockRegion.implicitWidth
-                        && dashboard.primaryRowHeight === clockRegion.implicitHeight
-                        && mediaRegion.width === 0 && mediaRegion.height === 0,
-                        "clock-only mode removes all media width, height, and inter-region spacing");
-                require(Math.abs(noMediaClockCenter - mainLaneCenter) <= 1,
-                        "absent media centers the clock in the full main-content lane");
-                require(quickView.statusItems.length === 1 && Math.abs(noMediaStatusPosition.x
-                                                                       + dashboardStatusGroup.width
-                                                                       / 2 - noMediaClockCenter)
-                        <= 1 && noMediaStatusPosition.x >= dashboardBluetoothPosition.x
-                        + dashboardBluetooth.width + Theme.spacing.sm - 1,
-                        "one active tray icon centers under the no-media clock without overlapping leading controls");
-                require(dashboard.implicitWidth === Math.min(dashboard.naturalWidth,
-                                                             dashboard.availableWidth)
-                        && dashboard.implicitHeight === Math.min(dashboard.naturalHeight,
-                                                                 dashboard.availableHeight)
-                        && notificationsRegion.y >= audioRegion.y + audioRegion.height
-                        + Theme.spacing.lg - 1,
-                        "clock-only implicit geometry recomputes while lower rows remain unchanged");
-                const noMediaNaturalWidth = dashboard.naturalWidth;
-                const noMediaNaturalHeight = dashboard.naturalHeight;
-                const noMediaStatusCenter = noMediaStatusPosition.x + dashboardStatusGroup.width
-                      / 2;
-
-                trayAdapter.items = [passiveItem];
+                dashboard.maximumViewportWidth = 240;
+                mediaAdapter.available = false;
+                dashboard.mediaContent = null;
                 Qt.callLater(function () {
-                    require(quickView.statusItems.length === 0 && !attentionGroup.visible
-                            && quickRow.height === quickRowHeight,
-                            "a zero-item projection reserves no extra row or height");
+                    const maximumScroll = dashboard.viewportItem.contentWidth
+                                          - dashboard.viewportItem.width;
+                    dashboard.viewportItem.contentX = Math.min(Theme.spacing.xl, maximumScroll);
+                    require(maximumScroll > 1 && dashboard.viewportItem.contentX > 0,
+                            "no-media clock centering is exercised after horizontal scrolling");
+                    require(dashboard.loadedRegionCount === 6
+                            && dashboard.semanticStageCount === 3,
+                            "no-media/no-gaming loads six functional regions in three stages");
+                    requireGlanceGeometry("no media without gaming", false, false);
+                    const noMediaStatusPosition = dashboardStatusGroup.mapToItem(dashboard, 0, 0);
+                    require(Math.abs(noMediaStatusPosition.x + dashboardStatusGroup.width / 2
+                                     - dashboard.clockStatusAxisX) <= 1,
+                            "no-media status remains directly beneath the centered clock");
+                    const glancePosition = glanceStage.mapToItem(dashboard, 0, 0);
+                    const instrumentsPosition = instrumentsFeedStage.mapToItem(dashboard, 0, 0);
+                    const navigationPosition = navigationRegion.mapToItem(dashboard, 0, 0);
+                    require(Math.abs(navigationPosition.y - glancePosition.y) <= 1
+                            && Math.abs(navigationPosition.y + navigationRegion.height
+                                        - (instrumentsPosition.y
+                                           + instrumentsFeedStage.height)) <= 1,
+                            "navigation spans from the glance stage through instruments/feed");
+                    require(dashboard.implicitWidth === dashboard.naturalWidth
+                            && dashboard.implicitHeight === dashboard.naturalHeight
+                            && dashboard.width === dashboard.boundedWidth
+                            && dashboard.height === dashboard.boundedHeight,
+                            "media-absent composition preserves natural geometry inside its cap");
 
-                    trayAdapter.items = projectedItems;
-                    mediaAdapter.available = true;
-                    dashboard.mediaContent = mediaContent;
+                    gamingPerformance.active = true;
                     Qt.callLater(function () {
-                        const restoredClockPosition = clockRegion.mapToItem(dashboard, 0, 0);
-                        const restoredStatusPosition = dashboardStatusGroup.mapToItem(dashboard, 0,
-                                                                                      0);
-                        const restoredClockCenter = restoredClockPosition.x + clockRegion.width / 2;
+                        const maximumGamingScroll = dashboard.viewportItem.contentWidth
+                                                    - dashboard.viewportItem.width;
+                        dashboard.viewportItem.contentX = Math.min(Theme.spacing.xl,
+                                                                   maximumGamingScroll);
+                        require(dashboard.loadedRegionCount === 7,
+                                "no-media/gaming loads six functional regions plus the badge");
+                        requireGlanceGeometry("no media with gaming", false, true);
 
-                        require(dashboard.loadedRegionCount === 6 && dashboard.primaryRowMode
-                                === "media-and-clock" && dashboard.primaryRowWidth
-                                === mediaRegion.implicitWidth + Theme.spacing.lg
-                                + clockRegion.implicitWidth && dashboard.naturalWidth
-                                === mediaNaturalWidth && dashboard.naturalHeight
-                                === mediaNaturalHeight,
-                                "restoring media recomputes the original natural geometry in one transition");
-                        require(quickView.statusItems.length === 4 && Math.abs(
-                                    restoredStatusPosition.x + dashboardStatusGroup.width / 2
-                                    - restoredClockCenter) <= 1,
-                                "four active tray icons return to the fixed right clock lane");
-
-                        notificationsModel.clear();
-                        notificationService.serverOwned = false;
+                        trayAdapter.items = [passiveItem];
                         Qt.callLater(function () {
-                            require(test.containsText(recentView, "No notifications") &&
-                                    !test.containsText(recentView, "Notifications unavailable") &&
-                                    !test.containsText(recentView, "No recent notifications"),
-                                    "empty and unavailable recents use the exact requested copy");
-                            muteCaptureContent.grabToImage(function (result) {
-                                const capturePath = "/tmp/nagi-dashboard-mute-icons.png";
-                                require(result.saveToFile(capturePath),
-                                        "real Dashboard mute-state capture was saved");
-                                console.warn(
-                                            "expanded dashboard tests passed; geometry media clock/status "
-                                            + clockCenterX + "/" + (fourItemPosition.x
-                                                                    + dashboardStatusGroup.width
-                                                                    / 2) + ", no-media lane/clock/status "
-                                            + mainLaneCenter + "/" + noMediaClockCenter + "/"
-                                            + noMediaStatusCenter + ", natural "
-                                            + mediaNaturalWidth + "x" + mediaNaturalHeight + " -> "
-                                            + noMediaNaturalWidth + "x" + noMediaNaturalHeight
-                                            + " -> " + dashboard.naturalWidth + "x"
-                                            + dashboard.naturalHeight + "; mute raster evidence: "
-                                            + muteEvidence.join(", ") + "; capture: "
-                                            + capturePath);
-                                Qt.exit(0);
+                            require(statusView.statusItems.length === 0 && !statusView.visible,
+                                    "a zero-item status projection reserves no independent utility row");
+
+                            trayAdapter.items = projectedItems;
+                            mediaAdapter.available = true;
+                            dashboard.mediaContent = mediaContent;
+                            Qt.callLater(function () {
+                                const restoredClockPosition = clockRegion.mapToItem(dashboard, 0, 0);
+                                const restoredStatusPosition = dashboardStatusGroup.mapToItem(
+                                            dashboard, 0, 0);
+                                const restoredClockCenter = restoredClockPosition.x
+                                                            + clockRegion.width / 2;
+
+                                require(dashboard.loadedRegionCount === 8
+                                        && dashboard.semanticStageCount === 3
+                                        && dashboard.naturalWidth === mediaGamingNaturalWidth
+                                        && dashboard.naturalHeight === mediaNaturalHeight,
+                                        "restoring media and gaming returns the exact natural geometry");
+                                requireGlanceGeometry("restored media with gaming", true, true);
+                                require(statusView.statusItems.length === 4 && Math.abs(
+                                            restoredStatusPosition.x
+                                            + dashboardStatusGroup.width / 2
+                                            - restoredClockCenter) <= 1,
+                                        "four active tray icons return beneath the equal clock column");
+
+                                notificationsModel.clear();
+                                notificationService.serverOwned = false;
+                                Qt.callLater(function () {
+                                    require(test.containsText(recentView, "No notifications")
+                                            && !test.containsText(recentView,
+                                                                  "Notifications unavailable")
+                                            && !test.containsText(recentView,
+                                                                  "No recent notifications"),
+                                            "empty and unavailable recents use the exact requested copy");
+                                    dashboard.active = false;
+                                    Qt.callLater(function () {
+                                        require(dashboard.loadedRegionCount === 0
+                                                && !dashboard.ready,
+                                                "inactive dashboard unloads every region and badge");
+                                        trayAdapter.items = [passiveItem];
+                                        require(dashboard.loadedRegionCount === 0,
+                                                "inactive dashboard remains unloaded through model churn");
+                                        trayAdapter.items = projectedItems;
+                                        dashboard.active = true;
+                                        Qt.callLater(function () {
+                                            require(dashboard.loadedRegionCount === 8
+                                                    && dashboard.ready,
+                                                    "reactivating restores functional regions and gaming badge");
+                                            muteCaptureContent.grabToImage(function (result) {
+                                                const capturePath = "/tmp/nagi-dashboard-mute-icons.png";
+                                                require(result.saveToFile(capturePath),
+                                                        "real Dashboard mute-state capture was saved");
+                                                console.warn("expanded dashboard tests passed; centered axis "
+                                                             + dashboard.clockStatusAxisX
+                                                             + ", natural "
+                                                             + mediaGamingNaturalWidth + "x"
+                                                             + mediaNaturalHeight
+                                                             + "; mute raster evidence: "
+                                                             + muteEvidence.join(", ")
+                                                             + "; capture: " + capturePath);
+                                                Qt.exit(0);
+                                            });
+                                        });
+                                    });
+                                });
                             });
                         });
                     });
@@ -805,7 +1010,6 @@ ShellRoot {
             });
         });
     }
-
     Component.onCompleted: Qt.callLater(test.beginTooltipChecks)
 
     QtObject {
@@ -1074,10 +1278,16 @@ ShellRoot {
     }
 
     QtObject {
+        id: gamingPerformance
+
+        property bool active: true
+    }
+
+    QtObject {
         id: clockState
 
         readonly property string text: "12:34"
-        readonly property string dateText: "Saturday, 22 August"
+        readonly property string dateText: "Wednesday, 30 September 2026"
         readonly property string weekText: "Saturday"
     }
 
@@ -1096,9 +1306,13 @@ ShellRoot {
     Component {
         id: quickContent
         DashboardQuickControls {
-            centerStatusInMainLane: !mediaAdapter.available
             connectivity: connectivityAdapter
             applicationModel: applications
+        }
+    }
+    Component {
+        id: statusContent
+        DashboardStatusProjection {
             tray: trayAdapter
             menuParentWindow: dashboardWindow
         }
@@ -1337,16 +1551,21 @@ ShellRoot {
         id: dashboardWindow
         visible: true
 
-        width: dashboard.implicitWidth
-        height: dashboard.implicitHeight
+        width: dashboard.boundedWidth
+        height: dashboard.boundedHeight
         color: "black"
 
         ExpandedDashboard {
             id: dashboard
 
             anchors.fill: parent
+            maximumViewportWidth: 384
+            maximumViewportHeight: 288
+            gamingPerformance: gamingPerformance
+            gamingIndicatorEnabled: true
             mediaContent: mediaContent
             clockContent: clockContent
+            statusContent: statusContent
             quickControlsContent: quickContent
             audioContent: audioContent
             notificationsContent: notificationContent
@@ -1371,12 +1590,18 @@ ShellRoot {
                 y: 140
                 connectivity: connectivityAdapter
                 applicationModel: applications
+                onExternalActionDispatched: test.quickExternalActionCount += 1
+                onWifiManagerRequested: test.wifiManagerRequests += 1
+                onBluetoothManagerRequested: test.bluetoothManagerRequests += 1
+            }
+
+            DashboardStatusProjection {
+                id: statusView
+                y: 210
                 tray: trayAdapter
                 menuParentWindow: dashboardWindow
                 onExternalActionDispatched: test.quickExternalActionCount += 1
                 onShellMenuOpening: test.quickMenuOpeningCount += 1
-                onWifiManagerRequested: test.wifiManagerRequests += 1
-                onBluetoothManagerRequested: test.bluetoothManagerRequests += 1
             }
 
             DashboardAudio {

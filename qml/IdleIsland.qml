@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 
-// Compact Idle composition: workspace, gaming status, time, optional weather,
+// Compact Idle composition: workspace, gaming status, optional weather, time,
 // optional active media, in that order.
 //
 // Every block consumes only normalized adapter state and collapses
@@ -34,6 +34,9 @@ Item {
     property var media: null
     property var gamingPerformance: null
     property bool reducedMotion: false
+    property bool workActive: true
+    property bool externalClockPresentation: false
+    property bool externalMediaPresentation: false
     property bool showWorkspace: true
     property bool showWeather: true
     property bool showMedia: true
@@ -64,8 +67,8 @@ Item {
     readonly property int resolvedHeight: Math.max(44, Math.min(48, Math.max(Theme.size.islandIdleHeight,
                                                                              derivedContentHeight)))
 
-    readonly property bool workspaceAvailable: showWorkspace && virtualDesktops !== null
-                                               && virtualDesktops.available === true
+    readonly property bool workspaceAvailable: workActive && showWorkspace && virtualDesktops
+                                               !== null && virtualDesktops.available === true
     readonly property string workspaceText: {
         if (!workspaceAvailable) {
             return "";
@@ -80,20 +83,21 @@ Item {
         return displayPosition < 10 ? "0" + displayPosition : String(displayPosition);
     }
     readonly property bool workspaceVisible: workspaceText !== ""
-    readonly property bool clockVisible: clock !== null && typeof clock.text === "string"
-                                         && clock.text !== ""
+    readonly property bool clockVisible: workActive && clock !== null && typeof clock.text
+                                         === "string" && clock.text !== ""
     readonly property bool idleDateVisible: clockVisible && clock.showIdleDate === true
                                             && typeof clock.dateText === "string" && clock.dateText
                                             !== ""
-    readonly property bool gamingPerformanceVisible: gamingPerformance !== null
+    readonly property bool gamingPerformanceVisible: workActive && gamingPerformance !== null
                                                      && gamingPerformance.active === true
-    readonly property bool weatherAvailable: showWeather && weather !== null && weather.available
-                                             === true
+    readonly property bool weatherAvailable: workActive && showWeather && weather !== null
+                                             && weather.available === true
     readonly property string temperatureText: weatherAvailable ? Math.round(weather.temperatureC)
                                                                  + "°" : ""
     readonly property string weatherCaptionText: composeWeatherCaption()
 
-    readonly property bool mediaAvailable: showMedia && media !== null && media.available === true
+    readonly property bool mediaAvailable: workActive && showMedia && media !== null
+                                           && media.available === true
     readonly property string mediaSummary: composeMediaSummary()
 
     implicitWidth: contentPadding * 2 + contentRow.implicitWidth
@@ -108,6 +112,7 @@ Item {
     readonly property alias gamingPerformanceBoundary: gamingPerformanceSeparator
     readonly property alias clockBlock: clockLabel
     readonly property alias clockGroupBlock: clockGroup
+    readonly property alias clockPresentationItem: clockGroup
     readonly property alias clockDateBlock: clockDateLabel
     readonly property alias clockBoundary: clockSeparator
     readonly property alias weatherBlock: weatherGroup
@@ -116,6 +121,7 @@ Item {
     readonly property alias temperatureBlock: temperatureLabel
     readonly property alias weatherConditionBlock: weatherConditionLabel
     readonly property alias mediaBlock: mediaText
+    readonly property alias mediaPresentationItem: mediaText
 
     // Invisible groups and boundaries consume no space. Each visible separator
     // owns its two optical gaps, preventing optional groups from leaving an
@@ -231,7 +237,7 @@ Item {
 
         implicitWidth: idle.offsetAfter([workspaceIndicator, workspaceSeparator,
                                          gamingPerformanceBadge, gamingPerformanceSeparator,
-                                         clockGroup, clockSeparator, weatherGroup, weatherSeparator,
+                                         weatherGroup, weatherSeparator, clockGroup, clockSeparator,
                                          mediaText])
         implicitHeight: idle.implicitHeight
 
@@ -306,52 +312,11 @@ Item {
                                                         || mediaText.visible)
         }
 
-        Item {
-            id: clockGroup
-
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
-                                 gamingPerformanceSeparator])
-            anchors.verticalCenter: parent.verticalCenter
-            visible: idle.clockVisible
-            implicitWidth: clockLabel.implicitWidth + (clockDateLabel.visible ? idle.clockDateGap
-                                                                                + clockDateLabel.implicitWidth :
-                                                                                0)
-            implicitHeight: Math.max(clockLabel.implicitHeight, clockDateLabel.implicitHeight)
-
-            IslandText {
-                id: clockLabel
-
-                anchors.verticalCenter: parent.verticalCenter
-                text: clockGroup.visible ? idle.clock.text : ""
-                size: "body"
-                font.weight: Theme.type.weightMedium
-            }
-
-            IslandText {
-                id: clockDateLabel
-
-                x: clockLabel.implicitWidth + idle.clockDateGap
-                anchors.verticalCenter: parent.verticalCenter
-                visible: idle.idleDateVisible
-                text: visible ? idle.clock.dateText : ""
-                size: "body"
-                font.weight: Theme.type.weightMedium
-            }
-        }
-
-        GroupSeparator {
-            id: clockSeparator
-
-            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
-                                 gamingPerformanceSeparator, clockGroup])
-            visible: clockGroup.visible && (weatherGroup.visible || mediaText.visible)
-        }
-
         AbstractButton {
             id: weatherGroup
 
             x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
-                                 gamingPerformanceSeparator, clockGroup, clockSeparator])
+                                 gamingPerformanceSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.weatherAvailable
             implicitWidth: weatherGlyph.implicitWidth + idle.weatherGap
@@ -360,16 +325,16 @@ Item {
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
             Accessible.role: Accessible.Button
-            Accessible.name: qsTr("Open detailed weather for %1, %2").arg(idle.temperatureText).arg(
-                                 idle.weatherCaptionText)
+            Accessible.name: visible ? qsTr("Open detailed weather for %1, %2").arg(
+                                           idle.temperatureText).arg(idle.weatherCaptionText) : ""
             onClicked: idle.weatherRequested()
 
             WeatherGlyph {
                 id: weatherGlyph
 
                 anchors.verticalCenter: parent.verticalCenter
-                condition: idle.weather !== null ? idle.weather.condition : "unknown"
-                dayPhase: idle.weather !== null ? idle.weather.dayPhase : "day"
+                condition: idle.weatherAvailable ? idle.weather.condition : "unknown"
+                dayPhase: idle.weatherAvailable ? idle.weather.dayPhase : "day"
             }
 
             Item {
@@ -416,19 +381,62 @@ Item {
             id: weatherSeparator
 
             x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
-                                 gamingPerformanceSeparator, clockGroup, clockSeparator,
-                                 weatherGroup])
-            visible: weatherGroup.visible && mediaText.visible
+                                 gamingPerformanceSeparator, weatherGroup])
+            visible: weatherGroup.visible && (clockGroup.visible || mediaText.visible)
+        }
+
+        Item {
+            id: clockGroup
+
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, weatherGroup, weatherSeparator])
+            anchors.verticalCenter: parent.verticalCenter
+            visible: idle.clockVisible
+            opacity: idle.externalClockPresentation ? 0 : 1
+            implicitWidth: clockLabel.implicitWidth + (clockDateLabel.visible ? idle.clockDateGap
+                                                                                + clockDateLabel.implicitWidth :
+                                                                                0)
+            implicitHeight: Math.max(clockLabel.implicitHeight, clockDateLabel.implicitHeight)
+
+            IslandText {
+                id: clockLabel
+
+                anchors.verticalCenter: parent.verticalCenter
+                text: clockGroup.visible ? idle.clock.text : ""
+                size: "body"
+                font.weight: Theme.type.weightMedium
+            }
+
+            IslandText {
+                id: clockDateLabel
+
+                x: clockLabel.implicitWidth + idle.clockDateGap
+                anchors.verticalCenter: parent.verticalCenter
+                visible: idle.idleDateVisible
+                text: visible ? idle.clock.dateText : ""
+                size: "body"
+                font.weight: Theme.type.weightMedium
+            }
+        }
+
+        GroupSeparator {
+            id: clockSeparator
+
+            x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
+                                 gamingPerformanceSeparator, weatherGroup, weatherSeparator,
+                                 clockGroup])
+            visible: clockGroup.visible && mediaText.visible
         }
 
         IdleMediaText {
             id: mediaText
 
             x: idle.offsetAfter([workspaceIndicator, workspaceSeparator, gamingPerformanceBadge,
-                                 gamingPerformanceSeparator, clockGroup, clockSeparator,
-                                 weatherGroup, weatherSeparator])
+                                 gamingPerformanceSeparator, weatherGroup, weatherSeparator,
+                                 clockGroup, clockSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.mediaAvailable && idle.mediaSummary !== ""
+            opacity: idle.externalMediaPresentation ? 0 : 1
             summary: idle.mediaSummary
             maximumWidth: Theme.size.islandIdleMediaMaximumWidth
         }

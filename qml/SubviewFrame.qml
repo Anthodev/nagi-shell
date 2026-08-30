@@ -8,14 +8,10 @@ FocusScope {
     property string title: ""
     property bool active: false
     property Item initialFocusItem: null
-    property real maximumContentWidth: width > 0 ? Math.max(0, width - Theme.spacing.lg * 2) :
-                                                   contentImplicitWidth
-    property real maximumContentHeight: parent !== null && parent.height > 0 ? Math.max(0, parent.height
-                                                                                        - headerHeight
-                                                                                        - Theme.spacing.lg
-                                                                                        * 2 - Theme.spacing.md) :
-                                                                               contentImplicitHeight
-    property bool reducedMotion: false
+    property real preferredViewportWidth: 0
+    property real preferredViewportHeight: 0
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
     readonly property Item contentItem: contentHost.children.length === 0 ? null :
                                                                             contentHost.children[0]
 
@@ -30,17 +26,23 @@ FocusScope {
                                                                          contentItem.implicitHeight
                                                                          > 0 ? contentItem.implicitHeight :
                                                                                contentItem.height
-    readonly property real boundedContentWidth: Math.min(contentImplicitWidth, Math.max(0,
-                                                                                        maximumContentWidth))
-    readonly property real boundedContentHeight: Math.min(contentImplicitHeight, Math.max(0,
-                                                                                          maximumContentHeight))
-    readonly property bool horizontalOverflow: contentImplicitWidth > boundedContentWidth
-    readonly property bool contentOverflow: contentImplicitHeight > boundedContentHeight
-    readonly property bool scrolling: horizontalOverflow || contentOverflow
-    readonly property real translationDistance: reducedMotion ? 0 : Theme.spacing.xl
-    readonly property real entryOffset: translationDistance
-    readonly property int motionDuration: reducedMotion ? 0 : Theme.motion.durationNormal
-    readonly property bool animationsRunning: _entryAnimation.running
+    readonly property real _horizontalChrome: Theme.spacing.lg * 2
+    readonly property real _verticalChrome: Theme.spacing.lg * 2 + Theme.spacing.md + headerHeight
+    readonly property real resolvedViewportWidth: Math.min(preferredViewportWidth > 0
+                                                           ? preferredViewportWidth :
+                                                             contentImplicitWidth, Math.max(0,
+                                                                                            maximumViewportWidth))
+    readonly property real resolvedViewportHeight: Math.min(preferredViewportHeight > 0
+                                                            ? preferredViewportHeight :
+                                                              contentImplicitHeight, Math.max(0,
+                                                                                              maximumViewportHeight))
+    readonly property real actualViewportWidth: Math.min(resolvedViewportWidth, Math.max(0, width
+                                                                                         - _horizontalChrome))
+    readonly property real actualViewportHeight: Math.min(resolvedViewportHeight, Math.max(0,
+                                                                                           height - _verticalChrome))
+    readonly property bool horizontalOverflow: contentImplicitWidth > resolvedViewportWidth
+    readonly property bool verticalOverflow: contentImplicitHeight > resolvedViewportHeight
+    readonly property bool scrolling: horizontalOverflow || verticalOverflow
     readonly property int headerHeight: Theme.size.controlHeightMd
     readonly property Item backControl: backButton
     readonly property Item titleControl: titleLabel
@@ -49,10 +51,8 @@ FocusScope {
 
     property bool _componentReady: false
 
-    property Item _visual: Item {
-        parent: frame
-        width: frame.width
-        height: frame.height
+    Item {
+        anchors.fill: parent
 
         Row {
             id: headerRow
@@ -123,20 +123,23 @@ FocusScope {
             objectName: "subviewContentViewport"
             x: Theme.spacing.lg
             y: Theme.spacing.lg + frame.headerHeight + Theme.spacing.md
-            width: frame.boundedContentWidth
-            height: frame.boundedContentHeight
-            contentWidth: frame.contentImplicitWidth
-            contentHeight: frame.contentImplicitHeight
+            width: frame.actualViewportWidth
+            height: frame.actualViewportHeight
+            contentWidth: contentHost.width
+            contentHeight: contentHost.height
             boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: frame.horizontalOverflow && frame.verticalOverflow
+                                ? Flickable.HorizontalAndVerticalFlick : frame.horizontalOverflow
+                                  ? Flickable.HorizontalFlick : Flickable.VerticalFlick
             interactive: frame.scrolling
-            clip: frame.scrolling
+            clip: contentWidth > width || contentHeight > height
 
             Item {
                 id: contentHost
 
                 objectName: "subviewContentHost"
-                width: frame.contentImplicitWidth
-                height: frame.contentImplicitHeight
+                width: Math.max(frame.contentImplicitWidth, frame.resolvedViewportWidth)
+                height: Math.max(frame.contentImplicitHeight, frame.resolvedViewportHeight)
             }
         }
 
@@ -172,7 +175,7 @@ FocusScope {
             y: contentViewport.y
             height: contentViewport.height
             orientation: Qt.Vertical
-            policy: frame.contentOverflow ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+            policy: frame.verticalOverflow ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
             size: contentViewport.visibleArea.heightRatio
             position: contentViewport.visibleArea.yPosition
             active: pressed || hovered || contentViewport.movingVertically
@@ -191,27 +194,9 @@ FocusScope {
         }
     }
 
-    property ParallelAnimation _entryAnimation: ParallelAnimation {
-        NumberAnimation {
-            target: frame._visual
-            property: "x"
-            to: 0
-            duration: frame.motionDuration
-            easing.type: Theme.motion.easingStandard
-        }
-        NumberAnimation {
-            target: frame._visual
-            property: "opacity"
-            to: 1
-            duration: frame.motionDuration
-            easing.type: Theme.motion.easingStandard
-        }
-    }
-
     implicitWidth: Math.max(Theme.size.islandSubviewMinimumWidth, headerImplicitWidth
-                            + Theme.spacing.lg * 2, contentImplicitWidth + Theme.spacing.lg * 2)
-    implicitHeight: Theme.spacing.lg + headerHeight + Theme.spacing.md + contentImplicitHeight
-                    + Theme.spacing.lg
+                            + _horizontalChrome, resolvedViewportWidth + _horizontalChrome)
+    implicitHeight: resolvedViewportHeight + _verticalChrome
     visible: active
     clip: true
 
@@ -248,69 +233,38 @@ FocusScope {
         const topLeft = item.mapToItem(contentHost, 0, 0);
         const right = topLeft.x + item.width;
         const bottom = topLeft.y + item.height;
-        if (topLeft.x < contentViewport.contentX) {
-            contentViewport.contentX = Math.max(0, topLeft.x);
-        } else if (right > contentViewport.contentX + contentViewport.width) {
-            contentViewport.contentX = Math.min(contentViewport.contentWidth - contentViewport.width,
-                                                right - contentViewport.width);
+        const viewportWidth = actualViewportWidth;
+        const viewportHeight = actualViewportHeight;
+        if (viewportWidth > 0) {
+            if (topLeft.x < contentViewport.contentX) {
+                contentViewport.contentX = Math.max(0, topLeft.x);
+            } else if (right > contentViewport.contentX + viewportWidth) {
+                contentViewport.contentX = Math.max(0, Math.min(contentViewport.contentWidth
+                                                                - viewportWidth, right
+                                                                - viewportWidth));
+            }
         }
-        if (topLeft.y < contentViewport.contentY) {
-            contentViewport.contentY = Math.max(0, topLeft.y);
-        } else if (bottom > contentViewport.contentY + contentViewport.height) {
-            contentViewport.contentY = Math.min(contentViewport.contentHeight
-                                                - contentViewport.height, bottom
-                                                - contentViewport.height);
+        if (viewportHeight > 0) {
+            if (topLeft.y < contentViewport.contentY) {
+                contentViewport.contentY = Math.max(0, topLeft.y);
+            } else if (bottom > contentViewport.contentY + viewportHeight) {
+                contentViewport.contentY = Math.max(0, Math.min(contentViewport.contentHeight
+                                                                - viewportHeight, bottom
+                                                                - viewportHeight));
+            }
         }
-    }
-
-    function _beginEntry() {
-        if (!active) {
-            _settleHidden();
-            return;
-        }
-        _visual.x = entryOffset;
-        _visual.opacity = 0;
-        if (reducedMotion) {
-            _visual.x = 0;
-            _visual.opacity = 1;
-            return;
-        }
-        _entryAnimation.restart();
-    }
-
-    function _settleHidden() {
-        _entryAnimation.stop();
-        _visual.x = 0;
-        _visual.opacity = 0;
     }
 
     Component.onCompleted: {
         _componentReady = true;
         if (active) {
             _prepareInitialFocus();
-            _beginEntry();
-        } else {
-            _settleHidden();
         }
     }
 
     onActiveChanged: {
-        if (!_componentReady) {
-            return;
-        }
-        if (active) {
+        if (_componentReady && active) {
             _prepareInitialFocus();
-            _beginEntry();
-        } else {
-            _settleHidden();
-        }
-    }
-
-    onReducedMotionChanged: {
-        if (reducedMotion && active) {
-            _entryAnimation.stop();
-            _visual.x = 0;
-            _visual.opacity = 1;
         }
     }
 

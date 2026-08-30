@@ -13,7 +13,8 @@ FocusScope {
     property var easyEffectsStatus: null
     property bool active: true
     property bool reducedMotion: false
-    property real maximumAvailableWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
     readonly property string easyEffectsDesktopId: "com.github.wwmm.easyeffects.desktop"
     readonly property var outputCandidates: adapter === null ? [] : adapter.outputCandidates
@@ -29,8 +30,7 @@ FocusScope {
                                                        outputSection.naturalWidth,
                                                        inputSection.naturalWidth)
     readonly property real twoColumnWidth: singleColumnWidth * 2 + columnGap
-    readonly property bool twoColumnLayout: maximumAvailableWidth >= twoColumnWidth
-                                            + Theme.spacing.lg * 2
+    readonly property bool twoColumnLayout: maximumViewportWidth >= 572
     readonly property real naturalContentWidth: !pipelinesVisible
                                                 ? Theme.size.audioEmptyContentMinimumWidth :
                                                   twoColumnLayout ? twoColumnWidth :
@@ -72,12 +72,31 @@ FocusScope {
     property int easyEffectsLaunchRequestId: 0
     property string easyEffectsLaunchFailure: ""
     property real presetStatusOwnerEpoch: 0
+    readonly property var openDropdown: openRole === "output" ? outputSection : openRole
+                                                                === "input" ? inputSection :
+                                                                              openRole
+                                                                              === "preset-output"
+                                                                              ? outputPresetRow :
+                                                                                openRole
+                                                                                === "preset-input"
+                                                                                ? inputPresetRow :
+                                                                                  null
 
     implicitWidth: frame.implicitWidth
     implicitHeight: frame.implicitHeight
     visible: active
 
     signal cancelled(real ownerEpoch)
+    function popupOverlayPosition(control, popupWidth, popupHeight) {
+        const below = control.mapToItem(contentRoot, 0, control.height + Theme.spacing.xs);
+        const above = control.mapToItem(contentRoot, 0, -popupHeight - Theme.spacing.xs);
+        const maximumX = Math.max(0, contentRoot.width - popupWidth);
+        const maximumY = Math.max(0, contentRoot.height - popupHeight);
+        const preferredY = below.y + popupHeight <= contentRoot.height ? below.y : above.y >= 0
+                                                                         ? above.y : maximumY;
+        return Qt.point(Math.max(0, Math.min(maximumX, below.x)), Math.max(0, Math.min(maximumY,
+                                                                                       preferredY)));
+    }
 
     function failureText(failure) {
         if (failure === "removed") {
@@ -263,7 +282,10 @@ FocusScope {
         anchors.fill: parent
         active: view.active
         title: qsTr("Audio devices")
-        reducedMotion: view.reducedMotion
+        preferredViewportWidth: view.twoColumnLayout ? 572 : 278
+        preferredViewportHeight: 360
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: outputSection.control.enabled ? outputSection.control :
                                                           inputSection.control.enabled
                                                           ? inputSection.control :
@@ -272,6 +294,7 @@ FocusScope {
                                                               inputPresetRow.control.enabled
                                                               ? inputPresetRow.control :
                                                                 easyEffectsOpenButton.visible
+                                                                && easyEffectsOpenButton.enabled
                                                                 ? easyEffectsOpenButton : null
         onBackRequested: view.cancelled(view.ownerEpoch)
         onEscapePressed: view.cancelled(view.ownerEpoch)
@@ -283,7 +306,7 @@ FocusScope {
             implicitWidth: view.naturalContentWidth
             implicitHeight: audioContent.implicitHeight
             width: Math.max(implicitWidth, parent.width)
-            height: implicitHeight
+            height: Math.max(implicitHeight, parent.height)
 
             ColumnLayout {
                 id: audioContent
@@ -479,6 +502,137 @@ FocusScope {
                     }
                 }
             }
+            Rectangle {
+                id: dropdownOverlay
+                readonly property var controller: view.openDropdown
+                readonly property bool presetItems: controller !== null && controller.isPreset
+                readonly property point overlayPosition: controller === null ? Qt.point(0, 0) : view.popupOverlayPosition(
+                                                                                   controller.control,
+                                                                                   width, height)
+
+                objectName: controller === null ? "audioDropdownOverlay" :
+                                                  controller.popupObjectName
+                x: overlayPosition.x
+                y: overlayPosition.y
+                z: 10
+                width: controller === null ? 0 : controller.control.width
+                height: controller === null ? 0 : Math.min(5, controller.candidates.length)
+                                              * Theme.size.controlHeightMd + Theme.spacing.xs * 2
+                visible: controller !== null && controller.popupOpen
+                radius: Theme.radius.md
+                color: Theme.color.surface
+                border.width: Theme.size.hairlineWidth
+                border.color: Theme.color.surfaceBorder
+                clip: true
+
+                ListView {
+                    id: popupList
+
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacing.xs
+                    model: dropdownOverlay.visible ? dropdownOverlay.controller.candidates : null
+                    currentIndex: -1
+                    boundsBehavior: Flickable.StopAtBounds
+                    clip: true
+                    keyNavigationEnabled: false
+                    Accessible.role: Accessible.List
+                    Accessible.name: dropdownOverlay.controller === null ? "" :
+                                                                           dropdownOverlay.controller.popupAccessibleName
+
+                    ScrollBar.vertical: ScrollBar {
+                        policy: popupList.contentHeight > popupList.height ? ScrollBar.AlwaysOn :
+                                                                             ScrollBar.AlwaysOff
+                    }
+
+                    delegate: AbstractButton {
+                        id: popupItem
+                        required property int index
+                        required property var modelData
+                        readonly property string itemLabel: dropdownOverlay.controller === null
+                                                            || modelData === null || modelData
+                                                            === undefined ? "" :
+                                                                            dropdownOverlay.presetItems
+                                                                            || typeof modelData
+                                                                            !== "object" ? String(
+                                                                                               modelData) :
+                                                                                           typeof modelData.label
+                                                                                           === "string"
+                                                                                           ? modelData.label :
+                                                                                             ""
+                        readonly property bool selected: dropdownOverlay.controller !== null && (
+                                                             dropdownOverlay.presetItems
+                                                             ? modelData
+                                                               === dropdownOverlay.controller.currentName :
+                                                               modelData.isDefault === true)
+
+                        width: popupList.width
+                        height: Theme.size.controlHeightMd
+                        focusPolicy: Qt.StrongFocus
+                        hoverEnabled: true
+                        enabled: dropdownOverlay.controller !== null
+                                 && dropdownOverlay.controller.itemsEnabled
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: itemLabel
+                        Accessible.description: dropdownOverlay.controller === null ? "" :
+                                                                                      dropdownOverlay.controller.itemDescription(
+                                                                                          modelData)
+                        onActiveFocusChanged: {
+                            if (activeFocus && dropdownOverlay.controller !== null) {
+                                dropdownOverlay.controller.highlightedIndex = index;
+                                popupList.currentIndex = index;
+                                popupList.positionViewAtIndex(index, ListView.Contain);
+                            }
+                        }
+                        onClicked: {
+                            if (dropdownOverlay.controller !== null) {
+                                dropdownOverlay.controller.highlightedIndex = index;
+                                dropdownOverlay.controller.selectHighlighted();
+                            }
+                        }
+                        Keys.onPressed: event => {
+                            if (dropdownOverlay.controller !== null) {
+                                dropdownOverlay.controller.handlePopupKey(event);
+                            }
+                        }
+
+                        background: Rectangle {
+                            radius: Theme.radius.sm
+                            color: popupItem.selected ? Theme.color.surfaceActive :
+                                                        popupItem.pressed
+                                                        ? Theme.snapshot.controlFillPressed :
+                                                          popupItem.hovered
+                                                          || popupItem.visualFocus
+                                                          ? Theme.snapshot.controlFillHover :
+                                                            "transparent"
+                        }
+
+                        contentItem: RowLayout {
+                            spacing: Theme.spacing.sm
+
+                            IslandText {
+                                Layout.fillWidth: true
+                                text: popupItem.itemLabel
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                            }
+
+                            IslandText {
+                                visible: popupItem.selected
+                                text: dropdownOverlay.controller === null ? "" :
+                                                                            dropdownOverlay.controller.selectedLabel
+                                textFormat: Text.PlainText
+                                color: Theme.snapshot.accent
+                                size: "caption"
+                                font.weight: Theme.type.weightMedium
+                            }
+                        }
+
+                        IslandFocusRing {
+                            visible: popupItem.visualFocus
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -492,12 +646,18 @@ FocusScope {
         required property var candidates
         required property string listState
         readonly property string role: "preset-" + pipeline
+        readonly property bool isPreset: true
+        readonly property string popupObjectName: "audioEasyEffects" + (pipeline === "output"
+                                                                        ? "Output" : "Input")
+                                                  + "PresetPopup"
+        readonly property string popupAccessibleName: label
+        readonly property string selectedLabel: qsTr("Last loaded")
+        readonly property bool itemsEnabled: !view.presetLoadPending
         readonly property bool popupOpen: view.openRole === role
         readonly property bool pending: view.presetLoadPending
                                         && view.easyEffectsStatus.loadPipeline === pipeline
         readonly property int currentPresetIndex: candidates.indexOf(currentName)
         readonly property alias control: presetButton
-        readonly property alias popup: presetPopupFrame
         property int highlightedIndex: currentPresetIndex >= 0 ? currentPresetIndex : 0
 
         Layout.fillWidth: true
@@ -506,6 +666,20 @@ FocusScope {
         function boundedIndex(index) {
             return Math.max(0, Math.min(candidates.length - 1, index));
         }
+        function focusHighlighted() {
+            if (!popupOpen || candidates.length === 0) {
+                return;
+            }
+            highlightedIndex = boundedIndex(highlightedIndex);
+            popupList.currentIndex = highlightedIndex;
+            popupList.positionViewAtIndex(highlightedIndex, ListView.Contain);
+            Qt.callLater(() => {
+                if (popupList.currentItem !== null) {
+                    popupList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
+                }
+            });
+        }
+
         function openPopup(index) {
             if (!presetButton.enabled) {
                 return;
@@ -513,17 +687,15 @@ FocusScope {
             view.openRole = role;
             highlightedIndex = boundedIndex(index >= 0 ? index : currentPresetIndex >= 0
                                                          ? currentPresetIndex : 0);
-            presetList.currentIndex = highlightedIndex;
-            Qt.callLater(() => {
-                if (presetList.currentItem !== null) {
-                    presetList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
-                }
-            });
+            focusHighlighted();
         }
         function closePopup() {
             if (popupOpen) {
                 view.openRole = "";
             }
+        }
+        function itemDescription(item) {
+            return item === currentName ? qsTr("Last loaded preset") : qsTr("Load preset");
         }
         function selectHighlighted() {
             if (highlightedIndex < 0 || highlightedIndex >= candidates.length) {
@@ -536,7 +708,7 @@ FocusScope {
             }
             return accepted;
         }
-        function handleKey(event) {
+        function handlePopupKey(event) {
             if (event.key === Qt.Key_Escape) {
                 closePopup();
                 presetButton.forceActiveFocus(Qt.ShortcutFocusReason);
@@ -544,8 +716,12 @@ FocusScope {
             } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
                 highlightedIndex = boundedIndex(highlightedIndex + (event.key === Qt.Key_Down ? 1 :
                                                                                                 -1));
-                presetList.currentIndex = highlightedIndex;
-                presetList.positionViewAtIndex(highlightedIndex, ListView.Contain);
+                focusHighlighted();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+                highlightedIndex = event.key === Qt.Key_Home ? 0 : Math.max(0, candidates.length
+                                                                            - 1);
+                focusHighlighted();
                 event.accepted = true;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key
                        === Qt.Key_Space) {
@@ -559,6 +735,8 @@ FocusScope {
                                                                       highlightedIndex);
             if (candidates.length === 0) {
                 closePopup();
+            } else if (popupOpen) {
+                focusHighlighted();
             }
         }
 
@@ -661,93 +839,6 @@ FocusScope {
             }
         }
 
-        Rectangle {
-            id: presetPopupFrame
-            objectName: "audioEasyEffects" + (presetRow.pipeline === "output" ? "Output" : "Input")
-                        + "PresetPopup"
-            Layout.fillWidth: true
-            implicitHeight: presetRow.popupOpen ? Math.min(5, presetRow.candidates.length)
-                                                  * Theme.size.controlHeightMd + Theme.spacing.xs
-                                                  * 2 : 0
-            visible: presetRow.popupOpen
-            radius: Theme.radius.md
-            color: Theme.color.surface
-            border.width: Theme.size.hairlineWidth
-            border.color: Theme.color.surfaceBorder
-            clip: true
-
-            ListView {
-                id: presetList
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.xs
-                model: presetRow.candidates
-                currentIndex: presetRow.highlightedIndex
-                boundsBehavior: Flickable.StopAtBounds
-                clip: true
-                keyNavigationEnabled: false
-
-                ScrollBar.vertical: ScrollBar {
-                    policy: presetList.contentHeight > presetList.height ? ScrollBar.AlwaysOn :
-                                                                           ScrollBar.AlwaysOff
-                }
-
-                delegate: AbstractButton {
-                    id: presetItem
-                    required property int index
-                    required property string modelData
-                    width: presetList.width
-                    height: Theme.size.controlHeightMd
-                    focusPolicy: Qt.StrongFocus
-                    hoverEnabled: true
-                    enabled: !view.presetLoadPending
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: modelData
-                    Accessible.description: modelData === presetRow.currentName ? qsTr(
-                                                                                      "Last loaded preset") :
-                                                                                  qsTr("Load preset")
-                    onActiveFocusChanged: {
-                        if (activeFocus) {
-                            presetRow.highlightedIndex = index;
-                            presetList.currentIndex = index;
-                        }
-                    }
-                    onClicked: {
-                        presetRow.highlightedIndex = index;
-                        presetRow.selectHighlighted();
-                    }
-                    Keys.onPressed: event => presetRow.handleKey(event)
-
-                    background: Rectangle {
-                        radius: Theme.radius.sm
-                        color: presetItem.modelData === presetRow.currentName
-                               ? Theme.color.surfaceActive : presetItem.pressed
-                                 ? Theme.snapshot.controlFillPressed : presetItem.hovered
-                                   || presetItem.visualFocus ? Theme.snapshot.controlFillHover :
-                                                               "transparent"
-                    }
-                    contentItem: RowLayout {
-                        spacing: Theme.spacing.sm
-                        IslandText {
-                            Layout.fillWidth: true
-                            text: presetItem.modelData
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                        }
-                        IslandText {
-                            visible: presetItem.modelData === presetRow.currentName
-                            text: qsTr("Last loaded")
-                            textFormat: Text.PlainText
-                            color: Theme.snapshot.accent
-                            size: "caption"
-                        }
-                    }
-                    IslandFocusRing {
-                        visible: presetItem.visualFocus
-                    }
-                }
-            }
-        }
-
         IslandText {
             Layout.fillWidth: true
             readonly property string message: view.presetLoadFailureText(presetRow.pipeline)
@@ -783,6 +874,12 @@ FocusScope {
         required property var candidates
         required property bool pending
         required property bool internalDefault
+        readonly property bool isPreset: false
+        readonly property string popupObjectName: "audio" + (role === "output" ? "Output" : "Input")
+                                                  + "Popup"
+        readonly property string popupAccessibleName: title
+        readonly property string selectedLabel: qsTr("Selected")
+        readonly property bool itemsEnabled: !view.selectionPending
         readonly property real maximumLabelWidth: Theme.spacing.xxl * 7
         readonly property real naturalWidth: Math.max(Theme.size.audioEmptyContentMinimumWidth,
                                                       Theme.spacing.md * 3 + Theme.size.iconSizeMd
@@ -818,11 +915,11 @@ FocusScope {
                 return;
             }
             highlightedIndex = boundedIndex(highlightedIndex);
-            candidateList.currentIndex = highlightedIndex;
-            candidateList.positionViewAtIndex(highlightedIndex, ListView.Contain);
+            popupList.currentIndex = highlightedIndex;
+            popupList.positionViewAtIndex(highlightedIndex, ListView.Contain);
             Qt.callLater(() => {
-                if (candidateList.currentItem !== null) {
-                    candidateList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
+                if (popupList.currentItem !== null) {
+                    popupList.currentItem.forceActiveFocus(Qt.ShortcutFocusReason);
                 }
             });
         }
@@ -843,6 +940,14 @@ FocusScope {
             }
             typePrefix = "";
             dropdownButton.forceActiveFocus(Qt.ShortcutFocusReason);
+        }
+        function itemDescription(item) {
+            if (item.isDefault) {
+                return role === "output" ? qsTr("Confirmed current output device") : qsTr(
+                                               "Confirmed current input device");
+            }
+            return role === "output" ? qsTr("Select as output device") : qsTr(
+                                           "Select as input device");
         }
 
         function selectHighlighted() {
@@ -914,6 +1019,12 @@ FocusScope {
                                                                   highlightedIndex);
             if (candidates.length === 0 && popupOpen) {
                 view.openRole = "";
+            }
+        }
+        onPopupOpenChanged: {
+            if (!popupOpen) {
+                typePrefix = "";
+                typeReset.stop();
             }
         }
 
@@ -1035,106 +1146,6 @@ FocusScope {
             elide: Text.ElideRight
             Accessible.role: Accessible.StaticText
             Accessible.name: text
-        }
-
-        Rectangle {
-            id: popupFrame
-            objectName: "audio" + (section.role === "output" ? "Output" : "Input") + "Popup"
-
-            Layout.fillWidth: true
-            implicitHeight: section.popupOpen ? Math.min(5, section.candidates.length)
-                                                * Theme.size.controlHeightMd + Theme.spacing.xs * 2 :
-                                                0
-            visible: section.popupOpen
-            radius: Theme.radius.md
-            color: Theme.color.surface
-            border.width: Theme.size.hairlineWidth
-            border.color: Theme.color.surfaceBorder
-            clip: true
-
-            ListView {
-                id: candidateList
-
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.xs
-                model: section.candidates
-                currentIndex: section.highlightedIndex
-                boundsBehavior: Flickable.StopAtBounds
-                clip: true
-                keyNavigationEnabled: false
-
-                ScrollBar.vertical: ScrollBar {
-                    policy: candidateList.contentHeight > candidateList.height ? ScrollBar.AlwaysOn :
-                                                                                 ScrollBar.AlwaysOff
-                }
-
-                delegate: AbstractButton {
-                    id: candidateButton
-
-                    required property int index
-                    required property var modelData
-                    width: candidateList.width
-                    height: Theme.size.controlHeightMd
-                    focusPolicy: Qt.StrongFocus
-                    hoverEnabled: true
-                    enabled: !view.selectionPending
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: modelData.label
-                    Accessible.description: modelData.isDefault ? (section.role === "output" ? qsTr(
-                                                                                                   "Confirmed current output device") :
-                                                                                               qsTr("Confirmed current input device")) :
-                                                                  (section.role === "output" ? qsTr(
-                                                                                                   "Select as output device") :
-                                                                                               qsTr("Select as input device"))
-                    onActiveFocusChanged: {
-                        if (activeFocus) {
-                            section.highlightedIndex = index;
-                            candidateList.currentIndex = index;
-                            candidateList.positionViewAtIndex(index, ListView.Contain);
-                        }
-                    }
-                    onClicked: {
-                        section.highlightedIndex = index;
-                        section.selectHighlighted();
-                    }
-                    Keys.onPressed: event => section.handlePopupKey(event)
-
-                    background: Rectangle {
-                        radius: Theme.radius.sm
-                        color: candidateButton.modelData.isDefault ? Theme.color.surfaceActive :
-                                                                     candidateButton.pressed
-                                                                     ? Theme.snapshot.controlFillPressed :
-                                                                       candidateButton.hovered
-                                                                       || candidateButton.visualFocus
-                                                                       ? Theme.snapshot.controlFillHover :
-                                                                         "transparent"
-                    }
-
-                    contentItem: RowLayout {
-                        spacing: Theme.spacing.sm
-
-                        IslandText {
-                            Layout.fillWidth: true
-                            text: candidateButton.modelData.label
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                        }
-
-                        IslandText {
-                            visible: candidateButton.modelData.isDefault
-                            text: qsTr("Selected")
-                            textFormat: Text.PlainText
-                            color: Theme.snapshot.accent
-                            size: "caption"
-                            font.weight: Theme.type.weightMedium
-                        }
-                    }
-
-                    IslandFocusRing {
-                        visible: candidateButton.visualFocus
-                    }
-                }
-            }
         }
     }
 }

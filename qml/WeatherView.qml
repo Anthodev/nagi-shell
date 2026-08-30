@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 FocusScope {
@@ -10,6 +11,8 @@ FocusScope {
     required property real ownerEpoch
     property bool active: true
     property bool reducedMotion: false
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
     readonly property bool hasModel: adapter !== null && adapter.model !== null
     readonly property var current: hasModel ? adapter.current : null
@@ -101,7 +104,10 @@ FocusScope {
         anchors.fill: parent
         active: view.active
         title: view.hasModel ? view.adapter.model.location : qsTr("Weather")
-        reducedMotion: view.reducedMotion
+        preferredViewportWidth: 576
+        preferredViewportHeight: 360
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: refreshButton.visible && refreshButton.enabled ? refreshButton : null
         onBackRequested: view.cancelled(view.ownerEpoch)
         onEscapePressed: view.cancelled(view.ownerEpoch)
@@ -109,8 +115,7 @@ FocusScope {
         Item {
             id: contentRoot
 
-            implicitWidth: Math.max(Theme.spacing.xxl * 18, hourlyRow.implicitWidth,
-                                    dailyRow.implicitWidth)
+            implicitWidth: 576
             width: Math.max(implicitWidth, parent.width)
             height: content.implicitHeight
 
@@ -248,26 +253,90 @@ FocusScope {
                     }
                 }
 
-                RowLayout {
-                    id: hourlyRow
-                    Layout.fillWidth: true
-                    visible: view.hourly.length > 0
-                    spacing: Theme.spacing.sm
-                    Accessible.role: Accessible.List
-                    Accessible.name: qsTr("Hourly forecast")
+                Item {
+                    id: hourlyViewport
+                    objectName: "weatherHourlyViewport"
 
-                    Repeater {
+                    Layout.fillWidth: true
+                    implicitHeight: Theme.spacing.xxl * 3
+                    visible: view.hourly.length > 0
+
+                    ListView {
+                        id: hourlyList
+                        objectName: "weatherHourlyList"
+
+                        anchors.fill: parent
+                        orientation: ListView.Horizontal
+                        spacing: Theme.spacing.sm
                         model: view.hourly
+                        currentIndex: count > 0 ? 0 : -1
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        interactive: contentWidth > width
+                        activeFocusOnTab: interactive
+                        keyNavigationEnabled: false
+                        Accessible.role: Accessible.List
+                        Accessible.name: qsTr("Hourly forecast")
+                        Accessible.description: interactive ? qsTr(
+                                                                  "Use Left and Right to browse the hourly forecast") :
+                                                              ""
+
+                        function revealIndex(index) {
+                            if (count <= 0) {
+                                currentIndex = -1;
+                                return;
+                            }
+                            currentIndex = Math.max(0, Math.min(count - 1, index));
+                            positionViewAtIndex(currentIndex, ListView.Contain);
+                        }
+
+                        onActiveFocusChanged: {
+                            if (activeFocus && currentIndex >= 0) {
+                                positionViewAtIndex(currentIndex, ListView.Contain);
+                            }
+                        }
+                        onCountChanged: revealIndex(currentIndex < 0 ? 0 : currentIndex)
+
+                        Keys.priority: Keys.BeforeItem
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Left) {
+                                revealIndex(currentIndex - 1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right) {
+                                revealIndex(currentIndex + 1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Home) {
+                                revealIndex(0);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_End) {
+                                revealIndex(count - 1);
+                                event.accepted = true;
+                            }
+                        }
+
+                        ScrollBar.horizontal: ScrollBar {
+                            id: hourlyScrollBar
+                            objectName: "weatherHourlyScrollBar"
+                            policy: hourlyList.contentWidth > hourlyList.width ? ScrollBar.AlwaysOn :
+                                                                                 ScrollBar.AlwaysOff
+                        }
 
                         delegate: ForecastCard {
                             required property var modelData
 
+                            width: Math.max(Theme.spacing.xxl * 2, implicitWidth)
+                            height: implicitHeight
                             heading: Qt.formatTime(new Date(modelData.forecastEpoch), "HH:mm")
                             condition: modelData.condition
                             dayPhase: modelData.dayPhase
                             temperature: Math.round(modelData.temperature) + view.temperatureSuffix(
                                              modelData.temperatureUnit)
                         }
+                    }
+
+                    IslandFocusRing {
+                        controlRadius: Theme.radius.md
+                        visible: hourlyList.activeFocus
                     }
                 }
 

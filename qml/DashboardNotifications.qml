@@ -4,7 +4,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // The normalized service owns ordering, replacement, age, retention, and the
-// four-record dashboard bound; delegates retain no content copy.
+// four-record bound. The instruments/feed stage owns width; delegates copy no
+// content.
 FocusScope {
     id: root
 
@@ -14,7 +15,7 @@ FocusScope {
     readonly property bool empty: rowCount === 0
     readonly property int rowHeight: Theme.size.controlHeightSm
 
-    implicitWidth: Theme.spacing.xxl * 18 + Theme.spacing.lg
+    implicitWidth: 0
     implicitHeight: notificationsColumn.implicitHeight
     Accessible.role: Accessible.Grouping
     Accessible.name: qsTr("Recent notifications")

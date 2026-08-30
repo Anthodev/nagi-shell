@@ -11,15 +11,15 @@ FocusScope {
     required property real ownerEpoch
     property bool active: true
     property bool reducedMotion: false
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
-    readonly property int maximumVisibleRows: 5
+    readonly property int maximumVisibleRows: 3
     readonly property int historyRowExtent: Theme.spacing.xxl * 4
     readonly property real contentWidth: Theme.spacing.xxl * 15
 
     readonly property bool historyScrollVisible: rowCount > maximumVisibleRows
-    readonly property real historyViewportHeight: rowCount === 0 ? Theme.size.controlHeightLg :
-                                                                   firstRowsExtent(Math.min(rowCount,
-                                                                                            maximumVisibleRows))
+    readonly property real historyViewportHeight: maximumVisibleRows * historyRowExtent
     readonly property int rowCount: historyList.count
     readonly property bool emptyStateVisible: emptyState.visible
     readonly property bool backFocused: frame.backControl.activeFocus
@@ -121,9 +121,6 @@ FocusScope {
     }
 
     signal cancelled(real ownerEpoch)
-    function firstRowsExtent(count) {
-        return count * historyRowExtent;
-    }
 
     function dismissRecord(recordKey, index) {
         if (service === null || recordKey === "") {
@@ -220,7 +217,10 @@ FocusScope {
         anchors.fill: parent
         active: view.active
         title: qsTr("Notification history")
-        reducedMotion: view.reducedMotion
+        preferredViewportWidth: view.contentWidth
+        preferredViewportHeight: view.historyViewportHeight
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: historyList.currentItem
         onBackRequested: view.requestBack()
         onEscapePressed: view.requestBack()

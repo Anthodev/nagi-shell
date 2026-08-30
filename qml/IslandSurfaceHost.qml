@@ -28,6 +28,7 @@ Scope {
     property var notificationTransientSource: null
     property Component dashboardMediaContent: null
     property Component dashboardClockContent: null
+    property Component dashboardStatusContent: null
     property Component dashboardQuickControlsContent: null
     property Component dashboardAudioContent: null
     property Component dashboardNotificationsContent: null
@@ -59,8 +60,22 @@ Scope {
                                                                             fallbackSurface.preferredWidth
     readonly property int surfacePreferredHeight: fallbackSurface === null ? 0 :
                                                                              fallbackSurface.preferredHeight
-    readonly property bool backgroundCoversSurface: fallbackSurface !== null
-                                                    && fallbackSurface.backgroundCoversSurface
+    readonly property real renderedPanelWidth: fallbackSurface === null ? 0 :
+                                                                          fallbackSurface.renderedPanelWidth
+    readonly property real renderedPanelHeight: fallbackSurface === null ? 0 :
+                                                                           fallbackSurface.renderedPanelHeight
+    readonly property int windowGutterLeft: fallbackSurface === null ? 0 :
+                                                                       fallbackSurface.windowGutterLeft
+    readonly property int windowGutterRight: fallbackSurface === null ? 0 :
+                                                                        fallbackSurface.windowGutterRight
+    readonly property int windowGutterTop: fallbackSurface === null ? 0 :
+                                                                      fallbackSurface.windowGutterTop
+    readonly property int windowGutterBottom: fallbackSurface === null ? 0 :
+                                                                         fallbackSurface.windowGutterBottom
+    readonly property point panelMappedTopLeft: fallbackSurface === null ? Qt.point(0, 0) :
+                                                                           fallbackSurface.panelMappedTopLeft
+    readonly property point panelMappedBottomRight: fallbackSurface === null ? Qt.point(0, 0) :
+                                                                               fallbackSurface.panelMappedBottomRight
     readonly property real backgroundRadius: fallbackSurface === null ? 0 :
                                                                         fallbackSurface.backgroundRadius
     readonly property bool blurRequested: fallbackSurface !== null && fallbackSurface.blurRequested
@@ -71,22 +86,72 @@ Scope {
                                              && fallbackSurface.dashboardFocused
     readonly property int loadedDashboardRegionCount: fallbackSurface === null ? 0 :
                                                                                  fallbackSurface.loadedDashboardRegionCount
-    readonly property bool interactiveExitRunning: fallbackSurface !== null
-                                                   && fallbackSurface.interactiveExitRunning
-    readonly property int interactiveExitDuration: fallbackSurface === null ? 0 :
-                                                                              fallbackSurface.interactiveExitDuration
-    readonly property real interactiveExitOffset: fallbackSurface === null ? 0 :
-                                                                             fallbackSurface.interactiveExitOffset
-    readonly property real interactiveExitLoaderX: fallbackSurface === null ? 0 :
-                                                                              fallbackSurface.interactiveExitLoaderX
-    readonly property real interactiveExitMappedX: fallbackSurface === null ? 0 :
-                                                                              fallbackSurface.interactiveExitMappedX
-    readonly property real interactiveExitLoaderZ: fallbackSurface === null ? 0 :
-                                                                              fallbackSurface.interactiveExitLoaderZ
-    readonly property bool interactiveExitLoaderEnabled: fallbackSurface !== null
-                                                         && fallbackSurface.interactiveExitLoaderEnabled
-    readonly property var interactiveExitItem: fallbackSurface === null ? null :
-                                                                          fallbackSurface.interactiveExitItem
+    readonly property bool dashboardWorkActive: fallbackSurface !== null
+                                                && fallbackSurface.dashboardWorkActive
+    readonly property bool dashboardReady: fallbackSurface !== null
+                                           && fallbackSurface.dashboardReady
+    readonly property real stablePanelMaximumWidth: fallbackSurface === null ? 0 :
+                                                                               fallbackSurface.stablePanelMaximumWidth
+    readonly property real stablePanelMaximumHeight: fallbackSurface === null ? 0 :
+                                                                                fallbackSurface.stablePanelMaximumHeight
+    readonly property real dashboardNaturalWidth: fallbackSurface === null ? 0 :
+                                                                             fallbackSurface.dashboardNaturalWidth
+    readonly property real dashboardNaturalHeight: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.dashboardNaturalHeight
+    readonly property real dashboardViewportWidth: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.dashboardViewportWidth
+    readonly property real dashboardViewportHeight: fallbackSurface === null ? 0 :
+                                                                               fallbackSurface.dashboardViewportHeight
+    readonly property bool dashboardHorizontalOverflow: fallbackSurface !== null
+                                                        && fallbackSurface.dashboardHorizontalOverflow
+    readonly property bool dashboardVerticalOverflow: fallbackSurface !== null
+                                                      && fallbackSurface.dashboardVerticalOverflow
+    readonly property bool contentTransitionRunning: fallbackSurface !== null
+                                                     && fallbackSurface.contentTransitionRunning
+    readonly property bool contentTransitionDestinationReady: fallbackSurface !== null
+                                                              && fallbackSurface.contentTransitionDestinationReady
+    readonly property int contentTransitionFromKind: fallbackSurface === null ? -1 :
+                                                                                fallbackSurface.contentTransitionFromKind
+    readonly property int contentTransitionToKind: fallbackSurface === null ? -1 :
+                                                                              fallbackSurface.contentTransitionToKind
+    readonly property int contentTransitionDirection: fallbackSurface === null ? 0 :
+                                                                                 fallbackSurface.contentTransitionDirection
+    readonly property var contentOutgoingItem: fallbackSurface === null ? null :
+                                                                          fallbackSurface.contentOutgoingItem
+    readonly property var contentIncomingItem: fallbackSurface === null ? null :
+                                                                          fallbackSurface.contentIncomingItem
+    readonly property real contentOutgoingOpacity: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.contentOutgoingOpacity
+    readonly property real contentIncomingOpacity: fallbackSurface === null ? 0 :
+                                                                              fallbackSurface.contentIncomingOpacity
+    readonly property real contentOutgoingOffset: fallbackSurface === null ? 0 :
+                                                                             fallbackSurface.contentOutgoingOffset
+    readonly property real contentIncomingOffset: fallbackSurface === null ? 0 :
+                                                                             fallbackSurface.contentIncomingOffset
+    readonly property bool contentOutgoingEnabled: fallbackSurface !== null
+                                                   && fallbackSurface.contentOutgoingEnabled
+    readonly property bool contentOutgoingAccessibleIgnored: fallbackSurface === null
+                                                             || fallbackSurface.contentOutgoingAccessibleIgnored
+    readonly property bool contentOutgoingRendered: fallbackSurface !== null
+                                                    && fallbackSurface.contentOutgoingRendered
+    readonly property bool contentOutgoingWorkActive: fallbackSurface !== null
+                                                      && fallbackSurface.contentOutgoingWorkActive
+    readonly property int retainedPresentationCount: fallbackSurface === null ? 0 :
+                                                                                fallbackSurface.retainedPresentationCount
+    readonly property real contentRenderedOpacityTotal: fallbackSurface === null ? 0 :
+                                                                                   fallbackSurface.contentRenderedOpacityTotal
+    readonly property bool clockContinuityActive: fallbackSurface !== null
+                                                  && fallbackSurface.clockContinuityActive
+    readonly property bool mediaContinuityActive: fallbackSurface !== null
+                                                  && fallbackSurface.mediaContinuityActive
+    readonly property real clockContinuityOpacityTotal: fallbackSurface === null ? 0 :
+                                                                                   fallbackSurface.clockContinuityOpacityTotal
+    readonly property real mediaContinuityOpacityTotal: fallbackSurface === null ? 0 :
+                                                                                   fallbackSurface.mediaContinuityOpacityTotal
+    readonly property bool clockContinuityGeometryAligned: fallbackSurface === null
+                                                           || fallbackSurface.clockContinuityGeometryAligned
+    readonly property bool mediaContinuityGeometryAligned: fallbackSurface === null
+                                                           || fallbackSurface.mediaContinuityGeometryAligned
     readonly property var interactiveContent: fallbackSurface === null ? null :
                                                                          fallbackSurface.interactiveContent
     readonly property bool launcherLoaded: fallbackSurface !== null
@@ -130,8 +195,6 @@ Scope {
                                                      && fallbackSurface.geometryAnimationRunning
     readonly property bool transientCommitted: fallbackSurface !== null
                                                && fallbackSurface.transientCommitted
-    readonly property bool transientEntryAnimationRunning: fallbackSurface !== null
-                                                           && fallbackSurface.transientEntryAnimationRunning
     readonly property string transientPrimaryText: fallbackSurface === null ? "" :
                                                                               fallbackSurface.transientPrimaryText
     readonly property string transientDetailText: fallbackSurface === null ? "" :
@@ -160,6 +223,22 @@ Scope {
 
     function requestDeliberateExpansion() {
         return fallbackSurface !== null && fallbackSurface.requestDeliberateExpansion();
+    }
+
+    function contentOpacityForKind(kind) {
+        return fallbackSurface === null ? 0 : fallbackSurface.contentOpacityForKind(kind);
+    }
+
+    function contentOffsetForKind(kind) {
+        return fallbackSurface === null ? 0 : fallbackSurface.contentOffsetForKind(kind);
+    }
+
+    function contentStartOpacityForKind(kind) {
+        return fallbackSurface === null ? 0 : fallbackSurface.contentStartOpacityForKind(kind);
+    }
+
+    function contentStartOffsetForKind(kind) {
+        return fallbackSurface === null ? 0 : fallbackSurface.contentStartOffsetForKind(kind);
     }
     function completeShellMenuAction(token) {
         const surface = surfaceForToken(token);
@@ -388,19 +467,26 @@ Scope {
             }
 
             Component {
-                id: dashboardQuickControls
+                id: dashboardStatus
 
-                DashboardQuickControls {
-                    centerStatusInMainLane: host.media === null || !host.media.available ||
-                                            !UserConfig.snapshot.media.dashboardVisible
-                    applicationModel: host.applicationModel
+                DashboardStatusProjection {
+                    active: entry.liveSurface === null || entry.liveSurface.dashboardWorkActive
                     tray: host.trayAdapter
                     menuParentWindow: entry.liveSurface
-                    connectivity: host.connectivityAdapter
                     onExternalActionDispatched: host.completeShellMenuAction(entry.surfaceToken)
                     onShellMenuOpening: host.beginShellMenu(entry.surfaceToken)
                     onShellMenuOpenResult: result => host.finishShellMenuOpen(entry.surfaceToken,
                                                                               result)
+                }
+            }
+
+            Component {
+                id: dashboardQuickControls
+
+                DashboardQuickControls {
+                    applicationModel: host.applicationModel
+                    connectivity: host.connectivityAdapter
+                    onExternalActionDispatched: host.completeShellMenuAction(entry.surfaceToken)
                     onWifiManagerRequested: host.controlCenterRouteRequested("wifi",
                                                                              entry.surfaceToken)
                     onBluetoothManagerRequested: host.controlCenterRouteRequested("bluetooth",
@@ -476,6 +562,8 @@ Scope {
                                              ? dashboardMedia : null
                     dashboardClockContent: host.dashboardClockContent !== null
                                            ? host.dashboardClockContent : dashboardClock
+                    dashboardStatusContent: host.dashboardStatusContent !== null
+                                            ? host.dashboardStatusContent : dashboardStatus
                     dashboardQuickControlsContent: host.dashboardQuickControlsContent !== null
                                                    ? host.dashboardQuickControlsContent :
                                                      dashboardQuickControls

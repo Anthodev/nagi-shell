@@ -77,13 +77,11 @@ ShellRoot {
         const list = findObject(trayView, "trayItemList");
         require(list !== null, "tray GridView exists for " + count + " items");
         list.forceLayout();
-        const visibleRows = Math.min(rows, trayView.maximumVisibleRows);
-        require(trayView.gridViewportWidth === columns * trayView.controlExtent + Math.max(0,
-                                                                                           columns - 1)
-                * Theme.spacing.sm && trayView.gridViewportHeight === visibleRows
-                * trayView.controlExtent + Math.max(0, visibleRows - 1) * Theme.spacing.sm,
-                "tray viewport extents were not content-sized for " + count + " items");
-        require(trayView.gridScrollVisible === scrollVisible,
+        require(trayView.trayViewportWidth === 480 && trayView.trayViewportHeight === 112
+                && trayView.implicitWidth === 512 && trayView.implicitHeight === 188,
+                "Tray keeps its 480 by 112 viewport and 512 by 188 outer envelope");
+        require(trayView.gridScrollVisible === scrollVisible
+                && list.interactive === scrollVisible,
                 "tray scrollbar threshold was wrong for " + count + " items");
         if (count > 0) {
             require(Math.abs(list.contentHeight - rows * trayView.gridCellExtent) < 0.5,
@@ -95,9 +93,12 @@ ShellRoot {
                     continue;
                 }
                 const button = findObject(cell, "trayItemButton");
-                const expectedX = index % columns * trayView.gridCellExtent;
-                const expectedY = Math.floor(index / columns) * trayView.gridCellExtent;
-                require(button !== null && Math.abs(list.x + cell.x + button.x - expectedX) < 0.5
+                const expectedX = trayView.gridOffsetX + index % columns
+                                  * trayView.gridCellExtent;
+                const expectedY = trayView.gridOffsetY + Math.floor(index / columns)
+                                  * trayView.gridCellExtent;
+                require(button !== null
+                        && Math.abs(list.x + cell.x + button.x - expectedX) < 0.5
                         && Math.abs(list.y + cell.y + button.y - expectedY) < 0.5,
                         "tray delegate position was wrong at index " + index + " for " + count
                         + " items");
@@ -106,10 +107,9 @@ ShellRoot {
             require(checkedDelegates >= Math.min(count, trayView.maximumVisibleItems),
                     "tray instantiates and positions every visible delegate for " + count
                     + " items");
-        }
-        if (count === 0) {
-            require(trayView.contentWidth === Theme.spacing.xxl * 4,
-                    "empty tray width did not fit its compact state");
+        } else {
+            require(trayView.gridOffsetX > 0 && trayView.gridOffsetY > 0,
+                    "empty and sparse tray populations stay centered inside the stable envelope");
         }
     }
 
@@ -301,11 +301,13 @@ ShellRoot {
         setItems(layoutItems.slice(0, 5));
         requireTrayLayout(5, 5, 1, false);
         setItems(layoutItems.slice(0, 6));
-        requireTrayLayout(6, 5, 2, false);
+        requireTrayLayout(6, 6, 1, false);
         setItems(layoutItems.slice(0, 15));
-        requireTrayLayout(15, 5, 3, false);
+        requireTrayLayout(15, 11, 2, false);
+        setItems(layoutItems.slice(0, 33));
+        requireTrayLayout(33, 11, 3, false);
         setItems(layoutItems);
-        requireTrayLayout(16, 5, 4, true);
+        requireTrayLayout(34, 11, 4, true);
         setItems([alpha, beta]);
         const applicationIcon = findObject(trayCell(0), "trayApplicationIcon");
         require(applicationIcon !== null && applicationIcon.meaning === "trayApplication"
@@ -528,12 +530,10 @@ ShellRoot {
             menuParentWindow: trayWindow
             onCancelled: epoch => test.cancelledEpoch = epoch
         }
-        DashboardQuickControls {
+        DashboardStatusProjection {
             id: quickControls
 
             visible: false
-            connectivity: connectivity
-            applicationModel: applications
             tray: tray
             menuParentWindow: trayWindow
         }

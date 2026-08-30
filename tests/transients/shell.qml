@@ -30,12 +30,37 @@ ShellRoot {
     }
 
     function run() {
+        require(Theme.motion.scale === 1 && Theme.motion.durationMorphMinimum === 120
+                && Theme.motion.durationMorphMaximum === 200
+                && Theme.motion.durationExpansionMinimum === 100
+                && Theme.motion.durationExpansionMaximum === 160
+                && Theme.motion.easingMorph === Easing.InOutCubic
+                && Math.round(100 * Theme.effectiveMotionScale("reduced", 1)) === 50
+                && Math.round(160 * Theme.effectiveMotionScale("reduced", 1)) === 80
+                && Math.round(100 * Theme.effectiveMotionScale("minimal", 1)) === 0
+                && Math.round(160 * Theme.effectiveMotionScale("minimal", 1)) === 0,
+                "general morphs remain 120–200 ms while expansion publishes Full, Reduced, and Minimal endpoints");
         require(notificationView.bodyText === "Bounded plain-text body"
-                && notificationView.implicitHeight > Theme.size.islandTransientNotificationHeight,
-                "notification morph grows for bounded sender, summary, and body hierarchy");
+                && notificationView.implicitHeight
+                >= Theme.size.islandTransientNotificationHeight,
+                "notification morph retains the bounded sender, summary, and body hierarchy");
         require(notificationView.semanticIconLoaded && !notificationView.semanticIconTinted
                 && notificationView.appIconName !== "",
                 "notification preserves an available application icon without tinting");
+        notificationView.ownerRevision = 2;
+        notificationView.presentation = {
+            "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
+            "body": "Updated bounded body",
+            "detail": "Review requested",
+            "primary": "Messages",
+            "value": ""
+        };
+        notificationView.syncBoundPresentation();
+        require(notificationView.bodyText === "Updated bounded body"
+                && notificationView.incomingOpacity === 1
+                && notificationView.outgoingOpacity === 0
+                && !notificationView.replacementActive,
+                "same-owner transient revisions update in place without fading from zero");
         require(volumeView.iconMeaning === "volumeHigh" && volumeView.showProgress
                 && volumeView.showValue && volumeView.progressValue === 0.64,
                 "confirmed volume projection renders semantic icon, progress, and percentage");
@@ -96,9 +121,8 @@ ShellRoot {
         requireWorkspaceGeometry(largeWorkspaceView, "position 12 workspace");
         requireWorkspaceGeometry(customWorkspaceView, "custom-name workspace fallback");
         requireWorkspaceGeometry(invalidWorkspaceView, "invalid-payload workspace fallback");
-        require(!inactiveNotificationView.semanticIconLoaded &&
-                !inactiveNotificationView.entryAnimationRunning,
-                "hidden transient performs no icon load or animation work");
+        require(!inactiveNotificationView.semanticIconLoaded && !inactiveNotificationView.visible,
+                "hidden transient performs no icon load or presentation work");
         require(missingIconNotificationView.semanticIconLoaded
                 && missingIconNotificationView.semanticIconFallback
                 && missingIconNotificationView.semanticIconTinted,
@@ -272,7 +296,6 @@ ShellRoot {
         id: notificationView
 
         active: true
-        reducedMotion: true
         kind: "notification"
         presentation: ({
                            "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
@@ -290,7 +313,6 @@ ShellRoot {
         id: volumeView
 
         active: true
-        reducedMotion: true
         kind: "volume"
         presentation: ({
                            "detail": "Output volume",
@@ -307,7 +329,6 @@ ShellRoot {
         id: brightnessView
 
         active: true
-        reducedMotion: true
         kind: "brightness"
         presentation: ({
                            "detail": "PowerDevil confirmed",
@@ -324,7 +345,6 @@ ShellRoot {
         id: gamingView
 
         active: true
-        reducedMotion: true
         kind: "gamingPerformance"
         presentation: ({
                            "detail": "System status",
@@ -341,9 +361,9 @@ ShellRoot {
         id: shortWorkspaceView
 
         active: true
-        reducedMotion: true
         kind: "workspace"
         width: implicitWidth
+        height: implicitHeight
         presentation: ({
                            "detail": "Current desktop",
                            "primary": "Desktop 2",
@@ -358,9 +378,9 @@ ShellRoot {
         id: workspaceView
 
         active: true
-        reducedMotion: true
         kind: "workspace"
         width: implicitWidth
+        height: implicitHeight
         presentation: ({
                            "detail": "Current desktop",
                            "primary": "Desktop 3 — Product Development",
@@ -375,9 +395,9 @@ ShellRoot {
         id: largeWorkspaceView
 
         active: true
-        reducedMotion: true
         kind: "workspace"
         width: implicitWidth
+        height: implicitHeight
         presentation: ({
                            "detail": "Current desktop",
                            "primary": "Desktop 12",
@@ -392,9 +412,9 @@ ShellRoot {
         id: customWorkspaceView
 
         active: true
-        reducedMotion: true
         kind: "workspace"
         width: implicitWidth
+        height: implicitHeight
         presentation: ({
                            "detail": "Current desktop",
                            "primary": "Focus",
@@ -409,9 +429,9 @@ ShellRoot {
         id: invalidWorkspaceView
 
         active: true
-        reducedMotion: true
         kind: "workspace"
         width: implicitWidth
+        height: implicitHeight
         presentation: ({
                            "detail": "Current desktop",
                            "primary": "Desktop 7",
@@ -426,7 +446,6 @@ ShellRoot {
         id: inactiveNotificationView
 
         active: false
-        reducedMotion: false
         kind: "notification"
         presentation: ({
                            "appIconName": Quickshell.shellPath("assets/icons/nagi/notification.svg"),
@@ -444,7 +463,6 @@ ShellRoot {
         id: missingIconNotificationView
 
         active: true
-        reducedMotion: true
         kind: "notification"
         presentation: ({
                            "appIconName": "",
@@ -458,5 +476,10 @@ ShellRoot {
         ownerRevision: 1
     }
 
-    Component.onCompleted: Qt.callLater(run)
+    Timer {
+        interval: 10
+        running: true
+        repeat: false
+        onTriggered: test.run()
+    }
 }

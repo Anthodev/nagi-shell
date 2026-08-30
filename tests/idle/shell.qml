@@ -137,9 +137,9 @@ ShellRoot {
         require(islandFull.implicitWidth - islandNoWorkspace.implicitWidth
                 === islandFull.workspaceBlock.width + islandFull.boundaryWidth,
                 "workspace unavailability frees its complete Idle geometry");
-        require(islandNoWorkspace.clockGroupBlock.x === 0
-                && islandNoWorkspace.clockBoundary.visible,
-                "Clock becomes the leading Idle group without workspace residue");
+        require(islandNoWorkspace.weatherBlock.x === 0
+                && islandNoWorkspace.weatherBoundary.visible,
+                "Weather becomes the leading Idle group without workspace residue");
         require(islandFull.clockBlock.text === "13:45", "clock renders normalized time text");
         require(!islandFull.clockDateBlock.visible && islandFull.clockGroupBlock.width
                 === islandFull.clockBlock.width,
@@ -164,12 +164,15 @@ ShellRoot {
                 "activating compact Weather requests its detailed subview once");
         require(islandFull.mediaSummary === "Artist — Track", "media renders the selected summary");
         require(islandFull.workspaceBlock.x < islandFull.workspaceBoundary.x
-                && islandFull.workspaceBoundary.x < islandFull.clockGroupBlock.x
-                && islandFull.clockGroupBlock.x < islandFull.clockBoundary.x
-                && islandFull.clockBoundary.x < islandFull.weatherBlock.x
+                && islandFull.workspaceBoundary.x < islandFull.weatherBlock.x
                 && islandFull.weatherBlock.x < islandFull.weatherBoundary.x
-                && islandFull.weatherBoundary.x < islandFull.mediaBlock.x,
-                "idle content keeps workspace, time, weather, media order with visible boundaries");
+                && islandFull.weatherBoundary.x < islandFull.clockGroupBlock.x
+                && islandFull.clockGroupBlock.x < islandFull.clockBoundary.x
+                && islandFull.clockBoundary.x < islandFull.mediaBlock.x,
+                "idle content keeps workspace, weather, time, media order with visible boundaries");
+        require(islandFull.clockPresentationItem === islandFull.clockGroupBlock
+                && islandFull.mediaPresentationItem === islandFull.mediaBlock,
+                "Idle reorder preserves the matched clock and media presentation aliases");
         require(islandFull.workspaceBoundary.visible && islandFull.clockBoundary.visible
                 && islandFull.weatherBoundary.visible,
                 "each visible group transition renders one restrained separator");
@@ -179,7 +182,7 @@ ShellRoot {
         require(islandFull.contentPadding === Theme.spacing.xl && firstEdge
                 === islandFull.contentPadding && islandFull.implicitWidth - lastEdge
                 === islandFull.contentPadding, "Idle content uses balanced 24 px edge padding");
-        requireEdgeSymmetry(islandFull, islandFull.weatherBoundary, islandFull.mediaBlock,
+        requireEdgeSymmetry(islandFull, islandFull.clockBoundary, islandFull.mediaBlock,
                             "full Idle");
         require(islandFull.implicitWidth === islandFull.contentPadding * 2
                 + islandFull.workspaceBlock.width + islandFull.clockGroupBlock.width
@@ -210,14 +213,14 @@ ShellRoot {
         require(islandFull.implicitWidth - islandNoMedia.implicitWidth
                 === islandFull.mediaBlock.width + islandFull.boundaryWidth,
                 "collapsed media frees its block and trailing boundary");
-        require(!islandNoMedia.weatherBoundary.visible,
-                "missing media leaves no orphan separator after weather");
+        require(islandNoMedia.weatherBoundary.visible && !islandNoMedia.clockBoundary.visible,
+                "missing media keeps only the weather-to-clock separator");
         require(islandNoMedia.implicitWidth === islandNoMedia.contentPadding * 2
                 + islandNoMedia.workspaceBlock.width + islandNoMedia.clockGroupBlock.width
                 + islandNoMedia.weatherBlock.width + islandNoMedia.boundaryWidth * 2,
                 "media-free geometry contains exactly three groups and two boundaries");
-        requireEdgeSymmetry(islandNoMedia, islandNoMedia.clockBoundary, islandNoMedia.weatherBlock,
-                            "media-free Idle");
+        requireEdgeSymmetry(islandNoMedia, islandNoMedia.weatherBoundary,
+                            islandNoMedia.clockGroupBlock, "media-free Idle");
 
         require(!islandNoWeatherNoMedia.weatherBlock.visible &&
                 !islandNoWeatherNoMedia.mediaBlock.visible,

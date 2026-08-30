@@ -4,6 +4,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+// Expanded maps this flat rail from the glance top to the instruments/feed
+// bottom; the two clusters remain ordered independently at those stage edges.
+
 Item {
     id: root
     objectName: "dashboardNavigation"

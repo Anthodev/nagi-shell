@@ -61,14 +61,12 @@ ShellRoot {
         return null;
     }
     function requireResultLayout(count) {
-        const visibleCount = Math.min(count, launcher.maximumVisibleResults);
-        const expectedHeight = count === 0 ? Theme.size.controlHeightMd : visibleCount
-                                             * launcher.resultRowExtent + Math.max(0, visibleCount
-                                                                                   - 1) * launcher.resultRowSpacing;
         return require(launcher.resultCount === count,
                        "launcher did not render the requested result count " + count) && require(
-                    launcher.resultViewportHeight === expectedHeight,
-                    "launcher viewport height was not exact for " + count + " results") && require(
+                    launcher.resultViewportHeight === 176
+                    && launcher.launcherViewportHeight === 256
+                    && launcher.implicitWidth === 512 && launcher.implicitHeight === 332,
+                    "launcher keeps its 480 by 256 viewport and 512 by 332 outer envelope") && require(
                     launcher.resultScrollVisible === (count > launcher.maximumVisibleResults),
                     "launcher scrollbar threshold was wrong for " + count + " results") && require(
                     launcher.resultScrollBarActive === (count > launcher.maximumVisibleResults),
@@ -256,7 +254,7 @@ ShellRoot {
                     || !test.require(launcher.searchFieldItem.width === launcher.contentWidth
                                      && launcher.resultViewportItem.width === launcher.contentWidth
                                      && launcher.resultListItem.width === launcher.contentWidth,
-                                     "search, results, and empty-state viewport fill the natural width")) {
+                                     "search, results, and empty state fill the stable viewport width")) {
                 return;
             }
             fakeModel.applications = allApplications;

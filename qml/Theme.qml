@@ -610,8 +610,16 @@ Singleton {
     readonly property QtObject elevation: QtObject {
         readonly property color shadowColor: "#000000"
         readonly property int shadowRadius: 22
+        readonly property int shadowHorizontalOffset: 0
         readonly property int shadowVerticalOffset: 8
-        readonly property int shadowSamples: 17
+        readonly property int shadowGutterLeft: Math.ceil(Math.max(0, shadowRadius
+                                                                   - shadowHorizontalOffset))
+        readonly property int shadowGutterRight: Math.ceil(Math.max(0, shadowRadius
+                                                                    + shadowHorizontalOffset))
+        readonly property int shadowGutterTop: Math.ceil(Math.max(0, shadowRadius
+                                                                  - shadowVerticalOffset))
+        readonly property int shadowGutterBottom: Math.ceil(Math.max(0, shadowRadius
+                                                                     + shadowVerticalOffset))
     }
 
     readonly property QtObject motion: QtObject {
@@ -623,10 +631,19 @@ Singleton {
         readonly property int durationFast: scale <= 0 ? 0 : Math.max(1, Math.round(70 * scale))
         readonly property int durationNormal: scale <= 0 ? 0 : Math.max(1, Math.round(120 * scale))
         readonly property int durationSlow: scale <= 0 ? 0 : Math.max(1, Math.round(170 * scale))
-        readonly property int durationExpansion: scale <= 0 ? 0 : Math.max(1, Math.round(190
-                                                                                         * scale))
-        readonly property int expansionAnchor: Qt.AlignTop
+        readonly property int durationMorphMinimum: scale <= 0 ? 0 : Math.max(1, Math.round(120
+                                                                                            * scale))
+
+        readonly property int durationMorphMaximum: scale <= 0 ? 0 : Math.max(1, Math.round(200
+                                                                                            * scale))
+
+        readonly property int durationExpansionMinimum: scale <= 0 ? 0 : Math.max(1, Math.round(100
+                                                                                                * scale))
+
+        readonly property int durationExpansionMaximum: scale <= 0 ? 0 : Math.max(1, Math.round(160
+                                                                                                * scale))
+
         readonly property int easingStandard: Easing.OutCubic
-        readonly property int easingExpansion: Easing.OutCubic
+        readonly property int easingMorph: Easing.InOutCubic
     }
 }

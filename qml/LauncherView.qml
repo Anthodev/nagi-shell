@@ -11,19 +11,20 @@ FocusScope {
     required property var applicationModel
     required property real ownerEpoch
     property bool active: true
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
     property bool reducedMotion: false
     property alias query: searchInput.text
     readonly property var normalizedSearchIndex: buildSearchIndex()
     readonly property int maximumVisibleResults: 5
-    readonly property int resultRowExtent: Theme.size.controlHeightLg
+    readonly property int resultRowExtent: Theme.size.controlHeightMd
     readonly property int resultRowSpacing: Theme.spacing.xs
-    readonly property real resultViewportHeight: resultCount === 0 ? Theme.size.controlHeightMd :
-                                                                     Math.min(resultCount,
-                                                                              maximumVisibleResults)
-                                                                     * resultRowExtent + Math.max(0,
-                                                                                                  Math.min(resultCount,
-                                                                                                           maximumVisibleResults)
-                                                                                                  - 1) * resultRowSpacing
+    readonly property real resultViewportHeight: maximumVisibleResults * resultRowExtent + Math.max(
+                                                     0, maximumVisibleResults - 1)
+                                                 * resultRowSpacing
+    readonly property int statusLaneExtent: 18
+    readonly property real launcherViewportHeight: Theme.size.controlHeightLg + Theme.spacing.md
+                                                   * 2 + resultViewportHeight + statusLaneExtent
     readonly property bool resultScrollVisible: resultCount > maximumVisibleResults
     readonly property bool resultScrollBarActive: resultScrollBar.policy !== ScrollBar.AlwaysOff
     readonly property real contentWidth: Theme.spacing.xxl * 15
@@ -356,21 +357,23 @@ FocusScope {
         anchors.fill: parent
         active: view.active
         title: qsTr("Applications")
-        reducedMotion: view.reducedMotion
+        preferredViewportWidth: view.contentWidth
+        preferredViewportHeight: view.launcherViewportHeight
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: searchInput
         onBackRequested: view.requestCancellation()
         onEscapePressed: view.requestCancellation()
 
         Item {
             implicitWidth: view.contentWidth
-            implicitHeight: launcherContent.implicitHeight
+            implicitHeight: view.launcherViewportHeight
             width: implicitWidth
             height: implicitHeight
             ColumnLayout {
                 id: launcherContent
 
-                anchors.left: parent.left
-                anchors.right: parent.right
+                anchors.fill: parent
                 spacing: Theme.spacing.md
 
                 Rectangle {
@@ -442,6 +445,7 @@ FocusScope {
                 Item {
                     id: resultViewport
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     implicitHeight: view.resultViewportHeight
 
                     ListView {
@@ -659,15 +663,23 @@ FocusScope {
                     }
                 }
 
-                IslandText {
+                Item {
                     Layout.fillWidth: true
-                    visible: text !== ""
-                    text: view.launchFailure !== "" ? view.launchFailure : view.pinStatus
-                    textFormat: Text.PlainText
-                    color: view.launchFailure !== "" || view.applicationModel.pinFailure
-                           === "write" ? Theme.color.danger : Theme.color.textSecondary
-                    size: "caption"
-                    elide: Text.ElideRight
+                    Layout.preferredHeight: view.statusLaneExtent
+
+                    IslandText {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: text !== ""
+                        text: view.launchFailure !== "" ? view.launchFailure : view.pinStatus
+                        textFormat: Text.PlainText
+                        color: view.launchFailure !== "" || view.applicationModel.pinFailure
+                               === "write" ? Theme.color.danger : Theme.color.textSecondary
+                        size: "caption"
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                    }
                 }
             }
         }

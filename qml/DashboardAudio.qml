@@ -4,8 +4,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Two aligned channel blocks keep confirmed audio state authoritative. Device
-// buttons enter the dedicated selection subview.
+// Two equal fill columns keep confirmed audio state authoritative without
+// publishing a utility-row width. Device buttons open the selection subview.
 FocusScope {
     id: root
 
@@ -66,7 +66,8 @@ FocusScope {
         ChannelBlock {
             objectName: "dashboardOutputSection"
             Layout.fillWidth: true
-            Layout.preferredWidth: Theme.spacing.xxl * 9
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: Theme.size.controlHeightMd
             role: "output"
             deviceName: root.outputDeviceName
             writable: root.outputWritable
@@ -81,7 +82,8 @@ FocusScope {
         ChannelBlock {
             objectName: "dashboardInputSection"
             Layout.fillWidth: true
-            Layout.preferredWidth: Theme.spacing.xxl * 9
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: Theme.size.controlHeightMd
             role: "input"
             deviceName: root.inputDeviceName
             writable: root.inputWritable
@@ -129,6 +131,7 @@ FocusScope {
                 objectName: channel.role === "output" ? "dashboardOutputDeviceName" :
                                                         "dashboardInputDeviceName"
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 Layout.alignment: Qt.AlignVCenter
                 label: qsTr("%1 · %2").arg(channel.channelLabel).arg(channel.deviceName)
                 pending: channel.pendingSelection

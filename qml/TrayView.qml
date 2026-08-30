@@ -11,25 +11,37 @@ FocusScope {
     required property real ownerEpoch
     property bool active: true
     property bool reducedMotion: false
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
     property var menuParentWindow: null
 
     readonly property int itemCount: adapter === null ? 0 : adapter.items.length
     readonly property bool empty: itemCount === 0
     readonly property int controlExtent: Theme.size.controlHeightMd
     readonly property int gridCellExtent: controlExtent + Theme.spacing.sm
-    readonly property int maximumGridColumns: 5
+    readonly property int maximumGridColumns: 11
     readonly property int maximumVisibleRows: 3
     readonly property int maximumVisibleItems: maximumGridColumns * maximumVisibleRows
     readonly property int gridColumns: Math.min(maximumGridColumns, Math.max(1, itemCount))
     readonly property int gridRows: Math.max(1, Math.ceil(itemCount / gridColumns))
     readonly property int visibleGridRows: Math.min(gridRows, maximumVisibleRows)
     readonly property bool gridScrollVisible: gridRows > maximumVisibleRows
-    readonly property real gridViewportWidth: gridColumns * controlExtent + Math.max(0, gridColumns
-                                                                                     - 1) * Theme.spacing.sm
-    readonly property real gridViewportHeight: visibleGridRows * controlExtent + Math.max(0,
-                                                                                          visibleGridRows
-                                                                                          - 1) * Theme.spacing.sm
-    readonly property real contentWidth: empty ? Theme.spacing.xxl * 4 : gridViewportWidth
+    readonly property real gridVisualWidth: gridColumns * controlExtent + Math.max(0, gridColumns
+                                                                                   - 1) * Theme.spacing.sm
+    readonly property real gridVisualHeight: visibleGridRows * controlExtent + Math.max(0,
+                                                                                        visibleGridRows
+                                                                                        - 1) * Theme.spacing.sm
+    // Stable 480×112 envelope: eleven-column/three-row capacity consistent
+    // with the Launcher and History content lanes; sparse grids stay centered
+    // and item-count changes never resize the outer island.
+    readonly property real trayViewportWidth: Theme.spacing.xxl * 15
+    readonly property real trayViewportHeight: maximumVisibleRows * controlExtent + Math.max(0,
+                                                                                             maximumVisibleRows
+                                                                                             - 1) * Theme.spacing.sm
+    readonly property real gridOffsetX: Math.max(0, (trayViewportWidth - gridVisualWidth) / 2)
+    readonly property real gridOffsetY: gridScrollVisible ? 0 : Math.max(0, (trayViewportHeight
+                                                                             - gridVisualHeight)
+                                                                         / 2)
     readonly property var currentItem: trayList.currentItem === null ? null :
                                                                        trayList.currentItem.control
 
@@ -129,7 +141,10 @@ FocusScope {
         anchors.fill: parent
         active: root.active
         title: qsTr("System tray")
-        reducedMotion: root.reducedMotion
+        preferredViewportWidth: root.trayViewportWidth
+        preferredViewportHeight: root.trayViewportHeight
+        maximumViewportWidth: root.maximumViewportWidth
+        maximumViewportHeight: root.maximumViewportHeight
         initialFocusItem: root.currentItem
         onBackRequested: root.cancelled(root.ownerEpoch)
         onEscapePressed: root.cancelled(root.ownerEpoch)
@@ -137,8 +152,8 @@ FocusScope {
         Item {
             id: gridContainer
 
-            implicitWidth: root.contentWidth
-            implicitHeight: root.gridViewportHeight
+            implicitWidth: root.trayViewportWidth
+            implicitHeight: root.trayViewportHeight
             width: implicitWidth
             height: implicitHeight
             clip: true
@@ -150,10 +165,10 @@ FocusScope {
                 id: trayList
 
                 objectName: "trayItemList"
-                x: -Theme.spacing.sm / 2
-                y: -Theme.spacing.sm / 2
-                width: parent.width + Theme.spacing.sm
-                height: parent.height + Theme.spacing.sm
+                x: root.gridOffsetX - Theme.spacing.sm / 2
+                y: root.gridOffsetY - Theme.spacing.sm / 2
+                width: root.gridColumns * root.gridCellExtent
+                height: root.visibleGridRows * root.gridCellExtent
                 clip: false
                 interactive: root.gridScrollVisible
                 cellWidth: root.gridCellExtent
