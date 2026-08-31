@@ -16,7 +16,8 @@ FocusScope {
     required property real ownerEpoch
     required property real ownerRevision
     property bool active: true
-    property bool reducedMotion: false
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
     readonly property bool controllerAvailable: controller !== null && controller !== undefined
                                                 && controller.available === true
@@ -150,18 +151,25 @@ FocusScope {
     }
 
     function queuePromptFocus() {
-        const expectedEpoch = ownerEpoch;
-        const expectedRevision = ownerRevision;
-        const expectedFlow = flowGeneration;
-        const expectedPrompt = promptGeneration;
-        Qt.callLater(function () {
-            if (!view.visible || expectedEpoch !== view.ownerEpoch || expectedRevision
-                    !== view.ownerRevision || expectedFlow !== view.flowGeneration
-                    || expectedPrompt !== view.promptGeneration || !view.responseFieldVisible) {
-                return;
+        promptFocusTimer.attempts = 0;
+        promptFocusTimer.restart();
+    }
+
+    Timer {
+        id: promptFocusTimer
+        property int attempts: 0
+
+        interval: 1
+        repeat: false
+        onTriggered: {
+            if (view.visible && view.responseFieldVisible) {
+                responseInput.forceActiveFocus(Qt.ShortcutFocusReason);
+                if (!responseInput.activeFocus && attempts < 4) {
+                    attempts += 1;
+                    restart();
+                }
             }
-            responseInput.forceActiveFocus(Qt.ShortcutFocusReason);
-        });
+        }
     }
 
     function synchronizeIdentityIndex() {
@@ -322,7 +330,8 @@ FocusScope {
         anchors.fill: parent
         active: view.visible
         title: qsTr("Authentication required")
-        reducedMotion: view.reducedMotion
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: view.identityCount > 1 ? identityList.currentItem :
                                                    view.responseFieldVisible ? responseInput :
                                                                                authenticateButton

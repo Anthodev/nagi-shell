@@ -326,7 +326,7 @@ ShellRoot {
 
         if (stage === "interactive-cleanup") {
             if (!awaitState(allOwners("idle") && coordinator.interactiveHostToken === null
-                            && !host.interactiveExitRunning && !host.geometryAnimationRunning,
+                            && !host.contentTransitionRunning && !host.geometryAnimationRunning,
                             "Interactive cleanup did not return every island to Idle")) {
                 return;
             }
@@ -478,8 +478,8 @@ ShellRoot {
 
         if (stage === "modal-cleared") {
             if (!awaitState(!coordinator.modalPresent && coordinator.modalHostToken === null
-                            && allOwners("idle"),
-                            "Modal cleanup did not restore fresh Idle surfaces")) {
+                            && allOwners("idle") && !host.contentTransitionRunning,
+                            "Modal cleanup did not restore fresh settled Idle surfaces")) {
                 return;
             }
             requireRegistry(expectedOutputs, "Modal cleanup");
@@ -493,8 +493,12 @@ ShellRoot {
 
         if (stage === "reduced-interactive") {
             if (!awaitState(coordinator.interactiveHostToken === host.surfaceToken
-                            && ownerCount("launcher") === 1,
-                            "reduced-motion Interactive owner did not settle")) {
+                            && ownerCount("launcher") === 1 && host.launcherLoaded
+                            && !host.contentTransitionRunning,
+                            "reduced-motion Interactive owner did not settle: token="
+                            + (coordinator.interactiveHostToken === host.surfaceToken) + ", owners="
+                            + ownerCount("launcher") + ", loaded=" + host.launcherLoaded + ", content="
+                            + host.contentTransitionRunning)) {
                 return;
             }
             const epoch = coordinator.surfaceSnapshot(host.surfaceToken).ownerEpoch;
@@ -502,10 +506,14 @@ ShellRoot {
                     "reduced-motion Interactive owner cancels");
             const snapshot = coordinator.surfaceSnapshot(host.surfaceToken);
             require(snapshot.ownerName === "idle" && snapshot.restorationDepth === 0
-                    && !host.interactiveExitRunning && !host.geometryAnimationRunning
-                    && !host.launcherLoaded && host.interactiveExitDuration === 0
-                    && host.geometryAnimationDuration === 0 && host.interactiveExitOffset === 0,
-                    "reduced motion synchronously clears loaders, transforms, and geometry work");
+                    && !host.contentTransitionRunning && !host.geometryAnimationRunning
+                    && host.contentOutgoingItem === null && host.contentIncomingOpacity === 1
+                    && host.geometryAnimationDuration === 0,
+                    "Minimal motion synchronously clears overlap and geometry work: owner="
+                    + snapshot.ownerName + ", depth=" + snapshot.restorationDepth + ", content="
+                    + host.contentTransitionRunning + ", geometry=" + host.geometryAnimationRunning
+                    + ", outgoing=" + (host.contentOutgoingItem !== null) + ", incomingOpacity="
+                    + host.contentIncomingOpacity + ", duration=" + host.geometryAnimationDuration);
             reducedMotion = false;
             stage = "cycle-settled";
             advance();
@@ -514,8 +522,8 @@ ShellRoot {
 
         if (stage === "cycle-settled") {
             if (!awaitState(allOwners("idle") && coordinator.interactiveHostToken === null
-                            && coordinator.pendingTransientCount === 0
-                            && !host.interactiveExitRunning && !host.geometryAnimationRunning,
+                            && coordinator.pendingTransientCount === 0 && !host.launcherLoaded
+                            && !host.contentTransitionRunning && !host.geometryAnimationRunning,
                             "cycle did not return to exact settled state")) {
                 return;
             }
@@ -563,6 +571,20 @@ ShellRoot {
         Component.onCompleted: test.coordinatorCreationCount += 1
     }
 
+    QtObject {
+        id: fixtureApplicationModel
+
+        readonly property bool initialized: false
+        readonly property bool available: false
+        readonly property bool pinMutationPending: false
+        readonly property string pinFailure: ""
+        readonly property var applications: []
+        readonly property var pinnedApplications: []
+        readonly property var recentApplications: []
+        readonly property var pinIds: []
+        readonly property var recencyIds: []
+    }
+
     LazyLoader {
         id: hostLoader
 
@@ -571,6 +593,7 @@ ShellRoot {
         IslandSurfaceHost {
             coordinator: test.stateCoordinator
             reducedMotion: test.reducedMotion
+            applicationModel: fixtureApplicationModel
 
             Component.onCompleted: {
                 test.hostCreationCount += 1;

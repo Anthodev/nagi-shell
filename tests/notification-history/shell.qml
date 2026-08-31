@@ -38,17 +38,14 @@ ShellRoot {
     }
 
     function requireHistoryLayout(count) {
-        const expectedHeight = count === 0 ? Theme.size.controlHeightLg :
-                                             historyView.firstRowsExtent(Math.min(count,
-                                                                                  historyView.maximumVisibleRows));
         require(historyView.rowCount === count, "history did not render the requested row count "
                 + count);
-        require(historyView.historyViewportHeight === expectedHeight,
-                "history viewport height was not exact for " + count + " rows");
+        require(historyView.historyViewportHeight === 384
+                && historyView.contentWidth === 480
+                && historyView.implicitWidth === 512 && historyView.implicitHeight === 460,
+                "history keeps its 480 by 384 viewport and 512 by 460 outer envelope");
         require(historyView.historyScrollVisible === (count > historyView.maximumVisibleRows),
                 "history scrollbar threshold was wrong for " + count + " rows");
-        require(historyView.contentWidth === Theme.spacing.xxl * 15,
-                "history keeps the 480 px reading lane in every population state");
     }
 
     function appendHistory(sequence) {
@@ -117,7 +114,7 @@ ShellRoot {
             }
             requireHistoryLayout(6);
             require(historyView.implicitWidth === historyView.contentWidth + Theme.spacing.lg * 2,
-                    "history width did not hug meaningful row content");
+                    "history keeps its stable reading envelope as rows change");
             restoreBehaviorRows();
         } else if (step === 5) {
             if (!awaitState(historyView.rowCount === 2, "history rows did not render")) {

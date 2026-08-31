@@ -118,6 +118,7 @@ ShellRoot {
         active: false
         ownerEpoch: 42
         service: serviceWithoutShellRestartCapability
+        maximumViewportWidth: 200
     }
 
     function run() {
@@ -168,10 +169,17 @@ ShellRoot {
         require(labels.indexOf("Restart") >= 0 && labels.indexOf("Restart shell") >= 0
                 && labels.indexOf("Restart") !== labels.indexOf("Restart shell"),
                 "shell restart is distinct from the system Restart action");
-        require(view.actionContentWidth === view.actions.length * view.actionCellWidth + (
-                    view.actions.length - 1) * view.actionGap && view.implicitWidth
-                === view.actionContentWidth + Theme.spacing.lg * 2,
-                "Session width hugs its six cells, gaps, and shared frame padding");
+        require(view.actionColumns === 3 && view.actionRows === 2
+                && view.sessionViewportWidth === 304 && view.sessionViewportHeight === 176
+                && view.implicitWidth === 336 && view.implicitHeight === 252,
+                "wide Session uses a stable three-by-two action envelope");
+        require(capabilityFallbackView.actionColumns === 2
+                && capabilityFallbackView.actionRows === 3
+                && capabilityFallbackView.sessionViewportWidth === 200
+                && capabilityFallbackView.sessionViewportHeight === 248
+                && capabilityFallbackView.implicitWidth === 288
+                && capabilityFallbackView.implicitHeight === 324,
+                "narrow Session reflows all six actions into a stable two-by-three envelope");
         const shellRestartIcon = IconResolver.resolve("restartShell", "normal", "", "");
         const systemRestartIcon = IconResolver.resolve("restart", "normal", "", "");
         require(shellRestartIcon.kind === "nagi" && shellRestartIcon.source.endsWith(

@@ -4,21 +4,16 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Connectivity uses backend-confirmed state. A bounded active/attention tray
-// projection is mirrored here; menus remain in the Tray view.
+// Connectivity and pinned applications form the Expanded command stage.
+// Backend-confirmed adapter state remains authoritative.
 FocusScope {
     id: root
 
     required property var connectivity
     required property var applicationModel
-    required property var tray
-    property var menuParentWindow: null
 
     readonly property int pinCount: applicationModel === null ? 0 :
                                                                 applicationModel.pinnedApplications.length
-    readonly property var statusItems: projectTrayItems(tray === null ? [] : tray.items)
-    property bool centerStatusInMainLane: false
-    property int openedMenuToken: 0
     readonly property string wifiState: connectivity === null || !connectivity.wifiAvailable ? qsTr(
                                                                                                    "Unavailable") :
                                                                                                connectivity.wifiEnabled
@@ -51,47 +46,13 @@ FocusScope {
                                                                                             ? "active" :
                                                                                               "off"
 
-    implicitWidth: controlsColumn.implicitWidth
+    implicitWidth: Math.max(quickRow.implicitWidth, pinnedControlsRow.implicitWidth)
     implicitHeight: controlsColumn.implicitHeight
 
     signal externalActionDispatched
-    signal shellMenuOpening
-    signal shellMenuOpenResult(string result)
 
     signal wifiManagerRequested
     signal bluetoothManagerRequested
-    Connections {
-        target: root.tray
-        ignoreUnknownSignals: true
-
-        function onMenuActionTriggered(token) {
-            if (!root.visible || token !== root.openedMenuToken) {
-                return;
-            }
-            root.openedMenuToken = 0;
-            root.externalActionDispatched();
-        }
-    }
-
-    function projectTrayItems(items) {
-        const projected = [];
-        const includedTokens = {};
-        const statuses = ["needsAttention", "active"];
-        for (let statusIndex = 0; statusIndex < statuses.length && projected.length < 4; statusIndex
-             += 1) {
-            const status = statuses[statusIndex];
-            for (let itemIndex = 0; itemIndex < items.length && projected.length < 4; itemIndex
-                 += 1) {
-                const item = items[itemIndex];
-                const tokenKey = typeof item.token + ":" + String(item.token);
-                if (item.status === status && includedTokens[tokenKey] !== true) {
-                    includedTokens[tokenKey] = true;
-                    projected.push(item);
-                }
-            }
-        }
-        return Object.freeze(projected);
-    }
 
     function surfaceForState(state) {
         if (state === "error") {
@@ -117,46 +78,6 @@ FocusScope {
     function toggleBluetooth() {
         return connectivity !== null && connectivity.bluetoothAvailable &&
                 !connectivity.bluetoothPending && connectivity.toggleBluetooth();
-    }
-
-    function completeExternalAction(result) {
-        if (result === "dispatched") {
-            externalActionDispatched();
-        }
-        return result;
-    }
-
-    function activateStatusItem(token) {
-        return completeExternalAction(tray === null ? "rejected" : tray.activate(token));
-    }
-
-    function statusMenuPosition(button) {
-        return button.mapToItem(null, button.width / 2, button.height);
-    }
-
-    function openStatusMenu(item, button) {
-        if (tray === null || item === null || button === null || menuParentWindow === null || item.hasMenu
-                !== true) {
-            return "rejected";
-        }
-        const position = statusMenuPosition(button);
-        openedMenuToken = item.token;
-        shellMenuOpening();
-        const result = tray.openMenu(item.token, menuParentWindow, position.x, position.y);
-        if (result !== "dispatched") {
-            openedMenuToken = 0;
-        }
-        shellMenuOpenResult(result);
-        return result;
-    }
-
-    function primaryStatusAction(item, button) {
-        if (tray === null || item === null) {
-            return "rejected";
-        }
-        return item.onlyMenu === true ? openStatusMenu(item, button) : activateStatusItem(
-                                            item.token);
-
     }
 
     function reveal(flickable, item) {
@@ -185,7 +106,7 @@ FocusScope {
 
         anchors.left: parent.left
         anchors.right: parent.right
-        spacing: Theme.spacing.sm
+        spacing: Theme.spacing.md
 
         RowLayout {
             id: quickRow
@@ -308,109 +229,10 @@ FocusScope {
                     onTapped: root.bluetoothManagerRequested()
                 }
             }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Item {
-                id: statusLane
-
-                objectName: "dashboardStatusLane"
-                visible: root.statusItems.length > 0
-                Layout.preferredWidth: Theme.spacing.xxl * 6
-                Layout.preferredHeight: statusGroup.implicitHeight
-                readonly property real centeredX: Math.max(bluetoothButton.x
-                                                           + bluetoothButton.width
-                                                           + Theme.spacing.sm, (quickRow.width
-                                                                                - width) / 2)
-
-                transform: Translate {
-                    x: root.centerStatusInMainLane ? statusLane.centeredX - statusLane.x : 0
-                }
-
-                RowLayout {
-                    id: statusGroup
-
-                    objectName: "dashboardStatusItems"
-                    anchors.centerIn: parent
-                    width: implicitWidth
-                    height: implicitHeight
-                    spacing: Theme.spacing.sm
-                    Accessible.role: Accessible.List
-                    Accessible.name: qsTr("Active and attention applications")
-
-                    Repeater {
-                        model: root.statusItems
-
-                        delegate: AbstractButton {
-                            id: statusButton
-
-                            required property var modelData
-
-                            objectName: "dashboardStatusItem"
-                            implicitWidth: Theme.size.controlHeightMd
-                            implicitHeight: Theme.size.controlHeightMd
-                            focusPolicy: Qt.StrongFocus
-                            hoverEnabled: true
-                            Accessible.role: Accessible.Button
-                            Accessible.name: modelData.label
-                            Accessible.description: modelData.hasMenu !== true ? modelData.tooltip :
-                                                                                 modelData.tooltip
-                                                                                 === "" ? qsTr(
-                                                                                              "Context menu available") :
-                                                                                          qsTr("%1. Context menu available").arg(
-                                                                                              modelData.tooltip)
-                            onClicked: root.primaryStatusAction(modelData, statusButton)
-
-                            Keys.onPressed: event => {
-                                if (modelData.hasMenu === true && (event.key === Qt.Key_Menu || (
-                                                                       event.key === Qt.Key_F10 && (
-                                                                           event.modifiers
-                                                                           & Qt.ShiftModifier)))) {
-                                    root.openStatusMenu(modelData, statusButton);
-                                    event.accepted = true;
-                                }
-                            }
-
-                            background: Rectangle {
-                                radius: Theme.radius.md
-                                color: statusButton.pressed ? Theme.color.surfaceActive :
-                                                              statusButton.hovered
-                                                              ? Theme.color.surfaceHover :
-                                                                "transparent"
-                            }
-                            contentItem: Item {
-                                IslandIcon {
-                                    objectName: "dashboardStatusIcon"
-                                    anchors.centerIn: parent
-                                    meaning: "application"
-                                    semanticState: statusButton.modelData.status
-                                                   === "needsAttention" ? "attention" : "active"
-                                    applicationSource: statusButton.modelData.iconSource
-                                    applicationName: statusButton.modelData.label
-                                }
-                            }
-                            IslandFocusRing {
-                                visible: statusButton.visualFocus
-                            }
-                            ToolTip.delay: Theme.motion.durationSlow
-                            ToolTip.visible: hovered || visualFocus
-                            ToolTip.text: modelData.tooltip
-
-                            MouseArea {
-                                anchors.fill: parent
-                                acceptedButtons: Qt.RightButton
-                                enabled: statusButton.modelData.hasMenu === true
-                                onClicked: root.openStatusMenu(statusButton.modelData, statusButton)
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         RowLayout {
+            id: pinnedControlsRow
             visible: root.pinCount > 0
             spacing: Theme.spacing.sm
 
@@ -424,7 +246,7 @@ FocusScope {
             Flickable {
                 id: pinFlickable
 
-                Layout.preferredWidth: Math.min(pinRow.implicitWidth, Theme.spacing.xxl * 12)
+                Layout.preferredWidth: Math.min(pinRow.implicitWidth, Theme.spacing.xxl * 9)
                 Layout.preferredHeight: Theme.size.controlHeightMd
                 contentWidth: pinRow.implicitWidth
                 contentHeight: height

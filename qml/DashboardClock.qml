@@ -6,18 +6,21 @@ FocusScope {
     id: root
 
     required property var clock
+    readonly property alias clockBoundsItem: clockColumn
 
     implicitWidth: clockColumn.implicitWidth
     implicitHeight: clockColumn.implicitHeight
 
     ColumnLayout {
         id: clockColumn
+        anchors.horizontalCenter: parent.horizontalCenter
 
         spacing: Theme.spacing.xs
 
         IslandText {
             objectName: "dashboardTime"
             Layout.preferredWidth: Theme.spacing.xxl * 6
+            Layout.fillWidth: true
             text: root.clock === null ? "" : root.clock.text
             textFormat: Text.PlainText
             font.pixelSize: Theme.type.display

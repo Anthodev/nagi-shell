@@ -11,13 +11,23 @@ FocusScope {
     required property real ownerEpoch
     property bool active: true
     property bool reducedMotion: false
+    property real maximumViewportWidth: Number.POSITIVE_INFINITY
+    property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
     readonly property int actionCellWidth: Theme.spacing.xxl * 3
     readonly property int actionCellHeight: Theme.spacing.xxl * 2
     readonly property int actionGap: Theme.spacing.sm
-    readonly property real actionContentWidth: actions.length * actionCellWidth + Math.max(0,
-                                                                                           actions.length
-                                                                                           - 1) * actionGap
+    readonly property bool narrowArrangement: maximumViewportWidth < 3 * actionCellWidth + 2
+                                              * actionGap
+    readonly property int actionColumns: narrowArrangement ? 2 : 3
+    readonly property int actionRows: Math.ceil(actions.length / actionColumns)
+    readonly property real sessionViewportWidth: actionColumns * actionCellWidth + (actionColumns
+                                                                                    - 1) * actionGap
+    readonly property real actionGridHeight: actionRows * actionCellHeight + Math.max(0, actionRows
+                                                                                      - 1) * actionGap
+    readonly property int statusLaneExtent: 28
+    readonly property real sessionViewportHeight: actionGridHeight + Theme.spacing.md
+                                                  + statusLaneExtent
     readonly property bool actionPending: service !== null && service.pending
     readonly property var actions: [
         {
@@ -142,7 +152,10 @@ FocusScope {
         anchors.fill: parent
         active: view.active
         title: qsTr("Session")
-        reducedMotion: view.reducedMotion
+        preferredViewportWidth: view.sessionViewportWidth
+        preferredViewportHeight: view.sessionViewportHeight
+        maximumViewportWidth: view.maximumViewportWidth
+        maximumViewportHeight: view.maximumViewportHeight
         initialFocusItem: actionRepeater.itemAt(0)
         onBackRequested: {
             if (!view.actionPending) {
@@ -156,17 +169,23 @@ FocusScope {
         }
 
         Item {
-            implicitWidth: view.actionContentWidth
-            implicitHeight: sessionContent.implicitHeight
+            implicitWidth: view.sessionViewportWidth
+            implicitHeight: view.sessionViewportHeight
             width: implicitWidth
             height: implicitHeight
             ColumnLayout {
                 id: sessionContent
 
+                anchors.fill: parent
                 spacing: Theme.spacing.md
 
-                RowLayout {
-                    spacing: view.actionGap
+                GridLayout {
+                    id: actionGrid
+
+                    columns: view.actionColumns
+                    columnSpacing: view.actionGap
+                    rowSpacing: view.actionGap
+                    Layout.alignment: Qt.AlignHCenter
 
                     Repeater {
                         id: actionRepeater
@@ -193,13 +212,31 @@ FocusScope {
                             onClicked: view.requestAction(modelData.action)
 
                             Keys.onLeftPressed: event => {
-                                view.focusAction((index + view.actions.length - 1)
-                                                 % view.actions.length, Qt.BacktabFocusReason);
+                                const column = index % view.actionColumns;
+                                view.focusAction(column === 0 ? index + view.actionColumns - 1 :
+                                                                index - 1, Qt.BacktabFocusReason);
                                 event.accepted = true;
                             }
                             Keys.onRightPressed: event => {
-                                view.focusAction((index + 1) % view.actions.length,
+                                const column = index % view.actionColumns;
+                                view.focusAction(column === view.actionColumns - 1 ? index
+                                                                                     - view.actionColumns
+                                                                                     + 1 : index + 1,
                                                  Qt.TabFocusReason);
+                                event.accepted = true;
+                            }
+                            Keys.onUpPressed: event => {
+                                view.focusAction(index >= view.actionColumns ? index
+                                                                               - view.actionColumns :
+                                                                               index + view.actions.length
+                                                                               - view.actionColumns,
+                                                 Qt.BacktabFocusReason);
+                                event.accepted = true;
+                            }
+                            Keys.onDownPressed: event => {
+                                view.focusAction(index + view.actionColumns < view.actions.length
+                                                 ? index + view.actionColumns : index
+                                                   % view.actionColumns, Qt.TabFocusReason);
                                 event.accepted = true;
                             }
 
@@ -249,31 +286,49 @@ FocusScope {
                     }
                 }
 
-                IslandText {
-                    readonly property string failureMessage: view.service === null ? "" :
-                                                                                     view.failureText(
-                                                                                         view.service.failure)
+                Item {
+                    id: statusLane
 
                     Layout.fillWidth: true
-                    text: view.actionPending ? view.pendingLabel(view.service.pendingAction) :
-                                               failureMessage
-                    visible: text !== ""
-                    textFormat: Text.PlainText
-                    color: view.actionPending ? Theme.color.textSecondary : Theme.color.danger
-                    wrapMode: Text.Wrap
-                    Accessible.role: Accessible.StaticText
-                    Accessible.name: text
-                }
+                    Layout.preferredHeight: view.statusLaneExtent
 
-                IslandText {
-                    Layout.fillWidth: true
-                    text: qsTr("Session controls unavailable")
-                    visible: view.service === null || (!view.service.backendReady &&
-                                                       !view.service.shellRestartReady)
-                    textFormat: Text.PlainText
-                    tone: "secondary"
-                    Accessible.role: Accessible.StaticText
-                    Accessible.name: text
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width
+                        spacing: Theme.spacing.xs
+
+                        IslandText {
+                            readonly property string failureMessage: view.service === null ? "" :
+                                                                                             view.failureText(
+                                                                                                 view.service.failure)
+
+                            width: parent.width
+                            text: view.actionPending ? view.pendingLabel(
+                                                           view.service.pendingAction) :
+                                                       failureMessage
+                            visible: text !== ""
+                            textFormat: Text.PlainText
+                            color: view.actionPending ? Theme.color.textSecondary :
+                                                        Theme.color.danger
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: text
+                        }
+
+                        IslandText {
+                            width: parent.width
+                            text: qsTr("Session controls unavailable")
+                            visible: view.service === null || (!view.service.backendReady &&
+                                                               !view.service.shellRestartReady)
+                            textFormat: Text.PlainText
+                            tone: "secondary"
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: text
+                        }
+                    }
                 }
             }
         }

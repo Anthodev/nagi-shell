@@ -27,12 +27,17 @@ ShellRoot {
     property int notificationRevisionProbeStage: 0
     property var notificationRevisionProbe: null
     property var notificationRevisionSegment: null
-    property real launcherExitAnchorX: 0
-    property real launcherExitMappedX: 0
-    property bool launcherExitTransformObserved: false
+    property real launcherOutgoingAnchorX: 0
+    property bool launcherOutgoingSampleStarted: false
+    property bool launcherOutgoingTransformObserved: false
+    property real preemptedExpandedOpacity: 0
+    property real preemptedLauncherOpacity: 0
+    property real preemptedExpandedOffset: 0
+    property real preemptedLauncherOffset: 0
     readonly property int maximumRetryAttempts: 500
     readonly property int soakCycleCount: 100
     property int soakCycle: 0
+    property bool soakInteractiveCancellationPending: false
     property var soakSurfaceTokens: []
     property var soakSurfaceGenerations: []
     property var soakExpectedGeometry: null
@@ -62,6 +67,7 @@ ShellRoot {
     property real maximumTopMarginDelta: 0
     property bool geometryMonotonic: true
     property var geometrySegmentSnapshot: null
+    property int geometryPrimingFrames: 0
     property int motionProbeStage: 0
     property bool motionEntryRequested: false
     property int motionEntryBaselineSequence: 0
@@ -72,6 +78,17 @@ ShellRoot {
     property bool motionChainExpectedActive: false
     property bool motionChainGapObserved: false
     property bool motionFollowUpObserved: false
+    property bool motionOwnerInterruptionRequested: false
+    property real motionFollowUpWidth: 0
+    property real motionFollowUpHeight: 0
+    property int motionFollowUpSequence: 0
+    property real motionFollowUpShadowOpacity: 0
+    property bool motionLauncherCancellationRequested: false
+    property real motionLauncherWidth: 0
+    property real motionLauncherHeight: 0
+    property int motionLauncherSequence: 0
+    property bool motionLauncherPrimingExpected: false
+    property int motionLauncherPrimingFrames: 0
     readonly property string polkitVisualState: Quickshell.env("NAGI_POLKIT_VISUAL_STATE") ?? ""
 
     function advance() {
@@ -267,6 +284,7 @@ ShellRoot {
             require(Math.abs(soakDevicePixelRatio - measuredScale) < 0.001,
                     "surface scale remains stable across one isolated run");
         }
+        soakInteractiveCancellationPending = false;
         step = 36;
         advance();
     }
@@ -277,6 +295,12 @@ ShellRoot {
         }
         if (root.objectName === name) {
             return root;
+        }
+        if (root.presentationSource !== undefined && root.presentationSource !== null) {
+            const sourceMatch = findObject(root.presentationSource, name);
+            if (sourceMatch !== null) {
+                return sourceMatch;
+            }
         }
         const children = root.children ?? [];
         let childCount = 0;
@@ -293,19 +317,37 @@ ShellRoot {
         }
         return null;
     }
+    function findPresentationForSource(root, source) {
+        if (root === null || root === undefined || source === null || source === undefined) {
+            return null;
+        }
+        if (root.presentationSource !== undefined && root.presentationSource === source) {
+            return root;
+        }
+        const children = root.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            const match = findPresentationForSource(children[index], source);
+            if (match !== null) {
+                return match;
+            }
+        }
+        return null;
+    }
+
     function surfaceMatches(reference) {
-        return Math.abs(host.surfacePreferredWidth - reference.implicitWidth) <= 1
+        return host.fallbackSurface !== null
+                && Math.abs(host.surfacePreferredWidth - reference.implicitWidth) <= 1
                 && Math.abs(host.surfacePreferredHeight - reference.implicitHeight) <= 1
-                && Math.abs(host.surfaceWidth - reference.implicitWidth) <= 1
-                && Math.abs(host.surfaceHeight - reference.implicitHeight) <= 1;
+                && Math.abs(host.renderedPanelWidth - reference.implicitWidth) <= 1
+                && Math.abs(host.renderedPanelHeight - reference.implicitHeight) <= 1;
     }
 
     function requireSurfaceMatches(reference, label) {
-        console.warn(label + " geometry: " + host.surfaceWidth + "x" + host.surfaceHeight
-                     + " (natural " + reference.implicitWidth + "x" + reference.implicitHeight
-                     + ")");
+        console.warn(label + " panel geometry: " + host.renderedPanelWidth + "x"
+                     + host.renderedPanelHeight + " (natural " + reference.implicitWidth + "x"
+                     + reference.implicitHeight + ")");
         require(surfaceMatches(reference),
-                label + " PanelWindow geometry must equal the view's natural implicit size");
+                label + " rendered panel geometry must equal the view envelope");
     }
 
     function currentMorphSegment() {
@@ -337,27 +379,197 @@ ShellRoot {
                 label + " keeps normalized morph progress");
         const widthDelta = surface.morphSegmentToWidth - surface.morphSegmentFromWidth;
         const heightDelta = surface.morphSegmentToHeight - surface.morphSegmentFromHeight;
-        if (Math.abs(widthDelta) <= 1 || Math.abs(heightDelta) <= 1) {
-            return;
+        if (Math.abs(widthDelta) > 1 && Math.abs(heightDelta) > 1) {
+            const widthProgress = (surface.renderedPanelWidth
+                                   - surface.morphSegmentFromWidth) / widthDelta;
+            const heightProgress = (surface.renderedPanelHeight
+                                    - surface.morphSegmentFromHeight) / heightDelta;
+            require(Math.abs(widthProgress - heightProgress) <= 0.05
+                    && Math.abs(widthProgress - surface.morphProgress) <= 0.05
+                    && Math.abs(heightProgress - surface.morphProgress) <= 0.05,
+                    label + " drives both visible axes from the same progress");
         }
-
-        const widthProgress = (surface.implicitWidth - surface.morphSegmentFromWidth) / widthDelta;
-        const heightProgress = (surface.implicitHeight - surface.morphSegmentFromHeight)
-                             / heightDelta;
-        require(Math.abs(widthProgress - heightProgress) <= 0.05
-                && Math.abs(widthProgress - surface.morphProgress) <= 0.05
-                && Math.abs(heightProgress - surface.morphProgress) <= 0.05,
-                label + " drives width and height from the same progress");
+        const minimumDuration = surface.morphExpansionSegment
+                ? Theme.motion.durationExpansionMinimum : Theme.motion.durationMorphMinimum;
+        const maximumDuration = surface.morphExpansionSegment
+                ? Theme.motion.durationExpansionMaximum : Theme.motion.durationMorphMaximum;
+        const expectedDuration = Math.round(minimumDuration + (maximumDuration - minimumDuration)
+                                            * surface.morphNormalizedDistance);
+        require(!surface.geometryAnimationRunning
+                || (host.contentTransitionDestinationReady
+                    && surface.geometryAnimationDuration === expectedDuration
+                    && surface.geometryAnimationDuration >= minimumDuration
+                    && surface.geometryAnimationDuration <= maximumDuration),
+                label + " freezes one bounded duration from normalized geometric distance");
+        require(Theme.motion.easingMorph === Easing.InOutCubic,
+                label + " uses the shared symmetric morph easing");
+        require(surface.renderedShadowOpacity > 0 && surface.shadowLayerCount === 1,
+                label + " keeps one nonzero continuous shadow through the morph");
     }
 
+    function requireContentContinuity(label) {
+        const outgoing = host.contentOutgoingItem;
+        const incoming = host.contentIncomingItem;
+        const panel = findObject(host.fallbackSurface.contentItem, "surfaceBackground");
+        require(panel !== null && panel.clip
+                && Math.abs(panel.width - host.renderedPanelWidth) <= 0.5
+                && Math.abs(panel.height - host.renderedPanelHeight) <= 0.5
+                && (outgoing === null || outgoing.parent === panel)
+                && (incoming === null || incoming.parent === panel),
+                label + " confines every retained and incoming presentation to the current rendered panel");
+        require(host.contentRenderedOpacityTotal >= 0.999,
+                label + " never samples an all-transparent rendered frame: opacity="
+                + host.contentRenderedOpacityTotal + ", retained=" + host.retainedPresentationCount
+                + ", from=" + host.contentTransitionFromKind + ", to="
+                + host.contentTransitionToKind + ", outgoingOpacity=" + host.contentOutgoingOpacity
+                + ", incomingOpacity=" + host.contentIncomingOpacity + ", outgoing="
+                + (outgoing !== null) + ", incoming=" + (incoming !== null));
+        if (host.contentTransitionRunning) {
+            require(outgoing !== null,
+                    label + " retains an outgoing presentation until the transition completes");
+            if (outgoing !== incoming && host.contentOutgoingOpacity > 0.0001) {
+                require(host.contentOutgoingRendered && !host.contentOutgoingWorkActive
+                        && !host.contentOutgoingEnabled
+                        && host.contentOutgoingAccessibleIgnored,
+                        label + " freezes the rendered predecessor while disabling its work and input: "
+                        + host.contentOutgoingRendered + "/" + host.contentOutgoingWorkActive + "/"
+                        + host.contentOutgoingEnabled + "/" + host.contentOutgoingAccessibleIgnored
+                        + ", from=" + host.contentTransitionFromKind + ", to="
+                        + host.contentTransitionToKind + ", retained="
+                        + host.retainedPresentationCount);
+            }
+            if (host.contentTransitionDestinationReady) {
+                require(incoming !== null && host.contentIncomingOpacity >= 0
+                        && host.contentIncomingOpacity <= 1 && host.contentOutgoingOpacity >= 0
+                        && host.contentOutgoingOpacity <= 1,
+                        label + " presents a bounded incoming/outgoing blend");
+                const idleExpandedPair = (host.contentTransitionFromKind
+                                          === coordinatorCore.ownerIdle
+                                          && host.contentTransitionToKind
+                                             === coordinatorCore.ownerExpanded)
+                        || (host.contentTransitionFromKind === coordinatorCore.ownerExpanded
+                            && host.contentTransitionToKind === coordinatorCore.ownerIdle);
+                if (idleExpandedPair) {
+                    const expandedDashboard = findObject(panel, "expandedDashboard");
+                    const clockRegion = findObject(expandedDashboard, "dashboardClockRegion");
+                    const clockBounds = expandedDashboard === null ? null :
+                                                                          expandedDashboard.clockPresentationItem;
+                    require(expandedDashboard !== null && clockRegion !== null
+                            && clockRegion.item !== null && clockBounds !== null
+                            && clockRegion.item.clockBoundsItem === clockBounds
+                            && clockBounds !== clockRegion.item
+                            && clockBounds.width < clockRegion.width - 0.5,
+                            label + " exposes tight clock bounds instead of the equal-column root");
+                    require(host.clockContinuityActive && host.mediaContinuityActive
+                            && host.clockContinuityOpacityTotal >= 0.999
+                            && host.mediaContinuityOpacityTotal >= 0.999
+                            && host.clockContinuityGeometryAligned
+                            && host.mediaContinuityGeometryAligned,
+                            label + " keeps clock and media on one bounded matched trajectory: clock="
+                            + host.clockContinuityActive + "/" + host.clockContinuityOpacityTotal
+                            + "/" + host.clockContinuityGeometryAligned + ", media="
+                            + host.mediaContinuityActive + "/" + host.mediaContinuityOpacityTotal
+                            + "/" + host.mediaContinuityGeometryAligned);
+                }
+            } else {
+                require(incoming === null && host.contentIncomingOpacity === 0
+                        && host.fallbackSurface.morphProgress === 0,
+                        label + " freezes the predecessor while preparing its destination");
+            }
+        } else {
+            require(host.contentTransitionDestinationReady && outgoing === null
+                    && incoming !== null && host.contentOutgoingOpacity === 0
+                    && host.contentIncomingOpacity === 1
+                    && host.contentTransitionDirection === 0,
+                    label + " performs guarded cleanup only at the committed endpoint");
+        }
+    }
+
+    function requireOutgoingTransition(fromKind, toKind, label) {
+        const outgoing = host.contentOutgoingItem;
+        const incoming = host.contentIncomingItem;
+        require(host.contentTransitionRunning && host.contentTransitionFromKind === fromKind
+                && host.contentTransitionToKind === toKind
+                && host.contentTransitionDirection === -1 && outgoing !== null
+                && host.contentOutgoingOpacity > 0 && host.contentOutgoingRendered
+                && !host.contentOutgoingWorkActive && !host.contentOutgoingEnabled
+                && host.contentOutgoingAccessibleIgnored && outgoing.z > 0
+                && (incoming === null || outgoing.z > incoming.z),
+                label + " retains one inert outgoing layer above its prepared replacement: running="
+                + host.contentTransitionRunning + " kinds=" + host.contentTransitionFromKind + ">"
+                + host.contentTransitionToKind + " direction=" + host.contentTransitionDirection
+                + " outgoing=" + outgoing + " incoming=" + incoming + " opacities="
+                + host.contentOutgoingOpacity + "/" + host.contentIncomingOpacity + " enabled="
+                + host.contentOutgoingEnabled + " ignored="
+                + host.contentOutgoingAccessibleIgnored + " focusable=" + host.surfaceFocusable
+                + " rendered=" + host.contentOutgoingRendered + " work="
+                + host.contentOutgoingWorkActive + " z=" + (outgoing === null ? -1 : outgoing.z)
+                + "/" + (incoming === null ? -1 : incoming.z));
+        requireContentContinuity(label);
+    }
+
+
+    function requireShadowGutterContract(label) {
+        const surface = host.fallbackSurface;
+        require(host.windowGutterLeft === Theme.elevation.shadowGutterLeft
+                && host.windowGutterRight === Theme.elevation.shadowGutterRight
+                && host.windowGutterTop === Theme.elevation.shadowGutterTop
+                && host.windowGutterBottom === Theme.elevation.shadowGutterBottom,
+                label + " derives every window gutter from the configured shadow bounds");
+        require(Math.abs(surface.implicitWidth - (host.renderedPanelWidth
+                                                   + host.windowGutterLeft
+                                                   + host.windowGutterRight)) <= 1
+                && Math.abs(surface.implicitHeight - (host.renderedPanelHeight
+                                                      + host.windowGutterTop
+                                                      + host.windowGutterBottom)) <= 1,
+                label + " keeps the shadow buffer separate from visible panel geometry: implicit="
+                + surface.implicitWidth + "x" + surface.implicitHeight + " panel="
+                + host.renderedPanelWidth + "x" + host.renderedPanelHeight + " gutters="
+                + host.windowGutterLeft + "," + host.windowGutterTop + ","
+                + host.windowGutterRight + "," + host.windowGutterBottom);
+        require(Math.abs(host.panelMappedTopLeft.x - host.windowGutterLeft) <= 0.5
+                && Math.abs(host.panelMappedTopLeft.y - host.windowGutterTop) <= 0.5
+                && Math.abs(host.panelMappedBottomRight.x
+                            - (surface.implicitWidth - host.windowGutterRight)) <= 1
+                && Math.abs(host.panelMappedBottomRight.y
+                            - (surface.implicitHeight - host.windowGutterBottom)) <= 1
+                && Math.abs(host.panelMappedBottomRight.x - host.panelMappedTopLeft.x
+                            - host.renderedPanelWidth) <= 0.5
+                && Math.abs(host.panelMappedBottomRight.y - host.panelMappedTopLeft.y
+                            - host.renderedPanelHeight) <= 0.5,
+                label + " maps input and blur bounds to the visible panel inside the gutter: top="
+                + host.panelMappedTopLeft.x + "," + host.panelMappedTopLeft.y + " bottom="
+                + host.panelMappedBottomRight.x + "," + host.panelMappedBottomRight.y + " surface="
+                + host.surfaceWidth + "x" + host.surfaceHeight + " panel="
+                + host.renderedPanelWidth + "x" + host.renderedPanelHeight + " gutters="
+                + host.windowGutterLeft + "," + host.windowGutterTop + ","
+                + host.windowGutterRight + "," + host.windowGutterBottom);
+        require(surface.mask !== null
+                && surface.requestedKwinBlurRegionCount === (host.blurRequested ? 1 : 0)
+                && surface.shadowLayerCount === 1 && surface.renderedShadowOpacity > 0,
+                label + " keeps one panel input region, bounded blur, and continuous shadow layer");
+        require(host.surfaceTopMargin + host.windowGutterTop === surface.edgeInset
+                && Math.abs(host.surfaceLeftMargin + host.windowGutterLeft
+                            - Math.round((host.surfaceScreenWidth
+                                          - host.renderedPanelWidth) / 2)) <= 1,
+                label + " preserves the visible edge inset and horizontal centering: margins="
+                + host.surfaceLeftMargin + "," + host.surfaceTopMargin + " screen="
+                + host.surfaceScreenWidth + "x" + host.surfaceScreenHeight + " panel="
+                + host.renderedPanelWidth + "x" + host.renderedPanelHeight);
+    }
     function requireMorphSettled(label) {
         const surface = host.fallbackSurface;
         require(surface !== null && !surface.geometryAnimationRunning
                 && surface.morphProgress === 1 && !surface.morphFollowUpPending
-                && Math.abs(surface.implicitWidth - surface.morphSegmentToWidth) < 0.001
-                && Math.abs(surface.implicitHeight - surface.morphSegmentToHeight) < 0.001
-                && surface.interactiveExitOffset === 0,
-                label + " settles at the exact endpoint without pending work or transforms");
+                && Math.abs(surface.renderedPanelWidth - surface.morphSegmentToWidth) < 0.001
+                && Math.abs(surface.renderedPanelHeight - surface.morphSegmentToHeight) < 0.001,
+                label + " settles at the exact visible endpoint without pending work: running="
+                + surface.geometryAnimationRunning + ", progress=" + surface.morphProgress
+                + ", follow-up=" + surface.morphFollowUpPending + ", rendered="
+                + surface.renderedPanelWidth + "x" + surface.renderedPanelHeight + ", target="
+                + surface.morphSegmentToWidth + "x" + surface.morphSegmentToHeight);
+        requireContentContinuity(label);
+        requireShadowGutterContract(label);
     }
 
     function sampleMotionProbeFrame() {
@@ -372,6 +584,7 @@ ShellRoot {
             requireMorphSegmentUnchanged(motionObservedSegment, "sampled morph");
         }
         requireCoupledMorphSample("sampled morph");
+        requireContentContinuity("sampled morph");
     }
 
     function startGeometrySampling(direction, transition) {
@@ -381,10 +594,11 @@ ShellRoot {
         geometryStableSamples = 0;
         widthStartSample = -1;
         heightStartSample = -1;
+        geometryPrimingFrames = 0;
         geometryScreenWidth = host.surfaceScreenWidth;
         geometryStartTopMargin = host.surfaceTopMargin;
-        geometryStartWidth = host.surfaceWidth;
-        geometryStartHeight = host.surfaceHeight;
+        geometryStartWidth = host.fallbackSurface.renderedPanelWidth;
+        geometryStartHeight = host.fallbackSurface.renderedPanelHeight;
         geometryLastWidth = geometryStartWidth;
         geometryLastHeight = geometryStartHeight;
         maximumCenteringError = 0;
@@ -392,27 +606,65 @@ ShellRoot {
         geometryMonotonic = true;
         require(transition(), direction + " geometry transition was rejected");
         geometrySegmentSnapshot = null;
-        geometryTargetWidth = host.surfacePreferredWidth;
-        geometryTargetHeight = host.surfacePreferredHeight;
+        const surface = host.fallbackSurface;
+        const maximumFraction = surface.largeContent
+                ? UserConfig.snapshot.island.expandedWidthPercent : 1;
+        const maximumHeightFraction = surface.largeContent
+                ? UserConfig.snapshot.island.expandedHeightPercent : 1;
+        geometryTargetWidth = surface.safeLogicalSize(host.surfacePreferredWidth,
+                                                      host.surfaceScreenWidth, maximumFraction,
+                                                      host.windowGutterLeft
+                                                      + host.windowGutterRight);
+        geometryTargetHeight = surface.safeLogicalSize(host.surfacePreferredHeight,
+                                                       host.surfaceScreenHeight,
+                                                       maximumHeightFraction,
+                                                       host.windowGutterTop
+                                                       + host.windowGutterBottom);
     }
 
     function sampleGeometry() {
         geometrySampleCount += 1;
+        if (geometryDirection === "expanding" && host.contentTransitionRunning
+                && !host.contentTransitionDestinationReady
+                && !host.fallbackSurface.geometryAnimationRunning
+                && host.fallbackSurface.morphProgress === 0
+                && host.contentOutgoingItem !== null) {
+            geometryPrimingFrames += 1;
+        }
         if (geometrySegmentSnapshot === null) {
             if (!host.fallbackSurface.geometryAnimationRunning) {
                 return;
             }
             geometrySegmentSnapshot = currentMorphSegment();
+            const maximumFraction = host.fallbackSurface.largeContent
+                    ? UserConfig.snapshot.island.expandedWidthPercent : 1;
+            const maximumHeightFraction = host.fallbackSurface.largeContent
+                    ? UserConfig.snapshot.island.expandedHeightPercent : 1;
+            geometryTargetWidth = host.fallbackSurface.safeLogicalSize(
+                        host.surfacePreferredWidth, host.surfaceScreenWidth, maximumFraction,
+                        host.windowGutterLeft + host.windowGutterRight);
+            geometryTargetHeight = host.fallbackSurface.safeLogicalSize(
+                        host.surfacePreferredHeight, host.surfaceScreenHeight, maximumHeightFraction,
+                        host.windowGutterTop + host.windowGutterBottom);
         }
         // Headless compositors can render frames faster than wall-clock animation time.
         require(Date.now() - geometryStartTimeMs <= maximumGeometryDurationMs,
-                geometryDirection + " geometry morph timed out");
+                geometryDirection + " geometry morph timed out: rendered=" + host.renderedPanelWidth
+                + "x" + host.renderedPanelHeight + ", target=" + geometryTargetWidth + "x"
+                + geometryTargetHeight + ", segment=" + host.fallbackSurface.morphSegmentFromWidth
+                + "x" + host.fallbackSurface.morphSegmentFromHeight + "->"
+                + host.fallbackSurface.morphSegmentToWidth + "x"
+                + host.fallbackSurface.morphSegmentToHeight + ", preferred="
+                + host.surfacePreferredWidth + "x" + host.surfacePreferredHeight + ", sequence="
+                + host.fallbackSurface.morphSequence);
 
         requireMorphSegmentUnchanged(geometrySegmentSnapshot, geometryDirection);
         requireCoupledMorphSample(geometryDirection);
-        const width = host.surfaceWidth;
-        const height = host.surfaceHeight;
-        const expectedLeftMargin = (geometryScreenWidth - width) / 2;
+        requireContentContinuity(geometryDirection);
+        const width = host.fallbackSurface.renderedPanelWidth;
+        const height = host.fallbackSurface.renderedPanelHeight;
+        const expectedLeftMargin = Math.round((geometryScreenWidth - width) / 2)
+                                 - host.windowGutterLeft;
         maximumCenteringError = Math.max(maximumCenteringError,
                                          Math.abs(host.surfaceLeftMargin
                                                   - expectedLeftMargin));
@@ -438,6 +690,11 @@ ShellRoot {
         geometryStableSamples = atTarget ? geometryStableSamples + 1 : 0;
         if (geometryStableSamples < 3) {
             return;
+        }
+
+        if (geometryDirection === "expanding") {
+            require(geometryPrimingFrames >= 1,
+                    "cold Expanded entry renders its destination before starting the morph timeline");
         }
 
         console.warn(geometryDirection + " geometry: " + geometryStartWidth + "x"
@@ -472,7 +729,8 @@ ShellRoot {
         if (motionProbeStage === 0) {
             if (!motionEntryRequested) {
                 if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
-                                && !surface.geometryAnimationRunning,
+                                && !surface.geometryAnimationRunning
+                                && !host.contentTransitionRunning && surface.morphProgress === 1,
                                 "motion probe baseline did not settle at Idle")) {
                     return false;
                 }
@@ -495,8 +753,8 @@ ShellRoot {
                             + surface.geometryAnimationRunning + " sequence="
                             + surface.morphSequence + " baseline=" + motionEntryBaselineSequence
                             + " owner=" + coordinator.ownerName + " duration="
-                            + surface.geometryAnimationDuration + " size=" + surface.implicitWidth
-                            + "x" + surface.implicitHeight)) {
+                            + surface.geometryAnimationDuration + " panel="
+                            + surface.renderedPanelWidth + "x" + surface.renderedPanelHeight)) {
                 return false;
             }
             motionFrozenSegment = currentMorphSegment();
@@ -541,11 +799,20 @@ ShellRoot {
         }
 
         if (motionProbeStage === 3) {
-            if (!awaitState(surface.geometryAnimationRunning && !surface.morphFollowUpPending,
-                            "drifting back to the frozen endpoint did not clear the follow-up")) {
+            if (!awaitState((!surface.geometryAnimationRunning && !surface.morphFollowUpPending)
+                            || (surface.geometryAnimationRunning
+                                && (!surface.morphFollowUpPending
+                                    || surface.morphSequence === motionFrozenSegment.sequence + 1)),
+                            "drifting back did not settle or chain one bounded follow-up")) {
                 return false;
             }
-            requireMorphSegmentUnchanged(motionFrozenSegment, "preferred-size drift-back");
+            if (surface.morphSequence === motionFrozenSegment.sequence) {
+                requireMorphSegmentUnchanged(motionFrozenSegment, "preferred-size drift-back");
+            } else {
+                require(surface.morphSequence === motionFrozenSegment.sequence + 1,
+                        "preferred-size drift-back permits at most one chained segment");
+                motionFrozenSegment = currentMorphSegment();
+            }
             motionChainGapObserved = false;
             motionFollowUpObserved = false;
             motionChainExpectedActive = true;
@@ -557,56 +824,102 @@ ShellRoot {
         }
 
         if (motionProbeStage === 4) {
-            if (surface.morphSequence === motionFrozenSegment.sequence) {
-                requireMorphSegmentUnchanged(motionFrozenSegment, "queued follow-up");
-            }
-            if (!awaitState(motionFollowUpObserved && !motionChainGapObserved
-                            && surface.geometryAnimationRunning
-                            && surface.morphSequence === motionFrozenSegment.sequence + 1
-                            && surface.morphProgress > 0.05 && surface.morphProgress < 0.85,
-                            "one immediate chained segment did not start without a running gap")) {
+            if (!motionOwnerInterruptionRequested) {
+                if (surface.morphSequence === motionFrozenSegment.sequence) {
+                    requireMorphSegmentUnchanged(motionFrozenSegment, "queued follow-up");
+                }
+                if (!awaitState(motionFollowUpObserved && !motionChainGapObserved
+                                && surface.geometryAnimationRunning
+                                && surface.morphSequence === motionFrozenSegment.sequence + 1
+                                && surface.morphProgress > 0.05 && surface.morphProgress < 0.85,
+                                "one immediate chained segment did not start without a running gap")) {
+                    return false;
+                }
+                require(Math.abs(surface.morphSegmentFromWidth
+                                 - motionFrozenSegment.toWidth) < 0.001
+                        && Math.abs(surface.morphSegmentFromHeight
+                                    - motionFrozenSegment.toHeight) < 0.001
+                        && !surface.morphFollowUpPending,
+                        "the single follow-up starts at the exact frozen endpoint");
+                requireCoupledMorphSample("single preferred-size follow-up");
+                motionFollowUpWidth = surface.renderedPanelWidth;
+                motionFollowUpHeight = surface.renderedPanelHeight;
+                motionFollowUpSequence = surface.morphSequence;
+                motionFollowUpShadowOpacity = surface.renderedShadowOpacity;
+                motionLauncherPrimingFrames = 0;
+                motionLauncherPrimingExpected = true;
+                require(coordinator.openLauncher(host.surfaceToken),
+                        "owner interruption replaces the running follow-up with Launcher");
+                surface.refreshSurfaceState();
+                require(Math.abs(surface.renderedShadowOpacity - motionFollowUpShadowOpacity)
+                        <= 0.001,
+                        "owner interruption rebases elevation from the rendered shadow opacity");
+                motionOwnerInterruptionRequested = true;
+                retry.restart();
                 return false;
             }
-            require(Math.abs(surface.morphSegmentFromWidth - motionFrozenSegment.toWidth) < 0.001
-                    && Math.abs(surface.morphSegmentFromHeight
-                                - motionFrozenSegment.toHeight) < 0.001
-                    && !surface.morphFollowUpPending,
-                    "the single follow-up starts at the exact frozen endpoint");
-            requireCoupledMorphSample("single preferred-size follow-up");
 
-            const followUpWidth = surface.implicitWidth;
-            const followUpHeight = surface.implicitHeight;
-            const followUpSequence = surface.morphSequence;
-            require(coordinator.openLauncher(host.surfaceToken),
-                    "owner interruption replaces the running follow-up with Launcher");
-            surface.refreshSurfaceState();
-            require(coordinator.ownerName === "launcher" && surface.geometryAnimationRunning
-                    && surface.morphSequence === followUpSequence + 1
-                    && Math.abs(surface.morphSegmentFromWidth - followUpWidth) <= 1
-                    && Math.abs(surface.morphSegmentFromHeight - followUpHeight) <= 1,
-                    "owner replacement samples the current interpolated geometry once: owner="
-                    + coordinator.ownerName + " running=" + surface.geometryAnimationRunning
-                    + " sequence=" + surface.morphSequence + "/" + (followUpSequence + 1)
-                    + " width=" + surface.morphSegmentFromWidth + "/" + followUpWidth
-                    + " height=" + surface.morphSegmentFromHeight + "/" + followUpHeight);
+            if (!motionLauncherCancellationRequested) {
+                if (!awaitState(coordinator.ownerName === "launcher"
+                                && surface.geometryAnimationRunning
+                                && surface.morphSequence === motionFollowUpSequence + 1
+                                && Math.abs(surface.morphSegmentFromWidth
+                                            - motionFollowUpWidth) <= 1
+                                && Math.abs(surface.morphSegmentFromHeight
+                                            - motionFollowUpHeight) <= 1
+                                && host.contentTransitionFromKind
+                                   === coordinatorCore.ownerExpanded
+                                && host.contentTransitionToKind === coordinatorCore.ownerLauncher
+                                && host.contentTransitionDestinationReady
+                                && host.contentOpacityForKind(coordinatorCore.ownerExpanded) > 0.05
+                                && host.contentOpacityForKind(coordinatorCore.ownerLauncher) > 0.05,
+                                "owner replacement did not prepare Launcher from the sampled current pose")) {
+                    return false;
+                }
+                requireCoupledMorphSample("Launcher owner replacement");
+                motionLauncherWidth = surface.renderedPanelWidth;
+                motionLauncherHeight = surface.renderedPanelHeight;
+                motionLauncherSequence = surface.morphSequence;
+                preemptedExpandedOpacity = host.contentOpacityForKind(
+                            coordinatorCore.ownerExpanded);
+                preemptedLauncherOpacity = host.contentOpacityForKind(
+                            coordinatorCore.ownerLauncher);
+                preemptedExpandedOffset = host.contentOffsetForKind(
+                            coordinatorCore.ownerExpanded);
+                preemptedLauncherOffset = host.contentOffsetForKind(
+                            coordinatorCore.ownerLauncher);
+                require(coordinator.cancelInteractive(coordinator.ownerEpoch),
+                        "rapid Launcher cancellation restores its Expanded predecessor");
+                surface.refreshSurfaceState();
+                motionLauncherCancellationRequested = true;
+                retry.restart();
+                return false;
+            }
 
-            const launcherEpoch = coordinator.ownerEpoch;
-            const launcherWidth = surface.implicitWidth;
-            const launcherHeight = surface.implicitHeight;
-            const launcherSequence = surface.morphSequence;
-            require(coordinator.cancelInteractive(launcherEpoch),
-                    "rapid Launcher cancellation restores its Expanded predecessor");
-            require(coordinator.ownerName === "expanded" && surface.geometryAnimationRunning
-                    && surface.morphSequence === launcherSequence + 1
-                    && Math.abs(surface.morphSegmentFromWidth - launcherWidth) <= 1
-                    && Math.abs(surface.morphSegmentFromHeight - launcherHeight) <= 1,
-                    "same-epoch predecessor restore interrupts from current geometry");
-            require(host.interactiveExitRunning && host.launcherLoaded
-                    && !host.interactiveExitLoaderEnabled && host.interactiveExitLoaderZ > 0,
-                    "rapid restore retains an inert outgoing Loader above its replacement: exit="
-                    + host.interactiveExitRunning + " loaded=" + host.launcherLoaded
-                    + " enabled=" + host.interactiveExitLoaderEnabled + " z="
-                    + host.interactiveExitLoaderZ);
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && surface.geometryAnimationRunning
+                            && surface.morphSequence === motionLauncherSequence + 1
+                            && Math.abs(surface.morphSegmentFromWidth
+                                        - motionLauncherWidth) <= 1
+                            && Math.abs(surface.morphSegmentFromHeight
+                                        - motionLauncherHeight) <= 1
+                            && host.contentTransitionFromKind === coordinatorCore.ownerLauncher
+                            && host.contentTransitionToKind === coordinatorCore.ownerExpanded
+                            && host.contentTransitionDestinationReady,
+                            "same-epoch predecessor restore did not interrupt from current geometry")) {
+                return false;
+            }
+            require(Math.abs(host.contentStartOpacityForKind(coordinatorCore.ownerExpanded)
+                             - preemptedExpandedOpacity) <= 0.001
+                    && Math.abs(host.contentStartOpacityForKind(coordinatorCore.ownerLauncher)
+                                - preemptedLauncherOpacity) <= 0.001
+                    && Math.abs(host.contentStartOffsetForKind(coordinatorCore.ownerExpanded)
+                                - preemptedExpandedOffset) <= 0.001
+                    && Math.abs(host.contentStartOffsetForKind(coordinatorCore.ownerLauncher)
+                                - preemptedLauncherOffset) <= 0.001,
+                    "preemption restarts from the currently rendered blend and pose");
+            requireOutgoingTransition(coordinatorCore.ownerLauncher,
+                                      coordinatorCore.ownerExpanded, "rapid Launcher restore");
             motionProbeStage = 5;
             retry.restart();
             return false;
@@ -617,10 +930,18 @@ ShellRoot {
                 requireCoupledMorphSample("restored Expanded interruption");
             }
             if (!awaitState(coordinator.ownerName === "expanded"
-                            && coordinator.presentationVisible && host.dashboardFocused
-                            && !surface.geometryAnimationRunning && !host.interactiveExitRunning
+                            && coordinator.presentationVisible && !host.surfaceFocusable
+                            && surface.focusTarget === coordinatorCore.focusNone
+                            && !surface.geometryAnimationRunning
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
                             && !host.launcherLoaded,
-                            "interrupted predecessor did not settle, focus, and acknowledge")) {
+                            "interrupted hover predecessor did not settle and acknowledge: owner="
+                            + coordinator.ownerName + " visible=" + coordinator.presentationVisible
+                            + " focusable=" + host.surfaceFocusable + " geometryRunning="
+                            + surface.geometryAnimationRunning + " contentRunning="
+                            + host.contentTransitionRunning + " outgoing=" + host.contentOutgoingItem
+                            + " launcherLoaded=" + host.launcherLoaded + " focusTarget="
+                            + surface.focusTarget)) {
                 return false;
             }
             requireMorphSettled("interrupted Expanded predecessor");
@@ -659,13 +980,17 @@ ShellRoot {
                             "tighter live bounds did not supersede the running endpoint")) {
                 return false;
             }
-            const shrinkStartWidth = surface.implicitWidth;
-            const shrinkStartHeight = surface.implicitHeight;
+            const shrinkStartWidth = surface.renderedPanelWidth;
+            const shrinkStartHeight = surface.renderedPanelHeight;
             const shrinkSequence = surface.morphSequence;
             const expectedWidth = surface.safeLogicalSize(surface.preferredWidth,
-                                                          host.surfaceScreenWidth, 0.6);
+                                                          host.surfaceScreenWidth, 0.6,
+                                                          host.windowGutterLeft
+                                                          + host.windowGutterRight);
             const expectedHeight = surface.safeLogicalSize(surface.preferredHeight,
-                                                           host.surfaceScreenHeight, 0.6);
+                                                           host.surfaceScreenHeight, 0.6,
+                                                           host.windowGutterTop
+                                                           + host.windowGutterBottom);
             surface.interruptMorphForScreenBounds();
             require(surface.geometryAnimationRunning && surface.morphSequence
                     === shrinkSequence + 1
@@ -676,19 +1001,24 @@ ShellRoot {
                     "screen-bound shrink interrupts from current geometry to the new safe bound");
             requireCoupledMorphSample("screen-bound interruption");
 
+            const frozenInterruptedDuration = surface.geometryAnimationDuration;
+            const interruptedMinimalCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            interruptedMinimalCandidate.appearance.motion = "minimal";
+            const interruptedMinimal = UserConfig.validateCandidate(interruptedMinimalCandidate);
+            require(interruptedMinimal !== null && UserConfig.publish(interruptedMinimal)
+                    && Theme.motion.scale === 0,
+                    "interruption probe publishes Minimal motion");
             host.reducedMotion = true;
             requireMorphSettled("minimal-motion interruption");
-            require(surface.geometryAnimationDuration === 0
+            require(surface.geometryAnimationDuration === frozenInterruptedDuration
                     && surface.morphSegmentFromWidth === expectedWidth
                     && surface.morphSegmentFromHeight === expectedHeight
                     && surface.morphSegmentToWidth === expectedWidth
                     && surface.morphSegmentToHeight === expectedHeight,
-                    "Minimal motion synchronously snaps both axes and clears the segment");
+                    "Minimal synchronously settles while preserving the frozen interrupted duration");
 
             testRegionImplicitWidth = 120;
             testRegionImplicitHeight = 72;
-            require(UserConfig.publish(UserConfig.defaultSnapshot(0)),
-                    "motion probe restores default geometry settings");
             require(host.cancelDashboard(),
                     "motion probe returns the hover-expanded surface to Idle");
             motionProbeStage = 8;
@@ -698,13 +1028,19 @@ ShellRoot {
 
         if (motionProbeStage === 8) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
-                            && !surface.geometryAnimationRunning && !host.interactiveExitRunning
-                            && host.surfaceWidth === host.surfacePreferredWidth
-                            && host.surfaceHeight === host.surfacePreferredHeight,
-                            "motion probe cleanup did not settle at exact Idle geometry")) {
+                            && !surface.geometryAnimationRunning
+                            && surface.geometryAnimationDuration === 0
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && Math.abs(host.renderedPanelWidth
+                                        - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - host.surfacePreferredHeight) <= 1,
+                            "Minimal cleanup did not settle at exact Idle panel geometry")) {
                 return false;
             }
             requireMorphSettled("motion probe cleanup");
+            require(UserConfig.publish(UserConfig.defaultSnapshot(0)),
+                    "motion probe restores default geometry and motion settings");
             host.reducedMotion = false;
             motionProbeSampling = false;
             motionObservedSegment = null;
@@ -763,8 +1099,8 @@ ShellRoot {
         }
         if (step === 0) {
             if (!awaitState(host.surfaceToken !== null && coordinator.presentationVisible
-                            && host.loadedDashboardRegionCount === 6,
-                            "actual surface and pre-warmed dashboard did not settle within five seconds")) {
+                            && host.loadedDashboardRegionCount === 0,
+                            "actual surface and unloaded Idle dashboard did not settle within five seconds")) {
                 return;
             }
             require(coordinator.ownerName === "idle", "actual surface acknowledges Idle");
@@ -778,37 +1114,44 @@ ShellRoot {
                     "surface keeps the outer radius override while standard panels default to md");
             initialSurfaceToken = host.surfaceToken;
             initialSurfaceGeneration = host.surfaceGeneration;
-            require(mountedRegionCount === host.liveSurfaceCount * 6,
-                    "all dashboard regions mount before expansion starts");
+            require(mountedRegionCount === 0,
+                    "Idle performs no hidden dashboard projection work");
             startGeometrySampling("expanding", function () {
                 return coordinator.setHover(host.surfaceGeneration, true);
             });
             return;
         } else if (step === 1) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
-                            && host.loadedDashboardRegionCount === 6,
-                            "hover dashboard did not become visible within five seconds")) {
+                            && host.loadedDashboardRegionCount === 8,
+                            "eight-region hover dashboard did not become visible within five seconds")) {
                 return;
             }
             require(coordinator.focusTarget === coordinator.focusNone && !host.surfaceFocusable,
                     "hover expansion never steals keyboard focus");
             require(host.surfaceToken === initialSurfaceToken && host.surfaceGeneration
                     === initialSurfaceGeneration, "expansion preserves the one live surface");
-            const expectedWidth = Theme.spacing.xl * 2 + 120 + Theme.spacing.lg + 120
-                                  + Theme.spacing.lg + 120;
-            require(host.backgroundCoversSurface,
-                    "expanded background geometry equals the surface geometry");
-            const expectedHeight = Theme.spacing.xl * 2
-                                   + Math.max(testRegionImplicitHeight, testRegionImplicitHeight)
-                                   + testRegionImplicitHeight * 3 + Theme.spacing.lg * 3;
-            require(host.surfacePreferredWidth === expectedWidth
-                    && host.surfacePreferredHeight === expectedHeight && host.surfaceWidth
-                    <= expectedWidth && host.surfaceHeight <= expectedHeight,
-                    "expanded geometry derives from mounted row content");
-            require(host.geometryAnimationDuration === Theme.motion.durationExpansion
-                    && host.geometryAnimationDuration >= 170
-                    && host.geometryAnimationDuration <= 210,
-                    "expanded geometry uses the responsive 170–210 ms interpolation");
+            const expectedWidth = Theme.spacing.xl * 3 + Theme.spacing.lg + Theme.spacing.md
+                                  + Theme.size.iconSizeMd + testRegionImplicitWidth * 3;
+            const expectedHeight = Theme.spacing.xl * 4 + Theme.spacing.md + Theme.spacing.lg
+                                   + testRegionImplicitHeight * 5;
+            require(Math.abs(host.surfacePreferredWidth - expectedWidth) <= 1
+                    && Math.abs(host.surfacePreferredHeight - expectedHeight) <= 1
+                    && host.renderedPanelWidth <= expectedWidth + 1
+                    && host.renderedPanelHeight <= expectedHeight + 1,
+                    "expanded preferred geometry follows the eight-region relational composition");
+            requireMorphSettled("expanded dashboard");
+            requireShadowGutterContract("expanded dashboard");
+            const expandedSurface = host.fallbackSurface;
+            const expectedDuration = Math.round(Theme.motion.durationExpansionMinimum
+                                                + (Theme.motion.durationExpansionMaximum
+                                                   - Theme.motion.durationExpansionMinimum)
+                                                * expandedSurface.morphNormalizedDistance);
+            require(expandedSurface.morphExpansionSegment
+                    && expandedSurface.geometryAnimationDuration === expectedDuration
+                    && expectedDuration >= Theme.motion.durationExpansionMinimum
+                    && expectedDuration <= Theme.motion.durationExpansionMaximum
+                    && Theme.motion.easingMorph === Easing.InOutCubic,
+                    "expanded geometry freezes the bounded normalized-distance morph");
             hoverExpandedEpoch = coordinator.ownerEpoch;
             const background = findObject(host.fallbackSurface.contentItem, "surfaceBackground");
             const revisionBeforePromotion = coordinator.revision;
@@ -842,6 +1185,10 @@ ShellRoot {
                     && coordinator.revision === explicitRevision
                     && coordinator.focusRequestSerial === explicitFocusSerial,
                     "explicit Expanded background taps are inert and request no duplicate focus");
+            require(!host.launcherLoaded,
+                    "the first Launcher transition starts from a genuinely cold lazy loader");
+            motionLauncherPrimingFrames = 0;
+            motionLauncherPrimingExpected = true;
             require(coordinator.openLauncher(host.surfaceToken),
                     "higher-priority interaction interrupts Expanded");
         } else if (step === 3) {
@@ -849,13 +1196,15 @@ ShellRoot {
                             && coordinator.presentationVisible && host.surfaceFocusable
                             && host.launcherFocused && host.launcherResultCount === 1
                             && !host.launcherResultScrollVisible && surfaceMatches(launcherReference)
-                            && host.loadedDashboardRegionCount === 6,
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null
+                            && host.loadedDashboardRegionCount === 0,
                             "launcher state: owner=" + coordinator.ownerName + " visible="
                             + coordinator.presentationVisible + " focusable="
                             + host.surfaceFocusable + " focused=" + host.launcherFocused
                             + " regions=" + host.loadedDashboardRegionCount + " target="
-                            + coordinator.focusTarget
-                            + " serial=" + coordinator.focusRequestSerial)) {
+                            + coordinator.focusTarget + " serial="
+                            + coordinator.focusRequestSerial)) {
                 return;
             }
             require(host.launcherSelectedId === "fixture.desktop"
@@ -865,48 +1214,58 @@ ShellRoot {
             const expectedLauncherWidth = Theme.spacing.xxl * 15 + Theme.spacing.lg * 2;
             require(launcherReference.implicitWidth === expectedLauncherWidth
                     && Math.abs(host.surfacePreferredWidth - expectedLauncherWidth) <= 1
-                    && Math.abs(host.surfaceWidth - expectedLauncherWidth) <= 1,
-                    "launcher surface width is exactly the 480 px lane plus frame padding");
+                    && Math.abs(host.renderedPanelWidth - expectedLauncherWidth) <= 1,
+                    "launcher visible panel is exactly the 480 px lane plus frame padding");
             require(!host.launcherResultScrollVisible,
                     "one launcher result must not create a phantom scrollbar");
             focusSerialBeforeRestore = coordinator.focusRequestSerial;
             require(coordinator.cancelInteractive(coordinator.ownerEpoch),
                     "interrupted interaction cancels through the coordinator");
-            require(host.interactiveExitRunning && host.launcherLoaded && host.surfaceFocusable
-                    && host.interactiveExitLoaderZ > 0,
-                    "reverse exit retains focus and layers Launcher above the restored dashboard");
-            require(!host.interactiveExitLoaderEnabled,
-                    "outgoing Launcher is disabled as soon as ownership returns");
-            launcherExitAnchorX = host.interactiveExitLoaderX;
-            launcherExitMappedX = host.interactiveExitMappedX;
-            require(host.interactiveExitDuration === Theme.motion.durationNormal
-                    && host.interactiveExitDuration === 120
-                    && host.geometryAnimationDuration === Theme.motion.durationExpansion
-                    && host.geometryAnimationDuration === 190,
-                    "internal exit uses 120 ms while outer geometry uses 190 ms");
+            launcherOutgoingSampleStarted = false;
+            launcherOutgoingTransformObserved = false;
             require(Math.abs(host.surfacePreferredWidth - launcherReference.implicitWidth) > 1,
                     "outer preferred geometry switches immediately instead of staging after exit");
         } else if (step === 4) {
-            if (host.interactiveExitRunning && host.interactiveExitOffset > 0) {
-                require(host.interactiveExitLoaderX === launcherExitAnchorX,
-                        "anchored outgoing Loader geometry remains unchanged during exit");
-                if (host.interactiveExitMappedX > launcherExitMappedX) {
-                    require(host.interactiveExitMappedX - launcherExitMappedX > 0,
-                            "outgoing Loader transform moves in the expected positive direction");
-                    launcherExitTransformObserved = true;
+            if (host.contentTransitionRunning && host.contentOutgoingItem !== null
+                    && host.contentTransitionDestinationReady
+                    && host.contentTransitionFromKind === coordinatorCore.ownerLauncher
+                    && host.contentTransitionToKind === coordinatorCore.ownerExpanded
+                    && host.fallbackSurface.morphProgress > 0) {
+                if (!launcherOutgoingSampleStarted) {
+                    requireOutgoingTransition(coordinatorCore.ownerLauncher,
+                                              coordinatorCore.ownerExpanded,
+                                              "Launcher reverse transition");
+                    launcherOutgoingAnchorX = host.contentOutgoingItem.x;
+                    launcherOutgoingSampleStarted = true;
                 }
+                require(host.contentTransitionDirection === -1
+                        && host.contentOutgoingItem.x === launcherOutgoingAnchorX,
+                        "reverse transition keeps the outgoing Launcher anchor fixed");
+                const translatedX = host.contentOutgoingOffset;
+                if (translatedX > 0) {
+                    require(translatedX <= Theme.spacing.xl + 0.5,
+                            "reverse transition translates the outgoing Launcher in the bounded positive direction");
+                    launcherOutgoingTransformObserved = true;
+                }
+                requireContentContinuity("Launcher reverse transition");
             }
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
                             && host.surfaceFocusable && host.dashboardFocused
-                            && !host.interactiveExitRunning && !host.launcherLoaded
-                            && host.loadedDashboardRegionCount === 6
-                            && host.surfaceWidth === host.surfacePreferredWidth
-                            && host.surfaceHeight === host.surfacePreferredHeight,
-                            "dashboard did not restore at settled geometry with focus")) {
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && !host.launcherLoaded && host.loadedDashboardRegionCount === 8
+                            && Math.abs(host.renderedPanelWidth
+                                        - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - host.surfacePreferredHeight) <= 1,
+                            "dashboard did not restore at settled visible geometry with focus")) {
                 return;
             }
-            require(launcherExitTransformObserved && host.interactiveExitOffset === 0,
-                    "exit transform is observed mid-animation and reset on completion");
+            require(launcherOutgoingSampleStarted && launcherOutgoingTransformObserved
+                    && host.contentTransitionDirection === 0
+                    && host.contentIncomingItem !== null && host.contentIncomingOpacity === 1,
+                    "reverse translation is observed before deterministic content cleanup: sampled="
+                    + launcherOutgoingSampleStarted + " offsetObserved="
+                    + launcherOutgoingTransformObserved);
             require(coordinator.focusRequestSerial === focusSerialBeforeRestore + 1,
                     "restored deliberate dashboard receives one fresh focus request");
             startGeometrySampling("collapsing", function () {
@@ -921,32 +1280,74 @@ ShellRoot {
             }
             require(!coordinator.hoverIntent && !coordinator.explicitExpandedIntent,
                     "cancellation clears both baseline intents");
-            host.reducedMotion = true;
+            const reducedCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            reducedCandidate.appearance.motion = "reduced";
+            const reduced = UserConfig.validateCandidate(reducedCandidate);
+            require(reduced !== null && UserConfig.publish(reduced)
+                    && Theme.motion.scale === 0.5
+                    && Theme.motion.durationMorphMinimum === 60
+                    && Theme.motion.durationMorphMaximum === 100
+                    && Theme.motion.durationExpansionMinimum === 50
+                    && Theme.motion.durationExpansionMaximum === 80,
+                    "Reduced motion publishes a nonzero bounded morph scale");
+            host.reducedMotion = false;
             require(host.requestDeliberateExpansion(),
-                    "host exposes deliberate keyboard expansion");
+                    "host exposes deliberate keyboard expansion under Reduced motion");
         } else if (step === 6) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
-                            && host.surfaceFocusable && host.surfacePreferredWidth
-                            > Theme.size.islandIdleWidth && host.surfacePreferredHeight
-                            > Theme.size.islandIdleHeight,
-                            "reduced-motion dashboard did not become usable")) {
+                            && host.surfaceFocusable && host.contentTransitionRunning
+                            && host.contentTransitionDestinationReady
+                            && host.geometryAnimationRunning,
+                            "Reduced dashboard did not enter through the full transition sequence")) {
                 return;
             }
-            require(host.geometryAnimationDuration === 0,
-                    "reduced motion removes geometry interpolation");
-            require(host.cancelDashboard(), "Close remains functional with reduced motion");
+            requireCoupledMorphSample("Reduced dashboard entry");
+            requireContentContinuity("Reduced dashboard entry");
+            require(host.geometryAnimationDuration > 0,
+                    "Reduced motion preserves bounded nonzero interpolation");
+            require(host.cancelDashboard(), "Close remains functional with Reduced motion");
+            require(host.contentTransitionRunning
+                    && host.contentTransitionFromKind === coordinatorCore.ownerExpanded
+                    && host.contentTransitionToKind === coordinatorCore.ownerIdle
+                    && host.contentTransitionDirection === 0
+                    && host.contentOutgoingItem !== null && !host.contentOutgoingEnabled
+                    && host.contentOutgoingAccessibleIgnored,
+                    "Reduced collapse retains the inert Expanded predecessor");
+            requireContentContinuity("Reduced dashboard collapse");
         } else if (step === 7) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
-                            "reduced-motion collapse did not restore Idle")) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "Reduced collapse did not restore settled Idle")) {
                 return;
             }
+            requireMorphSettled("Reduced dashboard collapse");
+            const minimalCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            minimalCandidate.appearance.motion = "minimal";
+            const minimal = UserConfig.validateCandidate(minimalCandidate);
+            require(minimal !== null && UserConfig.publish(minimal)
+                    && Theme.motion.scale === 0
+                    && Theme.motion.durationMorphMinimum === 0
+                    && Theme.motion.durationMorphMaximum === 0,
+                    "Minimal motion publishes zero-duration morph bounds");
+            host.reducedMotion = true;
             require(host.requestDeliberateExpansion(),
-                    "session entry can originate from a deliberate dashboard");
+                    "session entry can originate from a Minimal dashboard");
         } else if (step === 8) {
-            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible,
-                            "dashboard did not reopen for session entry")) {
+            if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && Math.abs(host.fallbackSurface.implicitWidth
+                                        - (host.renderedPanelWidth + host.windowGutterLeft
+                                           + host.windowGutterRight)) <= 1
+                            && Math.abs(host.fallbackSurface.implicitHeight
+                                        - (host.renderedPanelHeight + host.windowGutterTop
+                                           + host.windowGutterBottom)) <= 1,
+                            "Minimal dashboard did not settle synchronously")) {
                 return;
             }
+            require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning,
+                    "Minimal dashboard settles content and geometry synchronously");
+            requireMorphSettled("Minimal dashboard entry");
             require(coordinator.openSession(host.surfaceToken),
                     "visible dashboard session entry is admitted");
             sessionEpoch = coordinator.ownerEpoch;
@@ -970,16 +1371,34 @@ ShellRoot {
                     "stale session cancellation cannot close the current owner");
             require(coordinator.cancelInteractive(sessionEpoch),
                     "session cancellation accepts the current owner epoch");
-            require(!host.interactiveExitRunning && !host.geometryAnimationRunning
-                    && !host.sessionLoaded && host.interactiveExitDuration === 0
-                    && host.geometryAnimationDuration === 0 && host.interactiveExitOffset === 0,
-                    "reduced motion synchronously finishes exit, resets its transform, and skips geometry work");
         } else if (step === 10) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
-                            && host.dashboardFocused,
-                            "session cancellation did not restore the deliberate dashboard")) {
+                            && host.dashboardFocused && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null && host.contentIncomingItem !== null
+                            && host.contentIncomingOpacity === 1
+                            && host.contentTransitionDirection === 0
+                            && !host.geometryAnimationRunning && !host.sessionLoaded
+                            && host.geometryAnimationDuration === 0
+                            && Math.abs(host.fallbackSurface.implicitWidth
+                                        - (host.renderedPanelWidth + host.windowGutterLeft
+                                           + host.windowGutterRight)) <= 1
+                            && Math.abs(host.fallbackSurface.implicitHeight
+                                        - (host.renderedPanelHeight + host.windowGutterTop
+                                           + host.windowGutterBottom)) <= 1,
+                            "session cancellation did not synchronously restore the deliberate dashboard")) {
                 return;
             }
+            requireMorphSettled("Minimal Session exit");
+            const fullCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            fullCandidate.appearance.motion = "full";
+            const full = UserConfig.validateCandidate(fullCandidate);
+            require(full !== null && UserConfig.publish(full) && Theme.motion.scale === 1
+                    && Theme.motion.durationMorphMinimum === 120
+                    && Theme.motion.durationMorphMaximum === 200
+                    && Theme.motion.durationExpansionMinimum === 100
+                    && Theme.motion.durationExpansionMaximum === 160
+                    && Theme.motion.easingMorph === Easing.InOutCubic,
+                    "interactive choreography restores the faster bounded Full motion contract");
             host.reducedMotion = false;
             require(coordinator.openHistory(host.surfaceToken),
                     "visible dashboard history entry is admitted");
@@ -987,10 +1406,13 @@ ShellRoot {
         } else if (step === 11) {
             if (!awaitState(coordinator.ownerName === "history" && coordinator.presentationVisible
                             && host.surfaceFocusable && host.historyFocused && host.historyRowCount
-                            === 2 && surfaceMatches(historyReference),
-                            "history geometry/focus did not settle: surface=" + host.surfaceWidth
-                            + "x" + host.surfaceHeight + " preferred=" + host.surfacePreferredWidth
-                            + "x" + host.surfacePreferredHeight + " natural="
+                            === 2 && surfaceMatches(historyReference)
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "history geometry/focus did not settle: panel="
+                            + host.renderedPanelWidth + "x" + host.renderedPanelHeight
+                            + " preferred=" + host.surfacePreferredWidth + "x"
+                            + host.surfacePreferredHeight + " natural="
                             + historyReference.implicitWidth + "x" + historyReference.implicitHeight
                             + " focused=" + host.historyFocused + " rows=" + host.historyRowCount)) {
                 return;
@@ -1002,23 +1424,22 @@ ShellRoot {
                     "stale history Back cannot close the current owner");
             require(coordinator.cancelInteractive(historyEpoch),
                     "history Back accepts the current owner epoch");
-            require(host.interactiveExitRunning && host.historyLoaded && host.surfaceFocusable
-                    && host.interactiveExitLoaderZ > 0,
-                    "reverse exit retains focus while History fades above the dashboard");
-            require(!host.interactiveExitLoaderEnabled,
-                    "outgoing History is disabled immediately while retained for its fade");
+            requireOutgoingTransition(coordinatorCore.ownerHistory,
+                                      coordinatorCore.ownerExpanded, "History reverse transition");
         } else if (step === 12) {
             if (!trayVerified && coordinator.ownerName === "tray") {
                 if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
                                 && host.trayLoaded && host.trayFocused
-                                && surfaceMatches(trayReference),
-                                "tray view did not load at its natural size and receive focus")) {
+                                && surfaceMatches(trayReference)
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null,
+                                "tray view did not settle at its envelope and receive focus")) {
                     return;
                 }
                 require(coordinator.focusTarget === coordinator.focusTray,
                         "tray presentation receives the item focus target");
                 require(host.surfacePreferredWidth >= Theme.size.islandSubviewMinimumWidth
-                        && host.surfaceWidth >= Theme.size.islandSubviewMinimumWidth - 1,
+                        && host.renderedPanelWidth >= Theme.size.islandSubviewMinimumWidth - 1,
                         "sparse Tray keeps the shared interactive width floor");
                 require(coordinator.setHover(host.surfaceGeneration, false)
                         && coordinator.ownerName === "tray" && host.surfaceFocusable,
@@ -1026,12 +1447,10 @@ ShellRoot {
                 requireSurfaceMatches(trayReference, "tray");
                 require(coordinator.cancelInteractive(trayEpoch),
                         "tray Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.trayLoaded && host.surfaceFocusable
-                        && host.interactiveExitLoaderZ > 0,
-                        "generic reverse exit keeps focus and layers Tray above its replacement");
-                require(!host.interactiveExitLoaderEnabled,
-                        "outgoing Tray is disabled immediately while retained for its fade");
-                const trayControl = findObject(host.interactiveExitItem, "trayItemButton");
+                requireOutgoingTransition(coordinatorCore.ownerTray,
+                                          coordinatorCore.ownerExpanded,
+                                          "Tray reverse transition");
+                const trayControl = findObject(host.contentOutgoingItem, "trayItemButton");
                 require(trayControl !== null, "retained Tray exposes its representative control");
                 inputDriver.click(trayControl);
                 require(fakeTrayAdapter.activationCount === 0,
@@ -1041,41 +1460,59 @@ ShellRoot {
             } else if (!audioVerified && coordinator.ownerName === "audio") {
                 if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
                                 && host.audioLoaded && host.audioFocused
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null
+                                && !host.geometryAnimationRunning
                                 && Math.abs(host.surfacePreferredWidth
                                             - audioWidthReference.implicitWidth) <= 1
-                                && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth)
-                                <= 1,
-                                "audio view did not load, focus, and drive the exact surface width")) {
+                                && Math.abs(host.renderedPanelWidth
+                                            - audioWidthReference.implicitWidth) <= 1
+                                && Math.abs(host.fallbackSurface.implicitWidth
+                                            - (host.renderedPanelWidth + host.windowGutterLeft
+                                               + host.windowGutterRight)) <= 1
+                                && Math.abs(host.fallbackSurface.implicitHeight
+                                            - (host.renderedPanelHeight + host.windowGutterTop
+                                               + host.windowGutterBottom)) <= 1,
+                                "audio view did not settle, focus, and drive the preferred viewport")) {
                     return;
                 }
-                require(host.backgroundCoversSurface,
-                        "interactive subview background geometry equals the surface geometry");
-                require(Math.abs(host.surfacePreferredWidth - audioWidthReference.implicitWidth)
-                        <= 1 && Math.abs(host.surfaceWidth - audioWidthReference.implicitWidth) <= 1,
-                        "audio surface width equals the audio view implicit width");
+                const audioFrame = findObject(host.interactiveContent, "audioSubviewFrame");
+                require(audioFrame !== null && audioFrame.preferredViewportWidth === 572
+                        && audioFrame.preferredViewportHeight === 360
+                        && audioFrame.resolvedViewportWidth === 572
+                        && audioFrame.resolvedViewportHeight <= 360
+                        && Math.abs(host.surfacePreferredHeight
+                                    - host.interactiveContent.implicitHeight) <= 1
+                        && Math.abs(host.renderedPanelHeight
+                                    - host.interactiveContent.implicitHeight) <= 1,
+                        "Audio preserves its wide preferred viewport within screen bounds");
+                requireShadowGutterContract("Audio subview");
                 require(host.surfacePreferredWidth >= Theme.size.islandSubviewMinimumWidth,
                         "Audio keeps the shared interactive width floor");
                 require(coordinator.focusTarget === coordinator.focusAudio,
                         "audio presentation receives the dropdown focus target");
                 const presetSelect = findObject(host.interactiveContent,
                                                 "audioEasyEffectsOutputPreset");
-                require(presetSelect !== null && presetSelect.control !== null
-                        && presetSelect.popup !== null,
+                require(presetSelect !== null && presetSelect.control !== null,
                         "actual Audio surface exposes its preset select list");
-                inputDriver.click(presetSelect.control);
-                require(presetSelect.popup.visible && presetSelect.popup.height > 0
-                        && presetSelect.popup.height <= Theme.size.controlHeightMd * 5
-                        + Theme.spacing.xs * 2 + 0.5,
-                        "actual preset select list opens and remains bounded to five rows");
+                const audioPanelWidth = host.renderedPanelWidth;
+                const audioPanelHeight = host.renderedPanelHeight;
+                presetSelect.openPopup(presetSelect.candidates.indexOf("Cinema"));
+                const presetPopup = findObject(host.interactiveContent,
+                                               "audioEasyEffectsOutputPresetPopup");
+                require(presetPopup !== null && presetPopup.visible && presetPopup.height > 0
+                        && presetPopup.height <= Theme.size.controlHeightMd * 5
+                        + Theme.spacing.xs * 2 + 0.5
+                        && Math.abs(host.renderedPanelWidth - audioPanelWidth) <= 1
+                        && Math.abs(host.renderedPanelHeight - audioPanelHeight) <= 1,
+                        "preset disclosure stays within five rows without resizing the viewport");
                 presetSelect.closePopup();
                 require(coordinator.cancelInteractive(audioEpoch),
                         "audio Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.audioLoaded && host.surfaceFocusable
-                        && host.interactiveExitLoaderZ > 0,
-                        "generic reverse exit keeps focus and layers Audio above its replacement");
-                require(!host.interactiveExitLoaderEnabled,
-                        "outgoing Audio is disabled immediately while retained for its fade");
-                const audioControl = findObject(host.interactiveExitItem, "audioOutputDropdown");
+                requireOutgoingTransition(coordinatorCore.ownerAudio,
+                                          coordinatorCore.ownerExpanded,
+                                          "Audio reverse transition");
+                const audioControl = findObject(host.contentOutgoingItem, "audioOutputDropdown");
                 require(audioControl !== null,
                         "retained Audio exposes its representative dropdown");
                 inputDriver.click(audioControl);
@@ -1086,11 +1523,20 @@ ShellRoot {
             } else if (!weatherVerified && coordinator.ownerName === "weather") {
                 if (!awaitState(coordinator.presentationVisible && host.surfaceFocusable
                                 && host.weatherLoaded && host.weatherFocused
-                                && host.surfaceWidth > 0 && host.surfaceHeight > 0,
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null
+                                && !host.geometryAnimationRunning
+                                && host.renderedPanelWidth > 0 && host.renderedPanelHeight > 0
+                                && Math.abs(host.fallbackSurface.implicitWidth
+                                            - (host.renderedPanelWidth + host.windowGutterLeft
+                                               + host.windowGutterRight)) <= 1
+                                && Math.abs(host.fallbackSurface.implicitHeight
+                                            - (host.renderedPanelHeight + host.windowGutterTop
+                                               + host.windowGutterBottom)) <= 1,
                                 "Weather view did not settle: loaded=" + host.weatherLoaded
-                                + " focused=" + host.weatherFocused + " surface="
-                                + host.surfaceWidth + "x" + host.surfaceHeight + " natural="
-                                + weatherReference.implicitWidth + "x"
+                                + " focused=" + host.weatherFocused + " panel="
+                                + host.renderedPanelWidth + "x" + host.renderedPanelHeight
+                                + " unbounded=" + weatherReference.implicitWidth + "x"
                                 + weatherReference.implicitHeight)) {
                     return;
                 }
@@ -1099,28 +1545,40 @@ ShellRoot {
                 require(fakeWeatherAdapter.hourly.length === 12
                         && fakeWeatherAdapter.daily.length === 5,
                         "Weather renders the bounded shared 12-hour and five-day models");
-                require(host.surfaceWidth <= weatherReference.implicitWidth
-                        && host.surfaceHeight <= weatherReference.implicitHeight
-                        && host.backgroundCoversSurface,
-                        "Weather natural content is screen-bounded and clipped by SubviewFrame");
+                const weatherFrame = findObject(host.interactiveContent, "weatherSubviewFrame");
+                require(weatherFrame !== null && weatherFrame.preferredViewportWidth === 576
+                        && weatherFrame.preferredViewportHeight === 360
+                        && weatherFrame.resolvedViewportWidth <= 576
+                        && weatherFrame.resolvedViewportHeight <= 360
+                        && Math.abs(host.surfacePreferredWidth
+                                    - host.interactiveContent.implicitWidth) <= 1
+                        && Math.abs(host.surfacePreferredHeight
+                                    - host.interactiveContent.implicitHeight) <= 1
+                        && Math.abs(host.renderedPanelWidth
+                                    - host.interactiveContent.implicitWidth) <= 1
+                        && Math.abs(host.renderedPanelHeight
+                                    - host.interactiveContent.implicitHeight) <= 1
+                        && host.renderedPanelWidth <= weatherReference.implicitWidth
+                        && host.renderedPanelHeight <= weatherReference.implicitHeight,
+                        "Weather resolves its 576 by 360 preferred viewport within screen bounds");
+                requireShadowGutterContract("Weather subview");
                 require(coordinator.cancelInteractive(weatherEpoch),
                         "Weather Back accepts the current owner epoch");
-                require(host.interactiveExitRunning && host.weatherLoaded && host.surfaceFocusable
-                        && host.interactiveExitLoaderZ > 0,
-                        "generic reverse exit keeps focus and layers Weather above its replacement");
-                require(!host.interactiveExitLoaderEnabled,
-                        "outgoing Weather disables actions immediately");
+                requireOutgoingTransition(coordinatorCore.ownerWeather,
+                                          coordinatorCore.ownerExpanded,
+                                          "Weather reverse transition");
                 weatherVerified = true;
                 step = 11;
             } else {
                 if (!awaitState(coordinator.ownerName === "expanded"
                                 && coordinator.presentationVisible && host.dashboardFocused
-                                && !host.interactiveExitRunning,
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null,
                                 "interactive Back did not settle the deliberate dashboard")) {
                     return;
                 }
-                require(!host.interactiveExitRunning,
-                        "restored dashboard has no hidden recurring exit work");
+                require(host.contentIncomingItem !== null && host.contentIncomingOpacity === 1,
+                        "restored dashboard has no hidden recurring transition work");
                 if (!trayVerified) {
                     require(!host.historyLoaded,
                             "History unloads only after its reverse exit completes");
@@ -1160,12 +1618,12 @@ ShellRoot {
                     "visible hold waits for compact entry completion");
         } else if (step === 14) {
             if (!awaitState(coordinator.ownerName === "volume" && coordinator.presentationVisible
-                            && host.transientCommitted,
-                            "compact value transient did not commit visibly")) {
+                            && host.transientCommitted && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "compact value transient did not settle and commit visibly")) {
                 return;
             }
-            require(host.backgroundCoversSurface,
-                    "transient background geometry equals the surface geometry");
+            requireMorphSettled("compact value transient");
             require(host.transientPrimaryText === "Built-in Audio" && host.transientDetailText
                     === "Output volume", "compact transient resolves the exact normalized payload");
             require(host.surfacePreferredWidth
@@ -1173,8 +1631,9 @@ ShellRoot {
                     && host.surfacePreferredWidth <= Theme.size.islandTransientCompactWidth
                     && host.surfacePreferredHeight === Theme.size.islandTransientCompactHeight,
                     "compact transient uses the shared OSD geometry bounds");
-            require(!host.transientEntryAnimationRunning && !host.surfaceFocusable,
-                    "settled transient suspends animation and never steals focus");
+            require(!host.surfaceFocusable && host.contentIncomingItem !== null
+                    && host.contentIncomingOpacity === 1,
+                    "settled transient owns one opaque visual and never steals focus");
             compactTransientWidth = host.surfacePreferredWidth;
             compactTransientHeight = host.surfacePreferredHeight;
             require(coordinator.requestNotification("surface-notification", 2, 1, host.surfaceToken),
@@ -1200,8 +1659,8 @@ ShellRoot {
                                                                "epoch": surface.ownerEpoch,
                                                                "revision": surface.ownerRevision,
                                                                "sequence": surface.morphSequence,
-                                                               "width": surface.implicitWidth,
-                                                               "height": surface.implicitHeight,
+                                                               "width": surface.renderedPanelWidth,
+                                                               "height": surface.renderedPanelHeight,
                                                                "oldTargetWidth": oldSegment.toWidth,
                                                                "oldTargetHeight": oldSegment.toHeight
                                                            });
@@ -1214,6 +1673,18 @@ ShellRoot {
                         && surface.morphSequence === notificationRevisionProbe.sequence
                         && !surface.morphFollowUpPending,
                         "same-epoch revision waits for one coalesced semantic interruption");
+                require(host.contentIncomingItem !== null
+                        && Math.abs(host.contentIncomingOpacity - 1) <= 0.001
+                        && (host.contentOutgoingItem === null
+                            || host.contentOutgoingItem === host.contentIncomingItem
+                            || host.contentOutgoingOpacity <= 0.001)
+                        && !host.contentIncomingItem.enabled
+                        && host.contentIncomingItem.Accessible.ignored,
+                        "same-owner transient revision keeps one inert shared presentation fully opaque: "
+                        + (host.contentOutgoingItem === host.contentIncomingItem) + "/"
+                        + (host.contentOutgoingItem === null) + "/" + host.contentOutgoingOpacity + "/"
+                        + host.contentIncomingOpacity + "/" + host.contentIncomingItem.enabled + "/"
+                        + host.contentIncomingItem.Accessible.ignored);
                 requireMorphSegmentUnchanged(oldSegment, "queued notification replacement");
                 notificationRevisionProbeStage = 1;
                 retry.restart();
@@ -1231,14 +1702,18 @@ ShellRoot {
                 }
                 require(Math.abs(surface.morphSegmentFromWidth
                                  - notificationRevisionProbe.width) <= 1
-                        && Math.abs(surface.morphSegmentFromHeight
-                                    - notificationRevisionProbe.height) <= 1
+                        && surface.morphSegmentFromHeight
+                           >= Math.min(notificationRevisionProbe.height,
+                                       notificationRevisionProbe.oldTargetHeight) - 1
+                        && surface.morphSegmentFromHeight
+                           <= Math.max(notificationRevisionProbe.height,
+                                       notificationRevisionProbe.oldTargetHeight) + 1
                         && Math.abs(surface.morphSegmentToWidth
                                     - host.surfacePreferredWidth) < 0.001
                         && Math.abs(surface.morphSegmentToHeight
                                     - host.surfacePreferredHeight) < 0.001
                         && !surface.morphFollowUpPending,
-                        "revision interruption samples the current pose and freezes its new endpoint: from="
+                        "revision interruption samples the latest rendered pose and freezes its new endpoint: from="
                         + surface.morphSegmentFromWidth + "x" + surface.morphSegmentFromHeight
                         + " observed=" + notificationRevisionProbe.width + "x"
                         + notificationRevisionProbe.height + " to=" + surface.morphSegmentToWidth
@@ -1247,6 +1722,8 @@ ShellRoot {
                         + " oldTarget=" + notificationRevisionProbe.oldTargetWidth + "x"
                         + notificationRevisionProbe.oldTargetHeight + " pending="
                         + surface.morphFollowUpPending);
+                requireCoupledMorphSample("notification revision interruption");
+                requireContentContinuity("notification revision interruption");
                 notificationRevisionSegment = currentMorphSegment();
                 notificationRevisionProbeStage = 2;
                 retry.restart();
@@ -1256,8 +1733,10 @@ ShellRoot {
                 requireMorphSegmentUnchanged(notificationRevisionSegment,
                                              "running notification replacement");
             }
-            if (!awaitState(!surface.geometryAnimationRunning && coordinator.presentationVisible
-                            && host.transientCommitted,
+            if (!awaitState(!surface.geometryAnimationRunning
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null
+                            && coordinator.presentationVisible && host.transientCommitted,
                             "replacement notification did not settle and acknowledge")) {
                 return;
             }
@@ -1282,41 +1761,57 @@ ShellRoot {
                     "notification source invalidation releases current ownership");
         } else if (step === 16) {
             if (!awaitState(coordinator.ownerName === "volume" && coordinator.presentationVisible
-                            && host.transientPrimaryText === "Built-in Audio",
+                            && host.transientPrimaryText === "Built-in Audio"
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
                             "fresh compact predecessor did not restore visibly")) {
                 return;
             }
             require(coordinator.invalidateTransient("surface-volume", 1),
                     "restored compact source invalidates cleanly");
         } else if (step === 17) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
-                            "transient invalidation did not restore Idle")) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "transient invalidation did not restore settled Idle")) {
                 return;
             }
+            const transientMinimalCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            transientMinimalCandidate.appearance.motion = "minimal";
+            const transientMinimal = UserConfig.validateCandidate(transientMinimalCandidate);
+            require(transientMinimal !== null && UserConfig.publish(transientMinimal)
+                    && Theme.motion.scale === 0,
+                    "transient Minimal probe publishes synchronous motion");
             host.reducedMotion = true;
             require(coordinator.requestWorkspace("surface-workspace", 3, 1, host.surfaceToken),
-                    "reduced-motion workspace transient enters");
+                    "Minimal workspace transient enters");
         } else if (step === 18) {
             if (!awaitState(coordinator.ownerName === "workspace"
-                            && coordinator.presentationVisible && host.transientCommitted,
-                            "reduced-motion transient did not commit")) {
+                            && coordinator.presentationVisible && host.transientCommitted
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "Minimal transient did not settle and commit")) {
                 return;
             }
             require(host.transientPrimaryText === "Development" && host.transientDetailText
-                    === "Desktop 2 of 4", "reduced motion preserves transient state meaning");
+                    === "Desktop 2 of 4", "Minimal motion preserves transient state meaning");
             require(host.surfacePreferredWidth <= Theme.size.islandTransientCompactWidth,
                     "workspace transient stays within the compact surface width bound");
-            require(host.geometryAnimationDuration === 0 && !host.transientEntryAnimationRunning,
-                    "reduced motion removes geometry and entry animation work");
+            require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning
+                    && host.contentIncomingItem !== null && host.contentIncomingOpacity === 1,
+                    "Minimal motion synchronously settles transient geometry and content");
+            requireMorphSettled("Minimal workspace transient");
             require(coordinator.invalidateTransient("surface-workspace", 3),
-                    "reduced-motion source invalidates");
+                    "Minimal source invalidates");
         } else if (step === 19) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
-                            "final transient cleanup did not restore Idle")) {
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "final transient cleanup did not restore settled Idle")) {
                 return;
             }
-            require(mountedRegionCount === host.liveSurfaceCount * 6,
-                    "dashboard regions stay mounted across Interactive interruptions");
+            require(mountedRegionCount === 0 && host.loadedDashboardRegionCount === 0,
+                    "settled Idle unloads dashboard regions after Interactive interruptions");
             require(!coordinator.setHover(host.surfaceGeneration + 1, true),
                     "stale surface intent cannot reopen the dashboard");
             host.reducedMotion = true;
@@ -1334,19 +1829,25 @@ ShellRoot {
             if (!awaitState(coordinator.ownerName === "polkitModal"
                             && coordinator.presentationVisible && host.surfaceFocusable
                             && host.polkitLoaded && host.polkitFocused
-                            && Math.abs(host.surfaceWidth - host.surfacePreferredWidth) <= 1
-                            && Math.abs(host.surfaceHeight - host.surfacePreferredHeight) <= 1,
-                            "Polkit presentation did not load, acknowledge, and focus")) {
+                            && Math.abs(host.renderedPanelWidth
+                                        - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - host.surfacePreferredHeight) <= 1
+                            && !host.contentTransitionRunning,
+                            "Polkit presentation did not settle, acknowledge, and focus")) {
                 return;
             }
             require(host.surfacePreferredWidth > 0 && host.surfacePreferredHeight > 0
-                    && host.surfaceWidth <= host.surfacePreferredWidth + 1
-                    && host.surfaceHeight <= host.surfacePreferredHeight + 1
+                    && Math.abs(host.renderedPanelWidth
+                                - host.surfacePreferredWidth) <= 1
+                    && Math.abs(host.renderedPanelHeight
+                                - host.surfacePreferredHeight) <= 1
                     && host.geometryAnimationDuration === 0,
-                    "Polkit geometry actual=" + host.surfaceWidth + "x" + host.surfaceHeight
-                    + " preferred=" + host.surfacePreferredWidth + "x"
+                    "Polkit panel geometry actual=" + host.renderedPanelWidth + "x"
+                    + host.renderedPanelHeight + " preferred=" + host.surfacePreferredWidth + "x"
                     + host.surfacePreferredHeight + " duration="
                     + host.geometryAnimationDuration);
+            requireMorphSettled("Minimal Polkit presentation");
             require(host.polkitIdentityCount === 2 && host.polkitResponseFieldVisible,
                     "normalized identities and the live prompt reach the Modal view");
             require(!coordinator.openLauncher(host.surfaceToken)
@@ -1387,13 +1888,18 @@ ShellRoot {
             }
             require(coordinator.revision === modalRevisionBeforeReplacement + 1,
                     "flow replacement increments one Modal revision without a second frame");
+            const modalFullCandidate = UserConfig.mutableSnapshot(UserConfig.snapshot);
+            modalFullCandidate.appearance.motion = "full";
+            const modalFull = UserConfig.validateCandidate(modalFullCandidate);
+            require(modalFull !== null && UserConfig.publish(modalFull),
+                    "Modal exit restores configured Full motion");
             host.reducedMotion = false;
             require(coordinator.syncPolkitModal(false, false, 0),
                     "terminal absent snapshot releases Modal");
-            require(host.interactiveExitRunning && host.polkitLoaded
-                    && !host.interactiveExitLoaderEnabled,
-                    "outgoing Polkit remains visual but becomes disabled immediately");
-            const authenticateControl = findObject(host.interactiveExitItem,
+            requireOutgoingTransition(coordinatorCore.ownerPolkitModal,
+                                      coordinatorCore.ownerExpanded,
+                                      "Polkit reverse transition");
+            const authenticateControl = findObject(host.contentOutgoingItem,
                                                    "polkitAuthenticateButton");
             require(authenticateControl !== null,
                     "retained Polkit exposes its representative authentication control");
@@ -1402,7 +1908,9 @@ ShellRoot {
                     "disabled outgoing Polkit cannot dispatch a response");
         } else if (step === 26) {
             if (!awaitState(coordinator.ownerName === "expanded" && coordinator.presentationVisible
-                            && host.dashboardFocused && !host.polkitLoaded,
+                            && host.dashboardFocused && !host.polkitLoaded
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
                             "Modal completion state owner=" + coordinator.ownerName + " visible="
                             + coordinator.presentationVisible + " focused=" + host.dashboardFocused
                             + " polkitLoaded=" + host.polkitLoaded + " target="
@@ -1535,14 +2043,33 @@ ShellRoot {
                     "custom geometry expands through the existing coordinator path");
         } else if (step === 34) {
             if (!awaitState(coordinator.ownerName === "expanded"
-                            && coordinator.presentationVisible && host.dashboardFocused,
+                            && coordinator.presentationVisible && host.dashboardFocused
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
                             "custom geometry dashboard did not settle")) {
                 return;
             }
-            require(host.surfaceWidth <= host.surfaceScreenWidth * 0.6
-                    && host.surfaceHeight <= host.surfaceScreenHeight * 0.6
-                    && host.geometryAnimationDuration === 0 && host.backgroundCoversSurface,
-                    "custom expanded bounds remain screen-safe and Minimal motion settles");
+            const customizedSurface = host.fallbackSurface;
+            require(host.renderedPanelWidth <= customizedSurface.stablePanelMaximumWidth + 1
+                    && host.renderedPanelHeight <= customizedSurface.stablePanelMaximumHeight + 1
+                    && Math.abs(host.dashboardViewportWidth - host.renderedPanelWidth) <= 1
+                    && Math.abs(host.dashboardViewportHeight - host.renderedPanelHeight) <= 1
+                    && (host.dashboardNaturalWidth <= host.dashboardViewportWidth + 0.5
+                        || host.dashboardHorizontalOverflow)
+                    && (host.dashboardNaturalHeight <= host.dashboardViewportHeight + 0.5
+                        || host.dashboardVerticalOverflow)
+                    && host.geometryAnimationDuration === 0
+                    && !host.geometryAnimationRunning,
+                    "60% visible-panel cap keeps the natural dashboard reachable through overflow: panel="
+                    + host.renderedPanelWidth + "x" + host.renderedPanelHeight + ", max="
+                    + customizedSurface.stablePanelMaximumWidth + "x"
+                    + customizedSurface.stablePanelMaximumHeight + ", viewport="
+                    + host.dashboardViewportWidth + "x" + host.dashboardViewportHeight + ", natural="
+                    + host.dashboardNaturalWidth + "x" + host.dashboardNaturalHeight + ", overflow="
+                    + host.dashboardHorizontalOverflow + "/" + host.dashboardVerticalOverflow
+                    + ", duration/running=" + host.geometryAnimationDuration + "/"
+                    + host.geometryAnimationRunning);
+            requireMorphSettled("customized Minimal dashboard");
             require(host.cancelDashboard(), "customized dashboard remains cancellable");
             require(coordinator.setHover(host.surfaceGeneration, false),
                     "customized dashboard clears hover restoration before reset");
@@ -1587,13 +2114,19 @@ ShellRoot {
             }
             captureSoakRegistry();
             requireSoakRegistry("surface soak baseline");
+            require(soakCycleCount === 100,
+                    "surface soak retains the exact one-hundred-cycle contract");
             startSurfaceSoakCycle();
             return;
         } else if (step === 36) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
-                            && host.surfaceWidth === host.surfacePreferredWidth
-                            && host.surfaceHeight === host.surfacePreferredHeight,
-                            "surface soak compact geometry did not settle synchronously")) {
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null
+                            && Math.abs(host.renderedPanelWidth
+                                        - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - host.surfacePreferredHeight) <= 1,
+                            "surface soak compact panel geometry did not settle synchronously")) {
                 return;
             }
             requireSoakRegistry("surface soak compact cycle " + soakCycle);
@@ -1608,52 +2141,76 @@ ShellRoot {
         } else if (step === 37) {
             if (!awaitState(coordinator.ownerName === "expanded"
                             && coordinator.presentationVisible && host.dashboardFocused
-                            && host.surfaceWidth === host.surfacePreferredWidth
-                            && host.surfaceHeight === host.surfacePreferredHeight,
-                            "surface soak expanded geometry did not settle synchronously")) {
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null
+                            && Math.abs(host.renderedPanelWidth
+                                        - Math.min(host.surfacePreferredWidth,
+                                                   host.fallbackSurface.stablePanelMaximumWidth)) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - Math.min(host.surfacePreferredHeight,
+                                                   host.fallbackSurface.stablePanelMaximumHeight)) <= 1,
+                            "surface soak expanded panel geometry did not settle synchronously: owner="
+                            + coordinator.ownerName + " visible=" + coordinator.presentationVisible
+                            + " focused=" + host.dashboardFocused + " content="
+                            + host.contentTransitionRunning + "/" + host.contentOutgoingItem
+                            + " panel=" + host.renderedPanelWidth + "x" + host.renderedPanelHeight
+                            + " preferred=" + host.surfacePreferredWidth + "x"
+                            + host.surfacePreferredHeight)) {
                 return;
             }
             requireSoakRegistry("surface soak expanded cycle " + soakCycle);
             requireSoakGeometry("surface soak expanded cycle " + soakCycle);
             require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning
-                    && host.surfaceWidth <= host.surfaceScreenWidth
-                    * soakExpectedGeometry.expandedWidthPercent
-                    && host.surfaceHeight <= host.surfaceScreenHeight
-                    * soakExpectedGeometry.expandedHeightPercent,
-                    "Minimal motion applies bounded expanded geometry without recurring animation");
+                    && host.renderedPanelWidth
+                    <= host.fallbackSurface.stablePanelMaximumWidth + 1
+                    && host.renderedPanelHeight
+                    <= host.fallbackSurface.stablePanelMaximumHeight + 1,
+                    "Minimal motion applies bounded visible geometry without recurring animation");
+            requireMorphSettled("surface soak expanded cycle " + soakCycle);
             transferSoakInteractiveToLiveSurface();
         } else if (step === 38) {
-            if (!awaitState(coordinator.ownerName === "launcher"
-                            && coordinator.presentationVisible && host.launcherLoaded,
-                            "surface soak transferred Interactive generation did not settle")) {
+            if (!soakInteractiveCancellationPending) {
+                if (!awaitState(coordinator.ownerName === "launcher"
+                                && coordinator.presentationVisible && host.launcherLoaded,
+                                "surface soak transferred Interactive generation did not settle")) {
+                    return;
+                }
+                const ownerEpoch = coordinator.ownerEpoch;
+                require(ownerEpoch === soakInteractiveEpoch
+                        && coordinator.cancelInteractive(ownerEpoch),
+                        "surface soak cancels the transferred Interactive generation");
+                soakInteractiveCancellationPending = true;
+                retry.restart();
                 return;
             }
-            const ownerEpoch = coordinator.ownerEpoch;
-            require(ownerEpoch === soakInteractiveEpoch
-                    && coordinator.cancelInteractive(ownerEpoch),
-                    "surface soak cancels the transferred Interactive generation");
-            require(coordinator.ownerName === "expanded"
-                    && coordinatorCore.interactiveHostToken === null
-                    && !host.interactiveExitRunning && !host.geometryAnimationRunning
-                    && !host.launcherLoaded && host.interactiveExitDuration === 0
-                    && host.geometryAnimationDuration === 0 && host.interactiveExitOffset === 0,
-                    "Minimal motion synchronously clears Interactive exit work");
+            if (!awaitState(coordinator.ownerName === "expanded"
+                            && coordinatorCore.interactiveHostToken === null
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && host.contentIncomingItem !== null && host.contentIncomingOpacity === 1
+                            && !host.geometryAnimationRunning && !host.launcherLoaded
+                            && host.geometryAnimationDuration === 0,
+                            "Minimal motion did not clear Interactive transition work")) {
+                return;
+            }
+            const completedEpoch = soakInteractiveEpoch;
             require(host.cancelDashboard() && coordinator.ownerName === "idle"
                     && !host.geometryAnimationRunning,
                     "Minimal motion synchronously collapses the dashboard");
-            require(!coordinator.cancelInteractive(ownerEpoch),
+            require(!coordinator.cancelInteractive(completedEpoch),
                     "completed Interactive generation cannot replay");
             require(coordinator.requestWorkspace("surface-workspace", 3000 + soakCycle,
                                                  soakCycle + 1, host.surfaceToken),
                     "surface soak projects one fresh normalized transient generation");
         } else if (step === 39) {
             if (!awaitState(coordinator.ownerName === "workspace"
-                            && coordinator.presentationVisible && host.transientCommitted,
-                            "surface soak transient did not commit")) {
+                            && coordinator.presentationVisible && host.transientCommitted
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "surface soak transient did not settle and commit")) {
                 return;
             }
-            require(host.geometryAnimationDuration === 0
-                    && !host.geometryAnimationRunning && !host.transientEntryAnimationRunning,
+            require(host.geometryAnimationDuration === 0 && !host.geometryAnimationRunning
+                    && host.contentIncomingItem !== null && host.contentIncomingOpacity === 1,
                     "Minimal motion keeps transient projection free of recurring work");
             require(coordinator.invalidateTransient("surface-workspace", 3000 + soakCycle)
                     && !coordinator.invalidateTransient("surface-workspace", 3000 + soakCycle),
@@ -1681,7 +2238,8 @@ ShellRoot {
                             && coordinatorCore.interactiveHostToken === null
                             && coordinatorCore.modalHostToken === null
                             && !coordinatorCore.modalPresent && !host.polkitLoaded
-                            && !host.interactiveExitRunning && !host.geometryAnimationRunning,
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && !host.geometryAnimationRunning,
                             "surface soak cycle cleanup did not settle")) {
                 return;
             }
@@ -1701,15 +2259,18 @@ ShellRoot {
         } else if (step === 42) {
             if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
                             && coordinatorCore.pendingTransientCount === 0
-                            && !host.interactiveExitRunning && !host.geometryAnimationRunning
-                            && host.surfaceWidth === host.surfacePreferredWidth
-                            && host.surfaceHeight === host.surfacePreferredHeight,
-                            "surface soak final cleanup did not settle")) {
+                            && !host.contentTransitionRunning && host.contentOutgoingItem === null
+                            && !host.geometryAnimationRunning
+                            && Math.abs(host.renderedPanelWidth
+                                        - host.surfacePreferredWidth) <= 1
+                            && Math.abs(host.renderedPanelHeight
+                                        - host.surfacePreferredHeight) <= 1,
+                            "surface soak final panel cleanup did not settle")) {
                 return;
             }
             const defaults = UserConfig.defaultSnapshot(0);
             requireSoakRegistry("surface soak final cleanup");
-            require(soakCycle === soakCycleCount
+            require(soakCycleCount === 100 && soakCycle === soakCycleCount
                     && soakControlCenterRehomeCount === soakCycleCount
                     && UserConfig.snapshot.island.compactHeight === defaults.island.compactHeight
                     && UserConfig.snapshot.island.compactPadding === defaults.island.compactPadding
@@ -1723,13 +2284,13 @@ ShellRoot {
                     && coordinatorCore.surfaceSnapshot(
                         syntheticSoakSurfaceToken).ownerName === "none"
                     && coordinatorCore.surfaceCount === host.liveSurfaceCount
-                    && host.loadedDashboardRegionCount === 6
-                    && mountedRegionCount === host.liveSurfaceCount * 6
+                    && host.loadedDashboardRegionCount === 0
+                    && mountedRegionCount === 0
                     && coordinatorCore.surfaceRouter === host
                     && soakSyntheticRouter.routeToken === null
                     && soakSyntheticRouter.fallbackToken === null
                     && host.registryRecordForToken(soakControlCenterToken) !== null,
-                    "surface soak leaves default geometry and no orphan surface or owner");
+                    "one hundred soak cycles leave default geometry and no orphan surface or owner");
             console.warn("actual island surface soak passed " + soakCycleCount
                          + " cycles at DPR " + soakDevicePixelRatio
                          + " with exact final registry/coordinator counts");
@@ -1746,6 +2307,23 @@ ShellRoot {
         implicitHeight: test.testRegionImplicitHeight
         activeFocusOnTab: true
         Component.onCompleted: test.mountedRegionCount += 1
+        Component.onDestruction: test.mountedRegionCount -= 1
+    }
+
+    component TestClockRegion: TestRegion {
+        implicitWidth: clockBounds.implicitWidth
+
+        readonly property alias clockBoundsItem: clockBounds
+
+        Item {
+            id: clockBounds
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: implicitWidth
+            height: parent.height
+            implicitWidth: Math.max(1, test.testRegionImplicitWidth / 2)
+            implicitHeight: test.testRegionImplicitHeight
+        }
     }
 
     Component {
@@ -1755,6 +2333,11 @@ ShellRoot {
 
     Component {
         id: clockRegion
+        TestClockRegion {}
+    }
+
+    Component {
+        id: statusRegion
         TestRegion {}
     }
 
@@ -1945,6 +2528,22 @@ ShellRoot {
                 "revision": sourceRevision
             };
         }
+    }
+
+    QtObject {
+        id: fakeClock
+
+        readonly property string text: "10:42"
+        readonly property bool showIdleDate: false
+        readonly property string dateText: ""
+    }
+
+    QtObject {
+        id: fakeMedia
+
+        readonly property bool available: true
+        readonly property string artist: "Nagi"
+        readonly property string title: "Continuity"
     }
     QtObject {
         id: fakeTransientSource
@@ -2367,6 +2966,7 @@ ShellRoot {
         coordinator: coordinatorCore
         dashboardMediaContent: mediaRegion
         dashboardClockContent: clockRegion
+        dashboardStatusContent: statusRegion
         dashboardQuickControlsContent: quickControlsRegion
         dashboardAudioContent: audioRegion
         dashboardNotificationsContent: notificationsRegion
@@ -2376,6 +2976,8 @@ ShellRoot {
         audioAdapter: fakeAudioAdapter
         weather: fakeWeatherAdapter
         gamingPerformance: fakeGamingPerformance
+        clock: fakeClock
+        media: fakeMedia
         polkitController: fakePolkitController
         notificationService: fakeNotificationService
         applicationModel: fakeApplicationModel
@@ -2417,12 +3019,28 @@ ShellRoot {
 
     FrameAnimation {
         running: test.geometryDirection !== "" || test.motionProbeSampling
+                 || test.motionLauncherPrimingExpected
         onTriggered: {
             if (test.geometryDirection !== "") {
                 Qt.callLater(test.sampleGeometry);
             }
             if (test.motionProbeSampling) {
                 Qt.callLater(test.sampleMotionProbeFrame);
+            }
+            if (test.motionLauncherPrimingExpected && host.fallbackSurface !== null) {
+                const surface = host.fallbackSurface;
+                if (coordinator.ownerName === "launcher" && host.contentTransitionRunning
+                        && !host.contentTransitionDestinationReady
+                        && !surface.geometryAnimationRunning && surface.morphProgress === 0
+                        && host.contentOutgoingItem !== null) {
+                    test.motionLauncherPrimingFrames += 1;
+                }
+                if (surface.geometryAnimationRunning
+                        && host.contentTransitionToKind === coordinatorCore.ownerLauncher) {
+                    test.require(test.motionLauncherPrimingFrames >= 1,
+                                 "cold Launcher entry renders its destination before starting the morph timeline");
+                    test.motionLauncherPrimingExpected = false;
+                }
             }
         }
     }

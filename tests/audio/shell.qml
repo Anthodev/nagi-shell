@@ -529,7 +529,6 @@ ShellRoot {
                 const pipelineGrid = findObject(view, "audioPipelineGrid");
                 const outputDropdown = findObject(view, "audioOutputDropdown");
                 const inputDropdown = findObject(view, "audioInputDropdown");
-                const outputPopup = findObject(view, "audioOutputPopup");
                 const integration = findObject(view, "audioEasyEffectsCapability");
                 const openButton = findObject(view, "audioOpenEasyEffects");
                 const outputWarning = findObject(view, "audioOutputInternalDefaultWarning");
@@ -538,17 +537,22 @@ ShellRoot {
                 const refreshButton = findObject(view, "audioRefreshEasyEffectsStatus");
                 const outputPresetDropdown = findObject(view,
                                                         "audioEasyEffectsOutputPresetDropdown");
-                const outputPresetPopup = findObject(view, "audioEasyEffectsOutputPresetPopup");
                 require(frame !== null && contentRoot !== null && pipelineGrid !== null
                         && outputSection !== null && inputSection !== null && outputDropdown !== null
-                        && inputDropdown !== null && outputPopup !== null && outputWarning !== null
+                        && inputDropdown !== null && outputWarning !== null
                         && outputPreset !== null && inputPreset !== null && refreshButton !== null
-                        && outputPresetDropdown !== null && outputPresetPopup !== null,
-                        "audio frame exposes device and EasyEffects preset select lists");
+                        && outputPresetDropdown !== null,
+                        "audio frame exposes device and EasyEffects preset select controls");
                 require(inputSection.x > outputSection.x + outputSection.width
                         && Math.abs(inputSection.y - outputSection.y) < 0.5
                         && Math.abs(inputSection.width - outputSection.width) <= 1,
                         "wide audio content uses equal top-aligned pipeline columns");
+                const wideEnvelopeWidth = view.implicitWidth;
+                const wideEnvelopeHeight = view.implicitHeight;
+                require(view.twoColumnLayout && frame.resolvedViewportWidth === 572
+                        && frame.resolvedViewportHeight === 360
+                        && wideEnvelopeWidth === 604 && wideEnvelopeHeight === 436,
+                        "wide Audio keeps a 572 by 360 viewport and 604 by 436 outer envelope");
                 require(applications.launches.length === 0 && integration.visible && openButton.visible,
                         "installed EasyEffects exposes one honest affordance without implicit activation");
                 require(easyEffectsStatus.activationCount === 1
@@ -559,8 +563,11 @@ ShellRoot {
                 require(!view.requestPresetLoad("output", "Missing"),
                         "a name absent from the discovered list never crosses the service boundary");
                 outputPreset.openPopup(outputPreset.candidates.indexOf("Cinema"));
-                require(outputPresetPopup.visible && outputPresetPopup.height > 0,
-                        "output preset select list opens with bounded discovered options");
+                const outputPresetPopup = findObject(view, "audioEasyEffectsOutputPresetPopup");
+                require(outputPresetPopup !== null && outputPresetPopup.visible
+                        && outputPresetPopup.height > 0 && view.implicitWidth === wideEnvelopeWidth
+                        && view.implicitHeight === wideEnvelopeHeight,
+                        "opening a preset disclosure cannot resize the Audio envelope");
                 outputPreset.highlightedIndex = outputPreset.candidates.indexOf("Cinema");
                 require(outputPreset.selectHighlighted(),
                         "choosing one listed output preset dispatches immediately");
@@ -571,13 +578,61 @@ ShellRoot {
                         "preset select dispatch publishes confirmed readback");
                 require(view.refreshPresetStatus() && easyEffectsStatus.refreshCount === 1,
                         "preset status refresh is explicit and generation-owned");
+                require(typeof outputPreset.handlePopupKey === "function"
+                        && typeof inputPreset.handlePopupKey === "function"
+                        && typeof outputSection.handlePopupKey === "function",
+                        "device and preset disclosures share one popup keyboard handler");
+                outputPreset.openPopup(outputPreset.candidates.indexOf("Studio"));
+                require(outputPresetPopup.visible && outputPreset.highlightedIndex === 0,
+                        "preset disclosure opens on the requested preset entry");
+                const presetDownEvent = {
+                    "accepted": false,
+                    "key": Qt.Key_Down,
+                    "text": ""
+                };
+                outputPreset.handlePopupKey(presetDownEvent);
+                require(presetDownEvent.accepted && outputPreset.highlightedIndex === 1,
+                        "preset popup arrow navigation moves through listed presets");
+                const presetUpEvent = {
+                    "accepted": false,
+                    "key": Qt.Key_Up,
+                    "text": ""
+                };
+                outputPreset.handlePopupKey(presetUpEvent);
+                require(presetUpEvent.accepted && outputPreset.highlightedIndex === 0,
+                        "preset popup arrow navigation returns to the earlier preset");
+                const presetEnterEvent = {
+                    "accepted": false,
+                    "key": Qt.Key_Return,
+                    "text": ""
+                };
+                outputPreset.handlePopupKey(presetEnterEvent);
+                require(presetEnterEvent.accepted && !outputPresetPopup.visible
+                        && easyEffectsStatus.loadRequests.length === 2
+                        && easyEffectsStatus.loadRequests[1].pipeline === "output"
+                        && easyEffectsStatus.loadRequests[1].name === "Studio"
+                        && outputPreset.statusValue === "Studio",
+                        "preset popup Enter loads the highlighted preset and closes");
+                outputPreset.openPopup(0);
+                const presetEscapeEvent = {
+                    "accepted": false,
+                    "key": Qt.Key_Escape,
+                    "text": ""
+                };
+                outputPreset.handlePopupKey(presetEscapeEvent);
+                require(presetEscapeEvent.accepted && !outputPresetPopup.visible
+                        && outputPresetDropdown.focus,
+                        "preset popup Escape closes locally and restores preset button focus");
 
                 outputSection.openPopup(0);
                 Qt.callLater(() => {
-                    require(outputPopup.visible && outputPopup.height > 0
+                    const outputPopup = findObject(view, "audioOutputPopup");
+                    require(outputPopup !== null && outputPopup.visible && outputPopup.height > 0
                             && outputPopup.height <= Theme.size.controlHeightMd * 5
-                            + Theme.spacing.xs * 2 + 0.5,
-                            "output candidate popup is visible and bounded to five rows");
+                            + Theme.spacing.xs * 2 + 0.5
+                            && view.implicitWidth === wideEnvelopeWidth
+                            && view.implicitHeight === wideEnvelopeHeight,
+                            "device disclosure is bounded to five rows without resizing Audio");
                     const endEvent = {
                         "accepted": false,
                         "key": Qt.Key_End,
@@ -646,11 +701,14 @@ ShellRoot {
                     require(findObject(view, "audioSelectionFailure").visible,
                             "selection timeout remains explicit and local to the Audio subview");
 
-                    view.maximumAvailableWidth = view.twoColumnWidth + Theme.spacing.lg * 2 - 1;
+                    view.maximumViewportWidth = 571;
                     view.width = view.implicitWidth;
                     Qt.callLater(() => Qt.callLater(() => {
-                        require(inputSection.y >= outputSection.y + outputSection.height,
-                                "narrow audio content stacks input below output");
+                        require(!view.twoColumnLayout && frame.resolvedViewportWidth === 278
+                                && frame.resolvedViewportHeight === 360
+                                && view.implicitWidth === 310 && view.implicitHeight === 436
+                                && inputSection.y >= outputSection.y + outputSection.height,
+                                "narrow Audio stacks into a stable 278 by 360 viewport");
                         bundle.adapter.failureDeadlineReached();
                         apply(bundle, () => {
                             bundle.service.defaultAudioSink = bundle.virtualNode;

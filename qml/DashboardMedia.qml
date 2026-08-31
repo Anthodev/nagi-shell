@@ -6,6 +6,12 @@ import QtQuick.Layouts
 
 // Expanded media consumes only the normalized adapter contract. Artwork and
 // reliable timing work disappear when the region is hidden or unsupported.
+// The row mirrors Expanded's trailing media field: track text and transport
+// read left-to-right while the square artwork anchors the island's right
+// edge. Titles and artists keep left-aligned ElideRight truncation toward
+// the artwork; transport controls stay in the conventional previous, play,
+// next order; and the state and timing captions right-align into the
+// artwork edge.
 FocusScope {
     id: root
 
@@ -25,7 +31,7 @@ FocusScope {
     readonly property string artworkRequest: artwork.source.toString()
     readonly property int artworkExtent: Theme.spacing.xxl * 3
 
-    implicitWidth: mediaRow.implicitWidth
+    implicitWidth: artworkExtent + Theme.spacing.md + Theme.spacing.xxl * 7
     implicitHeight: mediaRow.implicitHeight
 
     function formatTime(seconds) {
@@ -55,34 +61,19 @@ FocusScope {
     RowLayout {
         id: mediaRow
 
+        anchors.left: parent.left
+        anchors.right: parent.right
         spacing: Theme.spacing.md
 
-        Rectangle {
-            Layout.preferredWidth: root.artworkExtent
-            Layout.preferredHeight: root.artworkExtent
-            Layout.alignment: Qt.AlignVCenter
-            radius: Theme.radius.md
-            color: Theme.color.surfaceActive
-            clip: true
-
-            Image {
-                id: artwork
-
-                anchors.fill: parent
-                asynchronous: true
-                cache: true
-                fillMode: Image.PreserveAspectCrop
-                sourceSize.width: root.media === null ? 0 : root.media.artworkMaximumWidth
-                source: root.visible && root.media !== null && root.media.artworkStatus === "ready"
-                        && root.media.artworkSource !== "" ? root.media.artworkSource : ""
-            }
-        }
-
         ColumnLayout {
+            objectName: "dashboardMediaTextColumn"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.preferredWidth: Theme.spacing.xxl * 7
             spacing: Theme.spacing.xs
 
             IslandText {
+                objectName: "dashboardMediaTitle"
                 Layout.fillWidth: true
                 text: root.media === null ? "" : root.media.title !== "" ? root.media.title :
                                                                            root.media.playerName
@@ -93,6 +84,7 @@ FocusScope {
             }
 
             IslandText {
+                objectName: "dashboardMediaArtist"
                 Layout.fillWidth: true
                 text: root.media === null ? "" : root.media.artist !== "" ? root.media.artist :
                                                                             root.media.album
@@ -238,6 +230,27 @@ FocusScope {
                     tone: "muted"
                     size: "caption"
                 }
+            }
+        }
+        Rectangle {
+            objectName: "dashboardMediaArtwork"
+            Layout.preferredWidth: root.artworkExtent
+            Layout.preferredHeight: root.artworkExtent
+            Layout.alignment: Qt.AlignVCenter
+            radius: Theme.radius.lg
+            color: Theme.color.surfaceActive
+            clip: true
+
+            Image {
+                id: artwork
+
+                anchors.fill: parent
+                asynchronous: true
+                cache: true
+                fillMode: Image.PreserveAspectCrop
+                sourceSize.width: root.media === null ? 0 : root.media.artworkMaximumWidth
+                source: root.visible && root.media !== null && root.media.artworkStatus === "ready"
+                        && root.media.artworkSource !== "" ? root.media.artworkSource : ""
             }
         }
     }
