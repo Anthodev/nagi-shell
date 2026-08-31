@@ -51,11 +51,12 @@ Flickable {
         width: Math.min(root.width, Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.lg
 
-        IslandText {
-            text: qsTr("About")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "aboutPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "controlCenterAbout"
+            title: qsTr("About")
+            description: qsTr("A context-aware desktop island and Control Center for KDE Plasma.")
         }
 
         IslandText {
@@ -63,14 +64,6 @@ Flickable {
             text: qsTr("Nagi Shell %1").arg(root.version)
             size: "body"
             font.weight: Theme.type.weightSemibold
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            text: qsTr("A context-aware desktop island and Control Center for KDE Plasma.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
         }
 
         IslandPanel {

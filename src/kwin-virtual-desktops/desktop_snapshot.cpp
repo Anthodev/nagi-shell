@@ -43,6 +43,12 @@ bool validBoundedString(
     return (allowEmpty || !string.isEmpty()) && string.size() <= maximumLength;
 }
 
+struct OutputProjection {
+    QString name;
+    QString currentId;
+    bool showTransient;
+};
+
 std::optional<QVector<Desktop>> decodeDesktops(const QJsonValue &value, QString *error)
 {
     if (!value.isArray()) {
@@ -121,6 +127,71 @@ std::optional<QVector<Desktop>> decodeDesktops(const QJsonValue &value, QString 
     return desktops;
 }
 
+std::optional<QVector<OutputProjection>> decodeOutputs(
+    const QJsonValue &value,
+    const QSet<QString> &desktopIds,
+    QString *error)
+{
+    if (!value.isArray()) {
+        setError(error, QStringLiteral("outputs is not an array"));
+        return std::nullopt;
+    }
+
+    const QJsonArray array = value.toArray();
+    if (array.isEmpty() || array.size() > MaximumOutputCount) {
+        setError(error, QStringLiteral("output count is out of bounds"));
+        return std::nullopt;
+    }
+
+    QVector<OutputProjection> outputs;
+    outputs.reserve(array.size());
+    QSet<QString> names;
+    bool transientSeen = false;
+
+    for (const QJsonValue &entry : array) {
+        if (!entry.isObject()) {
+            setError(error, QStringLiteral("output entry is not an object"));
+            return std::nullopt;
+        }
+
+        const QJsonObject object = entry.toObject();
+        if (!hasExactKeys(object, {"name", "currentId", "showTransient"})
+            || !validBoundedString(
+                object.value(QStringLiteral("name")),
+                MaximumOutputNameLength,
+                false)
+            || !validBoundedString(
+                object.value(QStringLiteral("currentId")),
+                MaximumDesktopIdLength,
+                false)
+            || !object.value(QStringLiteral("showTransient")).isBool()) {
+            setError(error, QStringLiteral("output entry schema is invalid"));
+            return std::nullopt;
+        }
+
+        const QString name = object.value(QStringLiteral("name")).toString();
+        const QString currentId = object.value(QStringLiteral("currentId")).toString();
+        const bool showTransient = object.value(QStringLiteral("showTransient")).toBool();
+        if (names.contains(name)) {
+            setError(error, QStringLiteral("output name is duplicated"));
+            return std::nullopt;
+        }
+        if (!desktopIds.contains(currentId)) {
+            setError(error, QStringLiteral("output current desktop does not resolve"));
+            return std::nullopt;
+        }
+        if (showTransient && transientSeen) {
+            setError(error, QStringLiteral("multiple outputs request feedback"));
+            return std::nullopt;
+        }
+
+        names.insert(name);
+        transientSeen = transientSeen || showTransient;
+        outputs.append({name, currentId, showTransient});
+    }
+    return outputs;
+}
+
 QJsonArray encodeDesktops(const QVector<Desktop> &desktops)
 {
     QJsonArray array;
@@ -134,21 +205,29 @@ QJsonArray encodeDesktops(const QVector<Desktop> &desktops)
     return array;
 }
 
+QJsonArray encodeOutputs(const QVector<OutputProjection> &outputs)
+{
+    QJsonArray array;
+    for (const OutputProjection &output : outputs) {
+        array.append(QJsonObject{
+            {QStringLiteral("name"), output.name},
+            {QStringLiteral("currentId"), output.currentId},
+            {QStringLiteral("showTransient"), output.showTransient},
+        });
+    }
+    return array;
+}
+
 QByteArray encodeWireSnapshot(
     const QString &helperEpoch,
-    bool available,
-    const QString &currentId,
-    bool showTransient,
-    const QVector<Desktop> &desktops)
+    const QVector<Desktop> &desktops,
+    const QVector<OutputProjection> &outputs)
 {
     return QJsonDocument(QJsonObject{
                              {QStringLiteral("version"), SnapshotProtocolVersion},
                              {QStringLiteral("helperEpoch"), helperEpoch},
-                             {QStringLiteral("available"), available},
-                             {QStringLiteral("currentId"),
-                              available ? QJsonValue(currentId) : QJsonValue(QJsonValue::Null)},
-                             {QStringLiteral("showTransient"), showTransient},
                              {QStringLiteral("desktops"), encodeDesktops(desktops)},
+                             {QStringLiteral("outputs"), encodeOutputs(outputs)},
                          })
         .toJson(QJsonDocument::Compact);
 }
@@ -194,53 +273,40 @@ std::optional<QByteArray> canonicalizeScriptSnapshot(
     }
 
     const QJsonObject object = document.object();
-    if (!hasExactKeys(object, {"available", "currentId", "showTransient", "desktops"})
-        || !object.value(QStringLiteral("available")).isBool()
-        || !object.value(QStringLiteral("showTransient")).isBool()) {
+    if (!hasExactKeys(object, {"desktops", "outputs"})
+        || !object.value(QStringLiteral("desktops")).isArray()
+        || !object.value(QStringLiteral("outputs")).isArray()) {
         setError(error, QStringLiteral("snapshot schema is invalid"));
         return std::nullopt;
     }
 
-    const bool available = object.value(QStringLiteral("available")).toBool();
-    const bool showTransient = object.value(QStringLiteral("showTransient")).toBool();
-    const QJsonValue currentValue = object.value(QStringLiteral("currentId"));
-    const QJsonValue desktopsValue = object.value(QStringLiteral("desktops"));
-
-    if (!available) {
-        if (!currentValue.isNull() || showTransient || !desktopsValue.isArray()
-            || !desktopsValue.toArray().isEmpty()) {
+    const QJsonArray desktopArray = object.value(QStringLiteral("desktops")).toArray();
+    const QJsonArray outputArray = object.value(QStringLiteral("outputs")).toArray();
+    if (desktopArray.isEmpty() || outputArray.isEmpty()) {
+        if (!desktopArray.isEmpty() || !outputArray.isEmpty()) {
             setError(error, QStringLiteral("unavailable snapshot is not canonical"));
             return std::nullopt;
         }
         return unavailableSnapshotJson(helperEpoch);
     }
 
-    if (!validBoundedString(currentValue, MaximumDesktopIdLength, false)) {
-        setError(error, QStringLiteral("current desktop ID is invalid"));
-        return std::nullopt;
-    }
-
-    const auto desktops = decodeDesktops(desktopsValue, error);
+    const auto desktops = decodeDesktops(desktopArray, error);
     if (!desktops) {
         return std::nullopt;
     }
 
-    const QString currentId = currentValue.toString();
-    const bool currentResolves = std::any_of(
-        desktops->cbegin(),
-        desktops->cend(),
-        [&currentId](const Desktop &desktop) { return desktop.id == currentId; });
-    if (!currentResolves) {
-        setError(error, QStringLiteral("current desktop does not resolve"));
+    QSet<QString> desktopIds;
+    desktopIds.reserve(desktops->size());
+    for (const Desktop &desktop : *desktops) {
+        desktopIds.insert(desktop.id);
+    }
+
+    const auto outputs = decodeOutputs(outputArray, desktopIds, error);
+    if (!outputs) {
         return std::nullopt;
     }
 
-    const QByteArray snapshot = encodeWireSnapshot(
-        helperEpoch,
-        true,
-        currentId,
-        showTransient,
-        *desktops);
+    const QByteArray snapshot = encodeWireSnapshot(helperEpoch, *desktops, *outputs);
     if (snapshot.size() > MaximumSnapshotLength) {
         setError(error, QStringLiteral("canonical snapshot length is out of bounds"));
         return std::nullopt;
@@ -250,7 +316,7 @@ std::optional<QByteArray> canonicalizeScriptSnapshot(
 
 QByteArray unavailableSnapshotJson(const QString &helperEpoch)
 {
-    return encodeWireSnapshot(helperEpoch, false, {}, false, {});
+    return encodeWireSnapshot(helperEpoch, {}, {});
 }
 
 bool SnapshotDeduplicator::shouldPublish(const QByteArray &snapshot)

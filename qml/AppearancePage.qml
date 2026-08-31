@@ -154,21 +154,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Appearance")
-            objectName: "appearancePageTitle"
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "appearancePageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Set an installed family and default body size independently for each Nagi surface. Semantic text roles preserve their hierarchy.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterAppearance"
+            title: qsTr("Appearance")
+            description: qsTr("Choose Nagi's colors, typography, shape, and motion.")
         }
 
         TypographyScopeControls {

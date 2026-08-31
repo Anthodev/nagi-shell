@@ -206,11 +206,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Wi-Fi")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "wifiPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "wifi"
+            title: qsTr("Wi-Fi")
+            description: qsTr("Connect to nearby networks and manage saved connections.")
         }
 
         IslandPanel {

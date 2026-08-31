@@ -7,6 +7,7 @@ Scope {
     id: bridge
 
     required property var coordinator
+    required property var surfaceHost
     property var workspaceSource: null
     property var brightnessSource: null
     property var audioSource: null
@@ -17,8 +18,17 @@ Scope {
         target: bridge.workspaceSource
         ignoreUnknownSignals: true
 
-        function onConfirmedWorkspaceChanged(sourceToken, sourceGeneration, revision) {
-            bridge.coordinator.requestWorkspace(sourceToken, sourceGeneration, revision, null);
+        function onConfirmedWorkspaceChanged(sourceToken, sourceGeneration, revision, outputToken) {
+            if (bridge.surfaceHost === null || bridge.surfaceHost === undefined
+                    || typeof bridge.surfaceHost.surfaceTokenForOutput !== "function") {
+                return;
+            }
+            const initiatingSurfaceToken = bridge.surfaceHost.surfaceTokenForOutput(outputToken);
+            if (initiatingSurfaceToken === null || initiatingSurfaceToken === undefined) {
+                return;
+            }
+            bridge.coordinator.requestWorkspace(sourceToken, sourceGeneration, revision,
+                                                initiatingSurfaceToken);
         }
 
         function onConfirmedWorkspaceInvalidated(sourceToken, sourceGeneration) {

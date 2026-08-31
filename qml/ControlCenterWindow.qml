@@ -32,47 +32,58 @@ FloatingWindow {
     readonly property var availableRoutes: Object.freeze([
                                                              {
                                                                  "id": "island",
-                                                                 "name": qsTr("Island")
+                                                                 "name": qsTr("Island"),
+                                                                 "icon": "controlCenterIsland"
                                                              },
                                                              {
                                                                  "id": "appearance",
-                                                                 "name": qsTr("Appearance")
+                                                                 "name": qsTr("Appearance"),
+                                                                 "icon": "controlCenterAppearance"
                                                              },
                                                              {
                                                                  "id": "clock-date",
-                                                                 "name": qsTr("Clock & Date")
+                                                                 "name": qsTr("Clock & Date"),
+                                                                 "icon": "controlCenterClock"
                                                              },
                                                              {
                                                                  "id": "media",
-                                                                 "name": qsTr("Media")
+                                                                 "name": qsTr("Media"),
+                                                                 "icon": "controlCenterMedia"
                                                              },
                                                              {
                                                                  "id": "weather",
-                                                                 "name": qsTr("Weather")
+                                                                 "name": qsTr("Weather"),
+                                                                 "icon": "controlCenterWeather"
                                                              },
                                                              {
                                                                  "id": "notifications",
-                                                                 "name": qsTr("Notifications")
+                                                                 "name": qsTr("Notifications"),
+                                                                 "icon": "controlCenterNotifications"
                                                              },
                                                              {
                                                                  "id": "wifi",
-                                                                 "name": qsTr("Wi-Fi")
+                                                                 "name": qsTr("Wi-Fi"),
+                                                                 "icon": "wifi"
                                                              },
                                                              {
                                                                  "id": "bluetooth",
-                                                                 "name": qsTr("Bluetooth")
+                                                                 "name": qsTr("Bluetooth"),
+                                                                 "icon": "bluetooth"
                                                              },
                                                              {
                                                                  "id": "wallpaper",
-                                                                 "name": qsTr("Wallpaper")
+                                                                 "name": qsTr("Wallpaper"),
+                                                                 "icon": "controlCenterWallpaper"
                                                              },
                                                              {
                                                                  "id": "displays",
-                                                                 "name": qsTr("Displays")
+                                                                 "name": qsTr("Displays"),
+                                                                 "icon": "controlCenterDisplays"
                                                              },
                                                              {
                                                                  "id": "about",
-                                                                 "name": qsTr("About")
+                                                                 "name": qsTr("About"),
+                                                                 "icon": "controlCenterAbout"
                                                              }
                                                          ])
     readonly property string layoutMode: width >= Theme.size.controlCenterResponsiveBreakpoint
@@ -80,7 +91,6 @@ FloatingWindow {
     readonly property bool pageLoaded: pageLoader.active && pageLoader.item !== null
     readonly property int loadedPageCount: pageLoaded ? 1 : 0
     readonly property var loadedPageItem: pageLoaded ? pageLoader.item : null
-    readonly property string activeRouteName: routeName(currentPageId)
     readonly property string diagnosticText: currentPageId === "about" && pageLoader.item !== null
                                              ? pageLoader.item.diagnosticText : ""
     readonly property bool weatherLookupAllowed: currentPageId === "weather" && pageLoader.item
@@ -168,35 +178,6 @@ FloatingWindow {
                 || routeId === "media" || routeId === "weather" || routeId === "notifications"
                 || routeId === "wifi" || routeId === "bluetooth" || routeId === "wallpaper"
                 || routeId === "displays" || routeId === "about";
-    }
-
-    function routeName(routeId) {
-        switch (routeId) {
-        case "island":
-            return qsTr("Island");
-        case "appearance":
-            return qsTr("Appearance");
-        case "clock-date":
-            return qsTr("Clock & Date");
-        case "media":
-            return qsTr("Media");
-        case "weather":
-            return qsTr("Weather");
-        case "notifications":
-            return qsTr("Notifications");
-        case "wifi":
-            return qsTr("Wi-Fi");
-        case "bluetooth":
-            return qsTr("Bluetooth");
-        case "wallpaper":
-            return qsTr("Wallpaper");
-        case "displays":
-            return qsTr("Displays");
-        case "about":
-            return qsTr("About");
-        default:
-            return "";
-        }
     }
 
     function normalizeRoute(routeId) {
@@ -355,14 +336,16 @@ FloatingWindow {
         id: routeButton
 
         required property string routeLabel
+        required property string routeIcon
         property bool selected: false
         required property int routeIndex
         required property var routeRepeater
 
         implicitHeight: Theme.size.controlHeightLg
         implicitWidth: implicitContentWidth + leftPadding + rightPadding
-        leftPadding: Theme.spacing.lg
-        rightPadding: Theme.spacing.md
+        Layout.minimumWidth: 0
+        leftPadding: Theme.spacing.xs
+        rightPadding: Theme.spacing.xs
         focusPolicy: Qt.StrongFocus
         hoverEnabled: true
         Accessible.role: Accessible.ListItem
@@ -413,13 +396,33 @@ FloatingWindow {
             }
         }
 
-        contentItem: IslandText {
-            text: routeButton.routeLabel
-            size: "body"
-            font.weight: routeButton.selected ? Theme.type.weightSemibold : Theme.type.weightMedium
-            color: routeButton.selected ? Theme.snapshot.accent : Theme.color.textPrimary
-            horizontalAlignment: Text.AlignLeft
-            verticalAlignment: Text.AlignVCenter
+        contentItem: RowLayout {
+            spacing: Theme.spacing.xs
+
+            IslandIcon {
+                objectName: "controlCenterRouteIcon-" + routeButton.routeIndex
+                meaning: routeButton.routeIcon
+                semanticState: routeButton.selected ? "active" : "normal"
+                size: "md"
+                Accessible.ignored: true
+            }
+
+            IslandText {
+                objectName: "controlCenterRouteLabel-" + routeButton.routeIndex
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: routeButton.routeLabel
+                size: "body"
+                font.weight: routeButton.selected ? Theme.type.weightSemibold :
+                                                    Theme.type.weightMedium
+                color: Theme.color.textPrimary
+                wrapMode: Text.NoWrap
+                maximumLineCount: 1
+                elide: Text.ElideRight
+                clip: true
+                horizontalAlignment: Text.AlignLeft
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         IslandFocusRing {
@@ -437,6 +440,7 @@ FloatingWindow {
     }
 
     Rectangle {
+        objectName: "controlCenterWindowContent"
         anchors.fill: parent
         color: Theme.color.surfaceOpaque
 
@@ -460,21 +464,22 @@ FloatingWindow {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.spacing.lg
-                spacing: Theme.spacing.lg
+                spacing: 0
 
                 Rectangle {
+                    objectName: "controlCenterRail"
                     Layout.preferredWidth: Theme.size.controlCenterSidebarWidth
                     Layout.fillHeight: true
                     visible: root.layoutMode === "sidebar"
-                    radius: Theme.radius.lg
-                    color: Theme.color.surface
-                    border.width: Theme.size.hairlineWidth
-                    border.color: Theme.color.surfaceBorder
+                    color: Theme.color.controlCenterRailSurface
+                    border.width: 0
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: Theme.spacing.md
+                        anchors.leftMargin: Theme.spacing.sm
+                        anchors.rightMargin: Theme.spacing.sm
+                        anchors.topMargin: Theme.spacing.lg
+                        anchors.bottomMargin: Theme.spacing.lg
                         spacing: Theme.spacing.md
 
                         IslandText {
@@ -516,6 +521,7 @@ FloatingWindow {
                                     objectName: "controlCenterSidebarRoute-" + modelData.id
                                     Layout.fillWidth: true
                                     routeLabel: modelData.name
+                                    routeIcon: modelData.icon
                                     selected: root.currentPageId === modelData.id
                                     onClicked: root.selectRoute(modelData.id)
                                 }
@@ -526,20 +532,36 @@ FloatingWindow {
                             Layout.fillHeight: true
                         }
                     }
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        width: Theme.size.hairlineWidth
+                        color: Theme.color.surfaceBorder
+                        opacity: 0.72
+                    }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.leftMargin: root.layoutMode === "sidebar" ? Theme.spacing.xxl :
+                                                                       Theme.spacing.lg
+                    Layout.rightMargin: Theme.spacing.lg
+                    Layout.topMargin: Theme.spacing.lg
+                    Layout.bottomMargin: Theme.spacing.lg
                     spacing: Theme.spacing.md
 
                     RowLayout {
+                        objectName: "controlCenterCompactBackRow"
                         Layout.fillWidth: true
                         visible: root.layoutMode === "compact" && !root.compactNavigationVisible
                         spacing: Theme.spacing.sm
 
                         IslandButton {
                             id: compactBack
+                            objectName: "controlCenterCompactBack"
 
                             label: qsTr("All settings")
                             reducedMotion: root.reducedMotion
@@ -548,16 +570,6 @@ FloatingWindow {
                                 root.compactNavigationVisible = true;
                                 Qt.callLater(root.focusCurrentContext);
                             }
-                        }
-
-                        IslandText {
-                            Layout.fillWidth: true
-                            text: root.activeRouteName
-                            size: "title"
-                            font.weight: Theme.type.weightSemibold
-                            horizontalAlignment: Text.AlignRight
-                            Accessible.role: Accessible.Heading
-                            Accessible.name: text
                         }
                     }
 
@@ -599,6 +611,7 @@ FloatingWindow {
                                 objectName: "controlCenterCompactRoute-" + modelData.id
                                 Layout.fillWidth: true
                                 routeLabel: modelData.name
+                                routeIcon: modelData.icon
                                 selected: root.currentPageId === modelData.id
                                 onClicked: root.selectRoute(modelData.id)
                             }

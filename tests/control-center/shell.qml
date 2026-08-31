@@ -88,19 +88,170 @@ ShellRoot {
         }
     }
 
-    function captureCurrent(name, continuation) {
-        if (captureDirectory === "") {
-            continuation();
+    function routeHeaderName(routeId) {
+        const headerNames = {
+            "island": "islandPageHeader",
+            "appearance": "appearancePageHeader",
+            "clock-date": "clockPageHeader",
+            "media": "mediaPageHeader",
+            "weather": "weatherPageHeader",
+            "notifications": "notificationsPageHeader",
+            "wifi": "wifiPageHeader",
+            "bluetooth": "bluetoothPageHeader",
+            "wallpaper": "wallpaperPageHeader",
+            "displays": "displaysPageHeader",
+            "about": "aboutPageHeader"
+        };
+        return headerNames[routeId];
+    }
+
+    function requireCurrentPageHeader() {
+        if (controlCenter.loadedPageItem === null) {
             return;
         }
-        const windowContent = controlCenter.contentItem.children[0];
-        require(windowContent !== null && windowContent !== undefined,
-                "Control Center capture target is available");
+        const routeIndex = controlCenter.currentRouteIndex();
+        const route = controlCenter.availableRoutes[routeIndex];
+        const header = findObject(controlCenter.loadedPageItem, routeHeaderName(route.id));
+        const title = findObject(header, "controlCenterPageHeaderTitle");
+        const description = findObject(header, "controlCenterPageHeaderDescription");
+        const icon = findObject(header, "controlCenterPageHeaderIcon");
+        require(header !== null && header.iconMeaning === route.icon && title !== null
+                && title.text === route.name && description !== null && description.text !== ""
+                && icon !== null && icon.resolvedKind === "nagi" && icon.width
+                === Theme.size.iconSizeLg, route.name
+                + " uses the shared semantic icon, title, and description header");
+        const pageTitleSize = Theme.type.sizeFor("controlCenter", "pageTitle");
+        require(title.typographyScope === "controlCenter"
+                && title.font.pixelSize === pageTitleSize && pageTitleSize
+                > Theme.type.sizeFor("controlCenter", "title") && pageTitleSize
+                < Theme.type.sizeFor("controlCenter", "display")
+                && title.Accessible.role !== 0 && title.Accessible.name === route.name, route.name
+                + " renders the shared pageTitle role above section-title scale");
+        const iconOrigin = icon.mapToItem(header, 0, 0);
+        const titleOrigin = title.mapToItem(header, 0, 0);
+        const descriptionOrigin = description.mapToItem(header, 0, 0);
+        require(Math.abs(iconOrigin.x) <= 0.5 && Math.abs(descriptionOrigin.x) <= 0.5
+                && titleOrigin.x >= descriptionOrigin.x + Theme.spacing.sm, route.name
+                + " keeps the icon and description on the page keyline with the title beside the icon");
+    }
+    function captureRoutePrefix() {
+        return controlCenter.layoutMode === "sidebar" ? "controlCenterSidebarRoute-" :
+                                                        "controlCenterCompactRoute-";
+    }
+
+    function captureRouteIconsTerminalReady() {
+        const prefix = captureRoutePrefix();
+        for (let index = 0; index < controlCenter.availableRoutes.length; index += 1) {
+            const route = controlCenter.availableRoutes[index];
+            const routeItem = findObject(controlCenter.contentItem, prefix + route.id);
+            const icon = findObject(routeItem, "controlCenterRouteIcon-" + index);
+            if (routeItem === null || icon === null || !icon.terminalReady) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function captureItemRect(item, target) {
+        const origin = item.mapToItem(target, 0, 0);
+        return {
+            "x": origin.x,
+            "y": origin.y,
+            "width": item.width,
+            "height": item.height
+        };
+    }
+
+    function requireCaptureRectInside(candidate, boundary, context) {
+        require(candidate.width > 0 && candidate.height > 0 && candidate.x
+                >= boundary.x - 0.5 && candidate.y >= boundary.y - 0.5 && candidate.x
+                + candidate.width <= boundary.x + boundary.width + 0.5 && candidate.y
+                + candidate.height <= boundary.y + boundary.height + 0.5, context);
+    }
+
+
+    function requireCaptureGeometry(target) {
+        const sidebar = controlCenter.layoutMode === "sidebar";
+        const navigationVisible = sidebar || controlCenter.compactNavigationVisible;
+        if (navigationVisible) {
+            const boundaryItem = sidebar ? findObject(controlCenter.contentItem,
+                                                       "controlCenterRail") : target;
+            require(boundaryItem !== null && boundaryItem.visible,
+                    "captured navigation exposes its visible route boundary");
+            const boundary = captureItemRect(boundaryItem, target);
+            const prefix = captureRoutePrefix();
+            let previousBottom = boundary.y;
+            for (let index = 0; index < controlCenter.availableRoutes.length; index += 1) {
+                const route = controlCenter.availableRoutes[index];
+                const routeItem = findObject(controlCenter.contentItem, prefix + route.id);
+                const icon = findObject(routeItem, "controlCenterRouteIcon-" + index);
+                const label = findObject(routeItem, "controlCenterRouteLabel-" + index);
+                require(routeItem !== null && routeItem.visible && icon !== null && label !== null
+                        && icon.terminalReady && icon.loadStatus === Image.Ready, route.name
+                        + " reaches terminal-ready icon rendering before capture");
+                const routeRect = captureItemRect(routeItem, target);
+                const iconRect = captureItemRect(icon, target);
+                const labelRect = captureItemRect(label, target);
+                requireCaptureRectInside(routeRect, boundary, route.name
+                                         + " route stays inside the captured navigation boundary");
+                requireCaptureRectInside(iconRect, routeRect, route.name
+                                         + " icon stays inside its route bounds");
+                requireCaptureRectInside(labelRect, routeRect, route.name
+                                         + " label stays inside its route bounds");
+                require(routeRect.y >= previousBottom - 0.5, route.name
+                        + " remains in deterministic route order");
+                previousBottom = routeRect.y + routeRect.height;
+                require(label.text === route.name && label.lineCount === 1
+                        && label.wrapMode === Text.NoWrap && label.elide === Text.ElideRight
+                        && !label.truncated && label.paintedWidth <= label.width + 0.5
+                        && label.paintedHeight <= label.height + 0.5
+                        && routeItem.Accessible.name === route.name, route.name
+                        + " keeps its full bounded visual label and accessible name");
+            }
+            require(previousBottom <= boundary.y + boundary.height + 0.5,
+                    "all eleven captured route rows finish inside the navigation boundary");
+        }
+
+        if (controlCenter.layoutMode === "compact" && !controlCenter.compactNavigationVisible
+                && controlCenter.pageLoaded) {
+            const compactBack = findObject(controlCenter.contentItem, "controlCenterCompactBack");
+            const focusRing = findObject(compactBack, "islandFocusRing");
+            if (compactBack !== null && compactBack.activeFocus && !compactBack.visualFocus) {
+                controlCenter.contentItem.forceActiveFocus(Qt.OtherFocusReason);
+                compactBack.forceActiveFocus(Qt.TabFocusReason);
+            }
+            require(compactBack !== null && compactBack.visible && compactBack.activeFocus
+                    && compactBack.visualFocus && focusRing !== null && focusRing.visible,
+                    "fresh compact loaded-page captures keep All settings active and visibly focused");
+            const targetRect = {
+                "x": 0,
+                "y": 0,
+                "width": target.width,
+                "height": target.height
+            };
+            const focusRect = captureItemRect(focusRing, target);
+            requireCaptureRectInside(focusRect, targetRect,
+                                     "compact All settings focus ring stays inside the capture");
+        }
+    }
+
+    function performCapture(name, continuation, windowContent) {
+        requireCurrentPageHeader();
+        requireCaptureGeometry(windowContent);
         windowContent.grabToImage(function (result) {
             const path = test.captureDirectory + "/" + name + ".png";
             require(result.saveToFile(path), "real Control Center " + name + " capture is saved");
-            continuation();
+            Qt.callLater(continuation);
         });
+    }
+
+    function captureCurrent(name, continuation) {
+        const windowContent = findObject(controlCenter.contentItem,
+                                         "controlCenterWindowContent");
+        require(windowContent !== null, "Control Center capture target is available");
+        renderedFrameBarrier.begin(function () {
+            performCapture(name, continuation, windowContent);
+        }, true);
     }
 
     function requireMinimalMotion(context) {
@@ -231,7 +382,51 @@ ShellRoot {
         return null;
     }
 
+    function findInSubtree(item, predicate) {
+        if (item === null || item === undefined) {
+            return null;
+        }
+        if (predicate(item)) {
+            return item;
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            const found = findInSubtree(children[index], predicate);
+            if (found !== null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    function countInSubtree(item, predicate) {
+        if (item === null || item === undefined) {
+            return 0;
+        }
+        let count = predicate(item) ? 1 : 0;
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            count += countInSubtree(children[index], predicate);
+        }
+        return count;
+    }
+
+    function collectHeadings(item, headingRole, headingName, accumulator) {
+        if (item === null || item === undefined) {
+            return;
+        }
+        if (item.Accessible.role === headingRole && item.Accessible.name === headingName) {
+            accumulator.push(item);
+        }
+        const children = item.children ?? [];
+        for (let index = 0; index < children.length; index += 1) {
+            collectHeadings(children[index], headingRole, headingName, accumulator);
+        }
+    }
+
     function requireSectionHierarchy(page, sections, context) {
+        const pageTitleText = findObject(page, "controlCenterPageHeaderTitle");
+        require(pageTitleText !== null, context + " owns its title inside the shared page header");
         let previousY = -1;
         for (let index = 0; index < sections.length; index += 1) {
             const specification = sections[index];
@@ -245,18 +440,133 @@ ShellRoot {
             require(position.y > previousY, context
                     + " keeps subsection headings in document order");
             previousY = position.y;
+            const sectionHeading = findInSubtree(section, function (item) {
+                return item.Accessible.role === pageTitleText.Accessible.role;
+            });
+            require(sectionHeading !== null && sectionHeading.font.pixelSize
+                    < pageTitleText.font.pixelSize, context
+                    + " renders section titles below the shared page title scale");
         }
     }
 
     function routeNamesExact() {
-        return controlCenter.routeName("island") === "Island" && controlCenter.routeName(
-                    "appearance") === "Appearance" && controlCenter.routeName("clock-date")
-                === "Clock & Date" && controlCenter.routeName("media") === "Media"
-                && controlCenter.routeName("weather") === "Weather" && controlCenter.routeName(
-                    "notifications") === "Notifications" && controlCenter.routeName("wifi")
-                === "Wi-Fi" && controlCenter.routeName("bluetooth") === "Bluetooth"
-                && controlCenter.routeName("wallpaper") === "Wallpaper" && controlCenter.routeName(
-                    "displays") === "Displays" && controlCenter.routeName("about") === "About";
+        const names = ["Island", "Appearance", "Clock & Date", "Media", "Weather",
+                       "Notifications", "Wi-Fi", "Bluetooth", "Wallpaper", "Displays",
+                       "About"];
+        if (controlCenter.availableRoutes.length !== names.length) {
+            return false;
+        }
+        for (let index = 0; index < names.length; index += 1) {
+            if (controlCenter.availableRoutes[index].name !== names[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    function routeIconsExact() {
+        const meanings = ["controlCenterIsland", "controlCenterAppearance", "controlCenterClock",
+                          "controlCenterMedia", "controlCenterWeather",
+                          "controlCenterNotifications", "wifi", "bluetooth",
+                          "controlCenterWallpaper", "controlCenterDisplays",
+                          "controlCenterAbout"];
+        if (controlCenter.availableRoutes.length !== meanings.length) {
+            return false;
+        }
+        for (let index = 0; index < meanings.length; index += 1) {
+            const route = controlCenter.availableRoutes[index];
+            const resolved = IconResolver.resolve(route.icon, "normal", "", "");
+            if (route.icon !== meanings[index] || resolved.kind !== "nagi"
+                    || resolved.source === IconResolver.placeholderSource) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function requireHeaderInViewport(page, context) {
+        const route = controlCenter.availableRoutes[controlCenter.currentRouteIndex()];
+        const header = findObject(page, routeHeaderName(route.id));
+        require(header !== null && header.visible && header.opacity === 1 && header.height > 0,
+                context + " keeps the shared page header mounted and visible");
+        if (page.contentY !== undefined) {
+            require(page.contentY === 0, context
+                    + " checks header geometry from the content keyline");
+        }
+        const origin = header.mapToItem(page, 0, 0);
+        require(origin.y >= 0 && origin.y + header.height <= page.height + 0.5, context
+                + " keeps the shared page header unclipped inside the viewport");
+    }
+
+    function requireRailContract(context) {
+        require(controlCenter.layoutMode === "sidebar", context
+                + " exercises the persistent wide navigation rail");
+        const rail = findObject(controlCenter.contentItem, "controlCenterRail");
+        require(rail !== null && rail.visible && rail.width
+                === Theme.size.controlCenterSidebarWidth && rail.height > rail.width, context
+                + " exposes the wide Control Center rail");
+        require(Theme.color.controlCenterRailSurface !== undefined
+                && rail.color === Theme.color.controlCenterRailSurface, context
+                + " renders the rail with the dedicated tonal plane color");
+        const pageBase = Theme.rgb(String(Theme.color.surfaceOpaque));
+        const railSurface = Theme.rgb(String(Theme.color.controlCenterRailSurface),
+                                      String(Theme.color.surfaceOpaque));
+        const railContrast = Theme.contrast(railSurface, pageBase);
+        require(railContrast >= 1.08 && railContrast < 2, context
+                + " keeps the rail plane distinct from the page base while low-contrast ("
+                + railContrast.toFixed(3) + ")");
+        require(rail.border.width === 0, context
+                + " renders the rail as a flat tonal plane without an outline");
+        const hairline = findInSubtree(rail, function (item) {
+            return item.visible && item.width === Theme.size.hairlineWidth && item.height
+                   >= Theme.spacing.sm;
+        });
+        require(hairline !== null && hairline.color === Theme.color.surfaceBorder
+                && Math.abs(hairline.mapToItem(rail, 0, 0).x + hairline.width - rail.width) <= 1,
+                context + " ends the rail with the canonical trailing hairline");
+        const selectedRoute = findObject(controlCenter.contentItem, "controlCenterSidebarRoute-"
+                                                              + controlCenter.currentPageId);
+        require(selectedRoute !== null && selectedRoute.selected
+                && selectedRoute.background.color === Theme.color.surfaceActive, context
+                + " keeps the selected rail route on the shallow active fill");
+        const seam = findInSubtree(selectedRoute.background, function (item) {
+            return item.visible && Math.abs(item.width - 2) <= 0.5;
+        });
+        const routeIcon = findObject(selectedRoute, "controlCenterRouteIcon-"
+                                                   + controlCenter.currentRouteIndex());
+        require(seam !== null && routeIcon !== null && routeIcon.semanticState === "active", context
+                + " keeps the two-pixel seam and active icon on the selected rail route");
+        const selectedLabel = findInSubtree(selectedRoute.contentItem, function (item) {
+            return item.text === selectedRoute.routeLabel;
+        });
+        require(selectedLabel !== null && selectedLabel.font.weight
+                === Theme.type.weightSemibold && selectedLabel.color
+                === Theme.color.textPrimary && selectedLabel.color !== Theme.snapshot.accent,
+                context + " renders the selected rail label as semibold primary text rather than accent");
+    }
+
+    function requireCompactChromeContract(context) {
+        require(controlCenter.layoutMode === "compact" && controlCenter.loadedPageCount === 1,
+                context + " exercises the loaded compact page");
+        const page = controlCenter.loadedPageItem;
+        const header = findObject(page, routeHeaderName(controlCenter.currentPageId));
+        const headerTitle = header === null ? null : findObject(header,
+                                                                "controlCenterPageHeaderTitle");
+        require(headerTitle !== null, context + " keeps the shared page header title mounted");
+        const headingRole = headerTitle.Accessible.role;
+        const backRow = findObject(controlCenter.contentItem, "controlCenterCompactBackRow");
+        require(backRow !== null && backRow.visible,
+                context + " keeps one compact chrome row");
+        require(findInSubtree(backRow, function (item) {
+                    return item.label === "All settings";
+                }) !== null, context + " retains the All settings return action");
+        require(countInSubtree(backRow, function (item) {
+                    return item.Accessible.role === headingRole;
+                }) === 0, context + " compact chrome adds no duplicate page heading");
+        const routeHeadings = [];
+        collectHeadings(controlCenter.contentItem, headingRole, headerTitle.text, routeHeadings);
+        require(routeHeadings.length === 1 && routeHeadings[0].objectName
+                === "controlCenterPageHeaderTitle", context
+                + " keeps exactly one accessible page heading owned by the shared header");
     }
 
     function createControls() {
@@ -354,8 +664,8 @@ ShellRoot {
                 && controlCenter.minimumSize.height === Theme.size.controlCenterMinimumHeight
                 && controlCenter.title === "Nagi Control Center" && controlCenter.parentWindow
                 === null, "normal independent window exposes tested semantic minimum bounds");
-        require(routeNamesExact() && controlCenter.availableRoutes.length === 11
-                && controlCenter.availableRoutes[0].id === "island"
+        require(routeNamesExact() && routeIconsExact() && controlCenter.availableRoutes.length
+                === 11 && controlCenter.availableRoutes[0].id === "island"
                 && controlCenter.availableRoutes[1].id === "appearance"
                 && controlCenter.availableRoutes[2].id === "clock-date"
                 && controlCenter.availableRoutes[3].id === "media"
@@ -366,7 +676,7 @@ ShellRoot {
                 && controlCenter.availableRoutes[8].id === "wallpaper"
                 && controlCenter.availableRoutes[9].id === "displays"
                 && controlCenter.availableRoutes[10].id === "about",
-                "final route names stay fixed and all complete pages are exposed");
+                "final route names and semantic icons stay fixed across all complete pages");
         require(UserConfig.updatePage("appearance", {
                                           "motion": "minimal"
                                       }, false),
@@ -448,11 +758,33 @@ ShellRoot {
                     targetSizes[2] * 11 / 13) && Theme.type.sizeFor("controlCenter", "title")
                 === Math.round(targetSizes[2] * 15 / 13),
                 "Theme publishes independent scoped families and proportional semantic roles");
-        const appearanceTitle = findObject(appearancePage, "appearancePageTitle");
+        const appearanceTitle = findObject(appearancePage, "controlCenterPageHeaderTitle");
         require(appearanceTitle !== null && appearanceTitle.typographyScope === "controlCenter"
                 && appearanceTitle.font.family === targetFamilies[2]
-                && appearanceTitle.font.pixelSize === Theme.type.sizeFor("controlCenter", "title"),
+                && appearanceTitle.font.pixelSize === Theme.type.sizeFor("controlCenter",
+                                                                          "pageTitle"),
                 "loaded Control Center text resolves the Control Center typography scope");
+        require(Theme.type.sizeFor("controlCenter", "pageTitle")
+                > Theme.type.sizeFor("controlCenter", "title")
+                && Theme.type.sizeFor("controlCenter", "pageTitle")
+                < Theme.type.sizeFor("controlCenter", "display"),
+                "the pageTitle role stays between section-title and display scale at the alternate size");
+        require(UserConfig.updatePage("appearance", {
+                                          "controlCenterBaseFontSize":
+                                          UserConfig.minimumBaseFontSize
+                                      }, false) && Theme.type.sizeFor("controlCenter", "pageTitle")
+                > Theme.type.sizeFor("controlCenter", "title"),
+                "the pageTitle role stays larger than section titles at the minimum bounded size");
+        require(UserConfig.updatePage("appearance", {
+                                          "controlCenterBaseFontSize":
+                                          UserConfig.maximumBaseFontSize
+                                      }, false) && Theme.type.sizeFor("controlCenter", "pageTitle")
+                > Theme.type.sizeFor("controlCenter", "title"),
+                "the pageTitle role stays larger than section titles at the maximum bounded size");
+        require(UserConfig.updatePage("appearance", {
+                                          "controlCenterBaseFontSize": targetSizes[2]
+                                      }, false),
+                "the alternate Control Center size restores after the pageTitle bound probes");
         requireSectionHierarchy(appearancePage, [
                                     {
                                         "name": "appearanceIdleFontFamilySection",
@@ -869,6 +1201,273 @@ ShellRoot {
         });
     }
 
+    function requireWallpaperPreviewGeometry(page, context) {
+        const panel = findObject(page, "wallpaperPreviewPanel");
+        const metadata = findObject(page, "wallpaperPreviewMetadata");
+        const nameFrame = findObject(page, "wallpaperPreviewNameFrame");
+        const nameViewport = findObject(page, "wallpaperPreviewNameViewport");
+        const name = findObject(page, "wallpaperPreviewName");
+        const details = findObject(page, "wallpaperPreviewDetails");
+        const actions = findObject(page, "wallpaperPreviewActions");
+        const apply = findObject(page, "wallpaperApplyButton");
+        const clear = findObject(page, "wallpaperClearButton");
+        require(panel !== null && metadata !== null && nameFrame !== null && nameViewport !== null
+                && name !== null && details !== null && actions !== null && apply !== null
+                && clear !== null && panel.visible && metadata.visible, context
+                + " exposes one complete preview rail");
+        const panelRect = captureItemRect(panel, page);
+        const metadataRect = captureItemRect(metadata, page);
+        const nameViewportRect = captureItemRect(nameViewport, page);
+        const nameRect = captureItemRect(name, page);
+        const detailsRect = captureItemRect(details, page);
+        const actionsRect = captureItemRect(actions, page);
+        const applyRect = captureItemRect(apply, page);
+        const clearRect = captureItemRect(clear, page);
+        requireCaptureRectInside(metadataRect, panelRect, context
+                                 + " keeps preview metadata inside the rail");
+        requireCaptureRectInside(nameViewportRect, metadataRect, context
+                                 + " keeps the readable filename viewport inside preview metadata");
+        requireCaptureRectInside(detailsRect, metadataRect, context
+                                 + " keeps dimensions and size inside preview metadata");
+        requireCaptureRectInside(actionsRect, panelRect, context
+                                 + " keeps the action composition inside the rail");
+        requireCaptureRectInside(applyRect, actionsRect, context
+                                 + " keeps the Apply action inside its composition");
+        requireCaptureRectInside(clearRect, actionsRect, context
+                                 + " keeps the Clear action inside its composition");
+        require(name.text === fakeWallpaper.preview.name && name.Accessible.ignored
+                && nameViewport.Accessible.name === name.text && name.elide === Text.ElideNone
+                && name.wrapMode === Text.WrapAnywhere && name.lineCount >= 1 && !name.truncated
+                && name.paintedWidth <= name.width + 0.5 && name.paintedHeight
+                <= name.height + 0.5 && nameViewport.contentHeight >= name.height - 0.5
+                && details.text === qsTr("%1×%2 · %3").arg(
+                    fakeWallpaper.preview.width).arg(fakeWallpaper.preview.height).arg(
+                    page.formatBytes(fakeWallpaper.preview.byteSize))
+                && details.elide === Text.ElideNone && details.wrapMode === Text.Wrap
+                && details.lineCount >= 1 && !details.truncated
+                && details.paintedWidth <= details.width + 0.5
+                && details.paintedHeight <= details.height + 0.5,
+                context + " renders the full filename and split dimensions/size without elision");
+        const maximumNameOffset = Math.max(0, nameViewport.contentHeight - nameViewport.height);
+        if (maximumNameOffset > 0.5) {
+            const focusRing = findObject(nameFrame, "islandFocusRing");
+            nameViewport.forceActiveFocus(Qt.TabFocusReason);
+            require(nameViewport.interactive && nameViewport.focusPolicy === Qt.StrongFocus
+                    && nameViewport.activeFocusOnTab && nameViewport.activeFocus
+                    && nameViewport.Accessible.focused && nameViewport.Accessible.role
+                    === Accessible.Pane && focusRing !== null && focusRing.visible
+                    && nameViewport.height <= Theme.size.controlHeightLg * 2 + 0.5, context
+                    + " gives a long filename keyboard focus, instructions, and a visible focus shape");
+            requireCaptureRectInside(captureItemRect(focusRing, page), panelRect, context
+                                     + " keeps the filename focus shape inside the preview rail");
+            require(nameViewport.handleScrollKey(Qt.Key_End)
+                    && Math.abs(nameViewport.contentY - maximumNameOffset) <= 0.5, context
+                    + " End reaches the final wrapped filename line");
+            const endOffset = nameViewport.contentY;
+            require(nameViewport.handleScrollKey(Qt.Key_PageUp)
+                    && nameViewport.contentY < endOffset, context
+                    + " Page Up scrolls a long filename toward its start");
+            const pageUpOffset = nameViewport.contentY;
+            require(nameViewport.handleScrollKey(Qt.Key_Up)
+                    && nameViewport.contentY < pageUpOffset, context
+                    + " Up scrolls a long filename by the semantic step");
+            require(nameViewport.handleScrollKey(Qt.Key_Home) && nameViewport.contentY <= 0.5,
+                    context + " Home reaches the first wrapped filename line");
+            require(nameViewport.handleScrollKey(Qt.Key_Down) && nameViewport.contentY > 0,
+                    context + " Down scrolls a long filename by the semantic step");
+            const downOffset = nameViewport.contentY;
+            require(nameViewport.handleScrollKey(Qt.Key_PageDown)
+                    && nameViewport.contentY > downOffset, context
+                    + " Page Down scrolls a long filename toward its end");
+            require(nameViewport.handleScrollKey(Qt.Key_End)
+                    && Math.abs(nameViewport.contentY - maximumNameOffset) <= 0.5, context
+                    + " repeated End remains bounded at the final filename line");
+            const scrolledNameRect = captureItemRect(name, page);
+            require(scrolledNameRect.y + scrolledNameRect.height
+                    <= nameViewportRect.y + nameViewportRect.height + 0.5
+                    && scrolledNameRect.y + scrolledNameRect.height > nameViewportRect.y, context
+                    + " keeps the final wrapped filename line reachable without elision");
+            require(nameViewport.handleScrollKey(Qt.Key_Home) && nameViewport.contentY <= 0.5,
+                    context + " keyboard filename inspection restores its initial position");
+            controlCenter.focusCurrentContext();
+            require(!nameViewport.activeFocus && !focusRing.visible, context
+                    + " filename inspection restores the Control Center focus path");
+        } else {
+            require(!nameViewport.interactive && nameViewport.focusPolicy === Qt.NoFocus
+                    && !nameViewport.activeFocusOnTab && nameViewport.Accessible.role
+                    === Accessible.StaticText, context
+                    + " keeps a fitting filename passive without a redundant scroll affordance");
+            requireCaptureRectInside(nameRect, nameViewportRect, context
+                                     + " keeps a fitting full filename inside its viewport");
+        }
+        requireCaptureRectInside(captureItemRect(apply.contentItem, page), applyRect, context
+                                 + " keeps the Apply label inside its control");
+        requireCaptureRectInside(captureItemRect(clear.contentItem, page), clearRect, context
+                                 + " keeps the Clear label inside its control");
+        require(apply.contentItem.paintedWidth <= apply.contentItem.width + 0.5
+                && clear.contentItem.paintedWidth <= clear.contentItem.width + 0.5, context
+                + " keeps action text painted inside assigned control widths");
+        const shouldStack = actions.width + 0.5 < actions.inlineImplicitWidth;
+        require(actions.stackActions === shouldStack && actions.columns === (shouldStack ? 1 : 2),
+                context + " composes the same actions from their combined implicit width");
+        if (shouldStack) {
+            require(clearRect.y >= applyRect.y + applyRect.height + actions.rowSpacing - 0.5,
+                    context + " stacks actions without overlap when their inline width does not fit");
+        } else {
+            require(clearRect.x >= applyRect.x + applyRect.width + actions.columnSpacing - 0.5,
+                    context + " keeps fitting actions on one non-overlapping row");
+        }
+        require(countInSubtree(panel, function (item) {
+                    return item.objectName === "wallpaperApplyButton";
+                }) === 1 && countInSubtree(panel, function (item) {
+                    return item.objectName === "wallpaperClearButton";
+                }) === 1, context + " retains one Apply and one Clear action");
+        const imageGrid = findObject(page, "wallpaperImageGrid");
+        require(imageGrid !== null, context + " keeps the wallpaper image grid mounted");
+        const pageViewport = {
+            "x": 0,
+            "y": 0,
+            "width": page.width,
+            "height": page.height
+        };
+        const gridRect = captureItemRect(imageGrid, page);
+        const panelContentOrigin = panel.mapToItem(page.contentItem, 0, 0);
+        require(imageGrid.height >= Theme.size.controlHeightLg * 2 && gridRect.y < page.height
+                && gridRect.y + gridRect.height > 0, context
+                + " preserves a nonzero visible wallpaper grid viewport");
+        require(page.contentHeight >= page.height && panelContentOrigin.y + panel.height
+                <= page.contentHeight + 0.5, context
+                + " keeps the complete preview rail reachable in the page scroll extent");
+        if (page.contentHeight > page.height + 0.5) {
+            clear.forceActiveFocus(Qt.TabFocusReason);
+            requireCaptureRectInside(captureItemRect(clear, page), pageViewport, context
+                                     + " reveals a keyboard-focused preview action");
+            page.contentY = Math.max(0, page.contentHeight - page.height);
+            const scrolledPanelRect = captureItemRect(panel, page);
+            require(scrolledPanelRect.y + scrolledPanelRect.height <= page.height + 0.5
+                    && scrolledPanelRect.y + scrolledPanelRect.height > 0, context
+                    + " reaches the final preview result through page scrolling");
+            page.contentY = 0;
+            controlCenter.focusCurrentContext();
+        }
+    }
+
+    function verifyWallpaperGeometryMatrix(page, finished) {
+        const defaultSize = UserConfig.defaultSnapshot(
+                              0).appearance.controlCenterBaseFontSize;
+        const originalName = fakeWallpaper.preview.name;
+        const maximumName = "w".repeat(251) + ".png";
+        require(maximumName.length === 255,
+                "Wallpaper maximum-length filename fixture reaches the validated character bound");
+        const cases = [{
+                           "fontSize": UserConfig.minimumBaseFontSize,
+                           "windowWidth": Theme.size.controlCenterPreferredWidth,
+                           "mode": "sidebar",
+                           "capture": false
+                       }, {
+                           "fontSize": UserConfig.minimumBaseFontSize,
+                           "windowWidth": Theme.size.controlCenterMinimumWidth,
+                           "mode": "compact",
+                           "capture": false
+                       }, {
+                           "fontSize": defaultSize,
+                           "windowWidth": Theme.size.controlCenterPreferredWidth,
+                           "mode": "sidebar",
+                           "capture": false
+                       }, {
+                           "fontSize": defaultSize,
+                           "windowWidth": Theme.size.controlCenterMinimumWidth,
+                           "mode": "compact",
+                           "capture": false
+                       }, {
+                           "fontSize": UserConfig.maximumBaseFontSize,
+                           "windowWidth": Theme.size.controlCenterPreferredWidth,
+                           "mode": "sidebar",
+                           "capture": false,
+                           "longName": true
+                       }, {
+                           "fontSize": UserConfig.maximumBaseFontSize,
+                           "windowWidth": Theme.size.controlCenterMinimumWidth,
+                           "mode": "compact",
+                           "capture": false,
+                           "longName": true
+                       }, {
+                           "fontSize": UserConfig.maximumBaseFontSize,
+                           "windowWidth": Theme.size.controlCenterMinimumWidth,
+                           "mode": "compact",
+                           "capture": true,
+                           "longName": false
+                       }];
+
+        function applyCase(index) {
+            if (index >= cases.length) {
+                if (fakeWallpaper.preview.name !== originalName) {
+                    fakeWallpaper.preview = Object.assign({}, fakeWallpaper.preview, {
+                                                              "name": originalName
+                                                          });
+                }
+                controlCenter.backingWindow.width = Theme.size.controlCenterPreferredWidth;
+                renderedFrameBarrier.begin(function () {
+                    require(controlCenter.layoutMode === "sidebar"
+                            && UserConfig.snapshot.appearance.controlCenterBaseFontSize
+                            === UserConfig.maximumBaseFontSize,
+                            "Wallpaper restores the supported 18 px wide capture state");
+                    requireWallpaperPreviewGeometry(page, "18 px wide Wallpaper");
+                    finished();
+                }, true);
+                return;
+            }
+            const specification = cases[index];
+            const requestedName = specification.longName === true ? maximumName : originalName;
+            if (fakeWallpaper.preview.name !== requestedName) {
+                fakeWallpaper.preview = Object.assign({}, fakeWallpaper.preview, {
+                                                          "name": requestedName
+                                                      });
+            }
+            require(UserConfig.snapshot.appearance.controlCenterBaseFontSize
+                    === specification.fontSize || UserConfig.updatePage("appearance", {
+                                                                           "controlCenterBaseFontSize":
+                                                                           specification.fontSize
+                                                                       }, false),
+                    "Wallpaper selects the requested supported typography bound");
+            controlCenter.backingWindow.width = specification.windowWidth;
+            renderedFrameBarrier.begin(function () {
+                require(controlCenter.layoutMode === specification.mode
+                        && UserConfig.snapshot.appearance.controlCenterBaseFontSize
+                        === specification.fontSize, specification.fontSize + " px Wallpaper enters "
+                        + specification.mode + " mode");
+                requireWallpaperPreviewGeometry(page, specification.fontSize + " px "
+                                                      + specification.mode + " Wallpaper"
+                                                      + (specification.longName === true
+                                                         ? " maximum filename" : ""));
+                if (specification.capture) {
+                    captureCurrent("compact-wallpaper-18", function () {
+                        applyCase(index + 1);
+                    });
+                } else {
+                    applyCase(index + 1);
+                }
+            }, true);
+        }
+
+        applyCase(0);
+    }
+
+    function leaveWallpaperAfterCapture() {
+        require(fakeHost.queueDisplayEvent(privacyCorpus.displayMetadata,
+                                           privacyCorpus.rawDbus)
+                && fakeHost.pendingDisplayEvent.metadata === privacyCorpus.displayMetadata
+                && fakeHost.pendingDisplayEvent.rawPayload === privacyCorpus.rawDbus
+                && fakeHost.publishDisplayEvent() && fakeHost.pendingDisplayEvent === null,
+                "display metadata and raw D-Bus payload cross the owning topology event");
+        requireCorpusAbsent(JSON.stringify(fakeHost.privacyState()),
+                            "normalized display topology projection");
+        require(controlCenter.open("displays", tokenB) && controlCenter.currentPageId === "displays",
+                "leaving Wallpaper loads Displays through the same singleton");
+        test.stage = "displays-after-wallpaper";
+        settle.restart();
+    }
+
     function wallpaperStage() {
         const page = controlCenter.loadedPageItem;
         require(page !== null && fakeWallpaper.pageOpen && page.currentDirectory().breadcrumb
@@ -908,19 +1507,23 @@ ShellRoot {
                 "unsupported current plugins require a warned Apply");
         require(page.requestApply() && fakeWallpaper.applySuccess,
                 "confirmed Apply targets every active display through the shared service");
-        captureCurrent("sidebar-wallpaper", function () {
-            require(fakeHost.queueDisplayEvent(privacyCorpus.displayMetadata,
-                                               privacyCorpus.rawDbus)
-                    && fakeHost.pendingDisplayEvent.metadata === privacyCorpus.displayMetadata
-                    && fakeHost.pendingDisplayEvent.rawPayload === privacyCorpus.rawDbus
-                    && fakeHost.publishDisplayEvent() && fakeHost.pendingDisplayEvent === null,
-                    "display metadata and raw D-Bus payload cross the owning topology event");
-            requireCorpusAbsent(JSON.stringify(fakeHost.privacyState()),
-                                "normalized display topology projection");
-            require(controlCenter.open("displays", tokenB) && controlCenter.currentPageId
-                    === "displays", "leaving Wallpaper loads Displays through the same singleton");
-            test.stage = "displays-after-wallpaper";
-            settle.restart();
+        const wallpaperHeader = findObject(page, "wallpaperPageHeader");
+        require(wallpaperHeader !== null && wallpaperHeader.visible && wallpaperHeader.width > 0
+                && Math.abs(wallpaperHeader.width - wallpaperHeader.parent.width) <= 0.5,
+                "Wallpaper keeps its shared header on the full content width");
+        const wallpaperHeaderBottom = wallpaperHeader.mapToItem(page, 0, 0).y
+                                      + wallpaperHeader.height;
+        const wallpaperActionNames = ["wallpaperBrowseButton", "wallpaperAddRootButton"];
+        for (let wallpaperActionIndex = 0; wallpaperActionIndex
+                < wallpaperActionNames.length; wallpaperActionIndex += 1) {
+            const wallpaperAction = findObject(page, wallpaperActionNames[wallpaperActionIndex]);
+            require(wallpaperAction !== null && wallpaperAction.visible
+                    && wallpaperAction.mapToItem(page, 0, 0).y >= wallpaperHeaderBottom - 0.5,
+                    "Wallpaper keeps " + wallpaperActionNames[wallpaperActionIndex]
+                    + " below the full-width shared header");
+        }
+        verifyWallpaperGeometryMatrix(page, function () {
+            captureCurrent("sidebar-wallpaper", leaveWallpaperAfterCapture);
         });
     }
 
@@ -1034,17 +1637,27 @@ ShellRoot {
                 && compactAboutRoute.activeFocus,
                 "compact navigation replaces unloaded page content and focuses the active route");
         captureCurrent("compact-navigation", function () {
-            controlCenter.closeWindow();
-            controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
-            controlCenter.open("about", tokenA);
-            test.stage = "wide";
-            settle.restart();
+            require(controlCenter.selectRoute("about") && !controlCenter.compactNavigationVisible
+                    && controlCenter.loadedPageCount === 1,
+                    "compact route activation replaces navigation with one loaded page");
+            requireCompactChromeContract("compact About");
+            Qt.callLater(function () {
+                captureCurrent("compact-about", function () {
+                    controlCenter.closeWindow();
+                    controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
+                    controlCenter.open("about", tokenA);
+                    test.stage = "wide";
+                    settle.restart();
+                });
+            });
         });
     }
 
     function wideStage() {
         require(controlCenter.layoutMode === "sidebar" && controlCenter.loadedPageCount === 1,
                 "above the breakpoint uses persistent sidebar plus content");
+        requireHeaderInViewport(controlCenter.loadedPageItem, "wide alternate-typography About");
+        requireRailContract("wide alternate-typography");
         captureCurrent("sidebar-responsive", function () {
             require(UserConfig.snapshot.weather.enabled && controlCenter.currentPageId === "about",
                     "recovery starts from non-default settings on an unrelated page");
@@ -1125,10 +1738,36 @@ ShellRoot {
                                        + controlCenter.currentPageId);
         require(activeRoute !== null && activeRoute.visible && activeRoute.activeFocus,
                 "display loss restores one visible valid Control Center focus target");
-        controlCenter.closeWindow();
-        controlCenter.open("removed-page", null);
-        stage = "fallback";
-        settle.restart();
+        require(controlCenter.layoutMode === "sidebar"
+                && UserConfig.snapshot.appearance.controlCenterBaseFontSize
+                === UserConfig.defaultSnapshot(0).appearance.controlCenterBaseFontSize,
+                "the rehomed wide state runs at default typography");
+        requireHeaderInViewport(controlCenter.loadedPageItem, "rehomed default-typography About");
+        requireRailContract("rehomed default-typography");
+        captureCurrent("sidebar-rehomed-default", function () {
+            controlCenter.closeWindow();
+            controlCenter.implicitWidth = Theme.size.controlCenterMinimumWidth;
+            controlCenter.open("removed-page", null);
+            test.stage = "compact-default";
+            settle.restart();
+        });
+    }
+
+    function compactDefaultStage() {
+        require(controlCenter.layoutMode === "compact" && controlCenter.visible
+                && controlCenter.currentPageId === "displays" && controlCenter.loadedPageCount
+                === 1, "the compact default state loads one page below the breakpoint");
+        const displaysPage = controlCenter.loadedPageItem;
+        displaysPage.contentY = 0;
+        requireCompactChromeContract("compact default-typography Displays");
+        requireHeaderInViewport(displaysPage, "compact default-typography Displays");
+        captureCurrent("compact-displays-default", function () {
+            controlCenter.closeWindow();
+            controlCenter.implicitWidth = Theme.size.controlCenterPreferredWidth;
+            controlCenter.open("removed-page", null);
+            test.stage = "fallback";
+            settle.restart();
+        });
     }
 
     function fallbackStage() {
@@ -1225,6 +1864,9 @@ ShellRoot {
             break;
         case "rehomed":
             rehomedStage();
+            break;
+        case "compact-default":
+            compactDefaultStage();
             break;
         case "fallback":
             fallbackStage();
@@ -2048,6 +2690,43 @@ ShellRoot {
         onSaveFailed: test.fail("accessibility artifact write failed")
     }
 
+    FrameAnimation {
+        id: renderedFrameBarrier
+
+        property int frameCount: 0
+        property bool waitForRouteIcons: false
+        property var continuation: null
+
+        running: false
+
+        function begin(next, requireRouteIcons) {
+            test.require(typeof next === "function" && !running && continuation === null,
+                         "frame-synchronized render barrier admits one continuation");
+            frameCount = 0;
+            waitForRouteIcons = requireRouteIcons === true;
+            continuation = next;
+            restart();
+        }
+
+        onTriggered: {
+            if (waitForRouteIcons && !test.captureRouteIconsTerminalReady()) {
+                frameCount = 0;
+                return;
+            }
+            frameCount += 1;
+            if (frameCount < 2) {
+                return;
+            }
+            stop();
+            const next = continuation;
+            continuation = null;
+            waitForRouteIcons = false;
+            frameCount = 0;
+            next();
+        }
+    }
+
+
     Timer {
         id: settle
         interval: 80
@@ -2055,7 +2734,7 @@ ShellRoot {
     }
 
     Timer {
-        interval: 10000
+        interval: 20000
         running: true
         onTriggered: test.fail("control center test timed out")
     }

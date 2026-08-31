@@ -51,20 +51,13 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Notifications")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "notificationsPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Popup policy is separate from the bounded, memory-only history. Do Not Disturb never suppresses volume, brightness, workspace, or other system feedback.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterNotifications"
+            title: qsTr("Notifications")
+            description: qsTr(
+                             "Choose when notification popups appear and what Nagi keeps in session history.")
         }
 
         ControlCenterSectionHeading {

@@ -55,21 +55,13 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Displays")
-            size: "title"
-            font.weight: Theme.type.weightSemibold
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "displaysPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterDisplays"
+            title: qsTr("Displays")
+            description: qsTr(
+                             "Choose which displays show Nagi and which enabled display receives global actions by default.")
         }
         ControlCenterSectionHeading {
             objectName: "displaysActiveSection"

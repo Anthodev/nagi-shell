@@ -37,20 +37,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Island")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "islandPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Tune the shared compact metrics and adaptive expanded bounds. Content order and the screen-safe layout remain fixed.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterIsland"
+            title: qsTr("Island")
+            description: qsTr("Adjust the island's size, visible information, and system feedback.")
         }
         ControlCenterSectionHeading {
             objectName: "islandGeometrySection"

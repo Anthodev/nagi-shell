@@ -15,7 +15,7 @@
     timer.singleShot = true;
     timer.interval = 180;
 
-    function setAllScreens(desktop) {
+    function setEveryOutput(desktop) {
         var screens = workspace.screens;
         for (var index = 0; index < screens.length; ++index) {
             workspace.setCurrentDesktopForScreen(desktop, screens[index]);
@@ -29,7 +29,7 @@
         }
         if (firstDesktop === null) {
             if (workspace.desktops.length < 2) {
-                workspace.createDesktop(workspace.desktops.length, "Nagi Consensus Test");
+                workspace.createDesktop(workspace.desktops.length, "Nagi Projection Test");
                 timer.start();
                 return;
             }
@@ -40,7 +40,7 @@
         var first = firstDesktop;
         var second = secondDesktop;
         if (stage === 0) {
-            setAllScreens(first);
+            setEveryOutput(first);
             stage = 1;
             timer.start();
             return;
@@ -54,13 +54,13 @@
             return;
         }
         if (stage === 2) {
-            setAllScreens(first);
+            setEveryOutput(first);
             stage = 3;
             timer.start();
             return;
         }
         if (stage === 3) {
-            setAllScreens(second);
+            setEveryOutput(second);
             stage = 4;
             timer.start();
             return;
