@@ -27,6 +27,7 @@ Singleton {
     readonly property real maximumSurfaceOpacity: 1.0
     readonly property int minimumOuterRadius: 8
     readonly property int maximumOuterRadius: 32
+    readonly property real minimumCustomPaletteContrast: 4.5
 
     readonly property string configHome: {
         const xdgHome = Quickshell.env("XDG_CONFIG_HOME") ?? "";
@@ -227,8 +228,11 @@ Singleton {
 
     function appearanceValidationError(appearance) {
         if (appearance.scheme === "custom" && colorContrast(appearance.customText,
-                                                            appearance.customSurface) < 4.5) {
-            return qsTr("Primary text must keep at least 4.5:1 contrast with the custom surface.");
+                                                            appearance.customSurface)
+                < minimumCustomPaletteContrast) {
+            return qsTr(
+                        "Primary text must keep at least %1:1 contrast with the custom surface so navigation remains readable.").arg(
+                        minimumCustomPaletteContrast.toFixed(1));
         }
         return "";
     }

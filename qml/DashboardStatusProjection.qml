@@ -137,6 +137,9 @@ FocusScope {
                 id: statusButton
 
                 required property var modelData
+                readonly property color contentAccent: pressed ? Theme.snapshot.surfaceActiveAccent :
+                                                                 hovered ? Theme.snapshot.surfaceHoverAccent :
+                                                                           Theme.snapshot.accent
 
                 objectName: "dashboardStatusItem"
                 implicitWidth: Theme.size.controlHeightMd
@@ -172,6 +175,8 @@ FocusScope {
                                        ? "attention" : "active"
                         applicationSource: statusButton.modelData.iconSource
                         applicationName: statusButton.modelData.label
+                        tint: statusButton.contentAccent
+                        attentionTint: statusButton.contentAccent
                     }
                 }
                 IslandFocusRing {

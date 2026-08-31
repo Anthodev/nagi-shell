@@ -42,11 +42,11 @@ Scope {
     readonly property int bluetoothSelectedController: engine.snapshot.bluetooth.selectedController
     readonly property bool bluetoothDiscovering: engine.snapshot.bluetooth.discovering
     readonly property int bluetoothDiscoveryDeadlineMs:
-    engine.snapshot.bluetooth.discoveryDeadlineMs
+        engine.snapshot.bluetooth.discoveryDeadlineMs
     readonly property var bluetoothDevices: engine.snapshot.bluetooth.devices
     readonly property string bluetoothOperation: engine.snapshot.bluetooth.operation
     readonly property int bluetoothOperationGeneration:
-    engine.snapshot.bluetooth.operationGeneration
+        engine.snapshot.bluetooth.operationGeneration
     readonly property string bluetoothOperationFailure: engine.snapshot.bluetooth.operationFailure
     readonly property string bluetoothOperationResult: engine.snapshot.bluetooth.operationResult
     readonly property string bluetoothPairingPrompt: engine.snapshot.bluetooth.pairingPrompt

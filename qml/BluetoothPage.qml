@@ -16,6 +16,9 @@ Flickable {
     readonly property bool backendUnavailable: bluetooth === null || !bluetooth.backendReady ||
                                                !bluetooth.bluetoothAvailable
     readonly property bool operationPending: bluetooth !== null && bluetooth.bluetoothBusy
+    readonly property bool deviceControlsVisible: !backendUnavailable && bluetooth.bluetoothEnabled
+                                                  && bluetooth.bluetoothOperation !== "pairing"
+                                                  && unpairToken === 0
     readonly property var connectedDevices: groupedDevices("connected")
     readonly property var pairedDevices: groupedDevices("paired")
     readonly property var availableDevices: groupedDevices("available")
@@ -159,13 +162,14 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Bluetooth")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "bluetoothPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "bluetooth"
+            title: qsTr("Bluetooth")
+            description: qsTr("Pair, connect, and forget Bluetooth devices.")
         }
 
         IslandPanel {
@@ -185,6 +189,7 @@ Flickable {
                     Layout.fillWidth: true
                     text: qsTr("Bluetooth management unavailable")
                     size: "title"
+                    color: Theme.snapshot.controlFillForeground
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
                 }
@@ -202,47 +207,50 @@ Flickable {
             }
         }
 
-        SettingToggleRow {
+        ControlCenterSectionPanel {
+            objectName: "bluetoothRadioSection"
+
             Layout.fillWidth: true
             visible: !root.backendUnavailable
-            label: qsTr("Bluetooth radio")
-            description: root.bluetooth.bluetoothControllerCount > 1 ? qsTr(
-                                                                           "Backend-confirmed aggregate state across %1 controllers.").arg(
-                                                                           root.bluetooth.bluetoothControllerCount) :
-                                                                       qsTr("Backend-confirmed BlueZ state.")
-            value: root.bluetooth.bluetoothEnabled
-            writable: !root.operationPending
-            onValueRequested: value => root.bluetooth.requestBluetoothEnabled(value)
-        }
+            text: qsTr("Radio")
+            separated: false
 
-        RowLayout {
-            Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.bluetooth.bluetoothEnabled
-                     && root.bluetooth.bluetoothOperation !== "pairing" && root.unpairToken === 0
-            spacing: Theme.spacing.sm
-
-            IslandButton {
-                objectName: "bluetoothScanButton"
-                label: root.bluetooth.bluetoothDiscovering ? qsTr("Stop scan") : qsTr("Scan")
-                reducedMotion: root.reducedMotion
-                enabled: !root.operationPending
-                Accessible.description: root.bluetooth.bluetoothDiscovering ? qsTr(
-                                                                                  "Stop this Bluetooth discovery session") :
-                                                                              qsTr("Start one 30 second Bluetooth discovery session")
-                onClicked: root.bluetooth.bluetoothDiscovering ? root.bluetooth.stopBluetoothScan() :
-                                                                 root.bluetooth.scanBluetooth()
-            }
-
-            IslandText {
-                visible: root.bluetooth.bluetoothDiscovering
-                text: qsTr("Discovery stops automatically after 30 seconds.")
-                size: "caption"
-                color: Theme.color.textSecondary
-                Accessible.name: text
-            }
-
-            Item {
+            SettingToggleRow {
                 Layout.fillWidth: true
+                label: qsTr("Bluetooth radio")
+                description: root.bluetooth.bluetoothControllerCount > 1 ? qsTr(
+                                                                               "Backend-confirmed aggregate state across %1 controllers.").arg(
+                                                                               root.bluetooth.bluetoothControllerCount) :
+                                                                           qsTr("Backend-confirmed BlueZ state.")
+                separatorVisible: discoveryRow.visible
+                value: root.bluetooth.bluetoothEnabled
+                writable: !root.operationPending
+                onValueRequested: value => root.bluetooth.requestBluetoothEnabled(value)
+            }
+
+            ControlCenterSettingRow {
+                id: discoveryRow
+
+                Layout.fillWidth: true
+                visible: root.deviceControlsVisible
+                label: qsTr("Device discovery")
+                description: root.bluetooth.bluetoothDiscovering ? qsTr(
+                                                                       "Discovery stops automatically after 30 seconds.") :
+                                                                   ""
+                controlPlacement: ControlCenterSettingRow.Inline
+                separatorVisible: false
+
+                IslandButton {
+                    objectName: "bluetoothScanButton"
+                    label: root.bluetooth.bluetoothDiscovering ? qsTr("Stop scan") : qsTr("Scan")
+                    reducedMotion: root.reducedMotion
+                    enabled: !root.operationPending
+                    Accessible.description: root.bluetooth.bluetoothDiscovering ? qsTr(
+                                                                                      "Stop this Bluetooth discovery session") :
+                                                                                  qsTr("Start one 30 second Bluetooth discovery session")
+                    onClicked: root.bluetooth.bluetoothDiscovering
+                               ? root.bluetooth.stopBluetoothScan() : root.bluetooth.scanBluetooth()
+                }
             }
         }
 
@@ -329,56 +337,54 @@ Flickable {
             }
         }
 
-        ColumnLayout {
+        BluetoothDeviceGroup {
+            objectName: "bluetoothConnectedSection"
+            title: qsTr("Connected")
+            devices: root.connectedDevices
+            visible: root.deviceControlsVisible && root.connectedDevices.length > 0
+            busy: root.operationPending
+            reducedMotion: root.reducedMotion
+            onPairRequested: token => root.bluetooth.pairBluetooth(token)
+            onConnectRequested: token => root.bluetooth.connectBluetooth(token)
+            onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
+            onUnpairRequested: (token, name) => root.requestUnpair(token, name)
+        }
+
+        BluetoothDeviceGroup {
+            objectName: "bluetoothPairedSection"
+            title: qsTr("Paired")
+            devices: root.pairedDevices
+            visible: root.deviceControlsVisible && root.pairedDevices.length > 0
+            busy: root.operationPending
+            reducedMotion: root.reducedMotion
+            onPairRequested: token => root.bluetooth.pairBluetooth(token)
+            onConnectRequested: token => root.bluetooth.connectBluetooth(token)
+            onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
+            onUnpairRequested: (token, name) => root.requestUnpair(token, name)
+        }
+
+        BluetoothDeviceGroup {
+            objectName: "bluetoothAvailableSection"
+            title: qsTr("Available")
+            devices: root.availableDevices
+            visible: root.deviceControlsVisible && root.availableDevices.length > 0
+            busy: root.operationPending
+            reducedMotion: root.reducedMotion
+            onPairRequested: token => root.bluetooth.pairBluetooth(token)
+            onConnectRequested: token => root.bluetooth.connectBluetooth(token)
+            onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
+            onUnpairRequested: (token, name) => root.requestUnpair(token, name)
+        }
+
+        IslandText {
             Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.bluetooth.bluetoothEnabled
-                     && root.bluetooth.bluetoothOperation !== "pairing" && root.unpairToken === 0
-            spacing: Theme.spacing.lg
-
-            BluetoothDeviceGroup {
-                title: qsTr("Connected")
-                devices: root.connectedDevices
-                busy: root.operationPending
-                reducedMotion: root.reducedMotion
-                onPairRequested: token => root.bluetooth.pairBluetooth(token)
-                onConnectRequested: token => root.bluetooth.connectBluetooth(token)
-                onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
-                onUnpairRequested: (token, name) => root.requestUnpair(token, name)
-            }
-
-            BluetoothDeviceGroup {
-                title: qsTr("Paired")
-                devices: root.pairedDevices
-                busy: root.operationPending
-                reducedMotion: root.reducedMotion
-                onPairRequested: token => root.bluetooth.pairBluetooth(token)
-                onConnectRequested: token => root.bluetooth.connectBluetooth(token)
-                onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
-                onUnpairRequested: (token, name) => root.requestUnpair(token, name)
-            }
-
-            BluetoothDeviceGroup {
-                title: qsTr("Available")
-                devices: root.availableDevices
-                busy: root.operationPending
-                reducedMotion: root.reducedMotion
-                onPairRequested: token => root.bluetooth.pairBluetooth(token)
-                onConnectRequested: token => root.bluetooth.connectBluetooth(token)
-                onDisconnectRequested: token => root.bluetooth.disconnectBluetooth(token)
-                onUnpairRequested: (token, name) => root.requestUnpair(token, name)
-            }
-
-            IslandText {
-                Layout.fillWidth: true
-                visible: root.bluetooth.bluetoothDevices.length === 0 &&
-                         !root.bluetooth.bluetoothDiscovering
-                text: qsTr(
-                          "No paired or connected devices. Select Scan to discover nearby devices.")
-                size: "body"
-                color: Theme.color.textSecondary
-                wrapMode: Text.Wrap
-                Accessible.name: text
-            }
+            visible: root.deviceControlsVisible && root.bluetooth.bluetoothDevices.length === 0 &&
+                     !root.bluetooth.bluetoothDiscovering
+            text: qsTr("No paired or connected devices. Select Scan to discover nearby devices.")
+            size: "body"
+            color: Theme.color.textSecondary
+            wrapMode: Text.Wrap
+            Accessible.name: text
         }
 
         Item {

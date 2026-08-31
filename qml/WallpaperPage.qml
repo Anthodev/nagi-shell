@@ -5,7 +5,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-Item {
+Flickable {
     id: root
 
     required property var settingsModel
@@ -17,6 +17,24 @@ Item {
     property bool applyWarningVisible: false
     property string failureText: ""
 
+    clip: true
+    contentWidth: width
+    contentHeight: content.height
+    flickableDirection: Flickable.VerticalFlick
+    boundsBehavior: Flickable.StopAtBounds
+    ScrollBar.vertical: ScrollBar {
+        policy: root.contentHeight > root.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+    }
+
+    readonly property real verticalScrollbarReservation: contentHeight > height ? Theme.spacing.md :
+                                                                                  0
+    readonly property real effectiveContentWidth: Math.max(0, width - verticalScrollbarReservation)
+    readonly property bool twoColumnWorkspace: effectiveContentWidth >= 580
+    readonly property real stackedGridMinimumHeight: Theme.size.controlHeightLg * 2
+    readonly property real stackedGridMaximumHeight: imageGrid.cellHeight * 2
+    readonly property real stackedGridPreferredHeight: Math.max(stackedGridMinimumHeight, Math.min(
+                                                                    stackedGridMaximumHeight,
+                                                                    imageGrid.contentHeight))
     readonly property var roots: settingsModel.snapshot.wallpaper.roots
     readonly property bool previewReady: wallpaper.preview !== null && wallpaper.preview.status
                                          === "ready"
@@ -238,80 +256,124 @@ Item {
             }
         }
     }
+    Connections {
+        target: root.Window.window
+        ignoreUnknownSignals: true
+
+        function onActiveFocusItemChanged() {
+            const item = target === null ? null : target.activeFocusItem;
+            if (item === null) {
+                return;
+            }
+            let ancestor = item;
+            while (ancestor !== null && ancestor !== content) {
+                ancestor = ancestor.parent;
+            }
+            if (ancestor !== content) {
+                return;
+            }
+            const origin = item.mapToItem(content, 0, 0);
+            const top = origin.y;
+            const bottom = top + item.height;
+            if (top < root.contentY) {
+                root.contentY = Math.max(0, top);
+            } else if (bottom > root.contentY + root.height) {
+                root.contentY = Math.min(Math.max(0, root.contentHeight - root.height), bottom
+                                         - root.height);
+            }
+        }
+    }
 
     ColumnLayout {
-        anchors.fill: parent
-        spacing: Theme.spacing.md
+        id: content
 
-        RowLayout {
+        width: root.effectiveContentWidth
+        height: Math.max(root.height, implicitHeight)
+        spacing: Theme.spacing.sm
+
+        ControlCenterPageHeader {
+            objectName: "wallpaperPageHeader"
             Layout.fillWidth: true
-            spacing: Theme.spacing.md
+            iconMeaning: "controlCenterWallpaper"
+            title: qsTr("Wallpaper")
+            description: qsTr("Browse, preview, and apply a static image for every display.")
+        }
+
+        ControlCenterSectionPanel {
+            objectName: "wallpaperCurrentSection"
+            Layout.fillWidth: true
+            text: qsTr("Current wallpaper")
+            separated: false
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Theme.spacing.xs
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
+                spacing: Theme.spacing.sm
 
-                IslandText {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: qsTr("Wallpaper")
-                    size: "title"
-                    Accessible.role: Accessible.Heading
-                    Accessible.name: text
-                }
-
-                IslandText {
-                    Layout.fillWidth: true
-                    text: root.currentSummary()
-                    size: "caption"
-                    color: Theme.color.textSecondary
-                    wrapMode: Text.Wrap
-                }
-            }
-
-            IslandButton {
-                objectName: "wallpaperBrowseButton"
-                label: qsTr("Browse image")
-                reducedMotion: root.reducedMotion
-                onClicked: browseDialog.open()
-            }
-
-            IslandButton {
-                objectName: "wallpaperAddRootButton"
-                label: qsTr("Add folder")
-                reducedMotion: root.reducedMotion
-                enabled: root.settingsModel.writable && root.roots.length < 8
-                onClicked: rootDialog.open()
-            }
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.sm
-            visible: root.wallpaper.screens.length > 0
-
-            Repeater {
-                model: root.wallpaper.screens
-
-                delegate: Rectangle {
-                    id: screenChip
-                    required property var modelData
-
-                    width: screenStatus.implicitWidth + Theme.spacing.md * 2
-                    height: screenStatus.implicitHeight + Theme.spacing.sm * 2
-                    radius: Theme.radius.sm
-                    color: screenChip.modelData.supported ? Theme.color.surfaceActive :
-                                                            Theme.color.controlFill
-                    border.width: Theme.size.hairlineWidth
-                    border.color: screenChip.modelData.supported ? Theme.snapshot.accent :
-                                                                   Theme.color.surfaceBorder
+                    spacing: Theme.spacing.sm
 
                     IslandText {
-                        id: screenStatus
-                        anchors.centerIn: parent
-                        text: qsTr("%1 · %2").arg(screenChip.modelData.label).arg(
-                                  root.screenStatusLabel(screenChip.modelData.status))
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: root.currentSummary()
                         size: "caption"
                         color: Theme.color.textSecondary
+                        wrapMode: Text.Wrap
+                    }
+
+                    IslandButton {
+                        objectName: "wallpaperBrowseButton"
+                        label: qsTr("Browse image")
+                        reducedMotion: root.reducedMotion
+                        onClicked: browseDialog.open()
+                    }
+
+                    IslandButton {
+                        objectName: "wallpaperAddRootButton"
+                        label: qsTr("Add folder")
+                        reducedMotion: root.reducedMotion
+                        enabled: root.settingsModel.writable && root.roots.length < 8
+                        onClicked: rootDialog.open()
+                    }
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.sm
+                    visible: root.wallpaper.screens.length > 0
+
+                    Repeater {
+                        model: root.wallpaper.screens
+
+                        delegate: Rectangle {
+                            id: screenChip
+                            required property var modelData
+
+                            width: screenStatus.implicitWidth + Theme.spacing.md * 2
+                            height: screenStatus.implicitHeight + Theme.spacing.sm * 2
+                            radius: Theme.radius.sm
+                            color: screenChip.modelData.supported ? Theme.color.surfaceActive :
+                                                                    Theme.color.controlFill
+                            border.width: Theme.size.hairlineWidth
+                            border.color: screenChip.modelData.supported
+                                          ? Theme.snapshot.surfaceActiveAccent :
+                                            Theme.color.surfaceBorder
+
+                            IslandText {
+                                id: screenStatus
+                                anchors.centerIn: parent
+                                text: qsTr("%1 · %2").arg(screenChip.modelData.label).arg(
+                                          root.screenStatusLabel(screenChip.modelData.status))
+                                size: "caption"
+                                color: screenChip.modelData.supported ? Theme.textForeground(
+                                                                            Theme.snapshot.textSecondary,
+                                                                            Theme.snapshot.surfaceActive) :
+                                                                        Theme.color.textSecondary
+                            }
+                        }
                     }
                 }
             }
@@ -371,7 +433,7 @@ Item {
         GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            columns: root.width >= 580 ? 2 : 1
+            columns: root.twoColumnWorkspace ? 2 : 1
             columnSpacing: Theme.spacing.md
             rowSpacing: Theme.spacing.md
 
@@ -431,7 +493,7 @@ Item {
                             leftPadding: Theme.spacing.md
                             rightPadding: Theme.spacing.md
                             verticalAlignment: TextInput.AlignVCenter
-                            color: Theme.color.textPrimary
+                            color: Theme.snapshot.controlFillForeground
                             font.family: Theme.type.familyForItem(this)
                             font.pixelSize: Theme.type.sizeForItem(this, "body")
                             activeFocusOnTab: true
@@ -482,6 +544,10 @@ Item {
                     objectName: "wallpaperImageGrid"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: root.twoColumnWorkspace ? 0 :
+                                                                    root.stackedGridMinimumHeight
+                    Layout.preferredHeight: root.twoColumnWorkspace ? -1 :
+                                                                      root.stackedGridPreferredHeight
                     model: root.filteredImages()
                     cellWidth: Math.max(152, Math.floor(width / Math.max(1, Math.floor(width
                                                                                        / 180))))
@@ -592,13 +658,16 @@ Item {
             }
 
             IslandPanel {
+                objectName: "wallpaperPreviewPanel"
+                implicitHeight: previewLayout.implicitHeight + Theme.spacing.md * 2
                 Layout.fillWidth: true
-                Layout.fillHeight: root.width >= 580
-                Layout.preferredHeight: root.width >= 580 ? -1 : 250
+                Layout.fillHeight: root.twoColumnWorkspace
+                Layout.preferredHeight: root.twoColumnWorkspace ? -1 : implicitHeight
                 Layout.minimumWidth: 240
                 color: Theme.color.controlFill
 
                 ColumnLayout {
+                    id: previewLayout
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.md
                     spacing: Theme.spacing.sm
@@ -608,6 +677,7 @@ Item {
                         text: qsTr("Preview")
                         size: "body"
                         font.weight: Theme.type.weightSemibold
+                        color: Theme.snapshot.controlFillForeground
                         Accessible.role: Accessible.Heading
                         Accessible.name: text
                     }
@@ -644,18 +714,124 @@ Item {
                         }
                     }
 
-                    IslandText {
+                    ColumnLayout {
+                        objectName: "wallpaperPreviewMetadata"
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         visible: root.previewReady
-                        text: root.previewReady ? qsTr("%1 · %2×%3 · %4").arg(
-                                                      root.wallpaper.preview.name).arg(
-                                                      root.wallpaper.preview.width).arg(
-                                                      root.wallpaper.preview.height).arg(
-                                                      root.formatBytes(
-                                                          root.wallpaper.preview.byteSize)) : ""
-                        size: "caption"
-                        color: Theme.color.textSecondary
-                        elide: Text.ElideMiddle
+                        spacing: Theme.spacing.xs
+
+                        Item {
+                            id: previewNameFrame
+
+                            readonly property real boundedNameHeight: Math.min(
+                                                                          previewName.implicitHeight,
+                                                                          Theme.size.controlHeightLg
+                                                                          * 2)
+
+                            objectName: "wallpaperPreviewNameFrame"
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredHeight: boundedNameHeight
+                            Layout.minimumHeight: boundedNameHeight
+                            Layout.maximumHeight: Theme.size.controlHeightLg * 2
+
+                            Flickable {
+                                id: previewNameViewport
+
+                                objectName: "wallpaperPreviewNameViewport"
+                                anchors.fill: parent
+                                contentWidth: width
+                                contentHeight: previewName.height
+                                flickableDirection: Flickable.VerticalFlick
+                                boundsBehavior: Flickable.StopAtBounds
+                                interactive: contentHeight > height + 0.5
+                                clip: true
+                                focusPolicy: interactive ? Qt.StrongFocus : Qt.NoFocus
+                                activeFocusOnTab: interactive
+                                Accessible.role: interactive ? Accessible.Pane :
+                                                               Accessible.StaticText
+                                Accessible.name: previewName.text
+                                Accessible.description: interactive ? qsTr(
+                                                                          "Scrollable filename. Use Up, Down, Page Up, Page Down, Home, or End.") :
+                                                                      ""
+                                Accessible.focused: activeFocus
+                                Keys.priority: Keys.BeforeItem
+                                Keys.onPressed: event => event.accepted = handleScrollKey(event.key)
+
+                                function handleScrollKey(key) {
+                                    if (!interactive) {
+                                        return false;
+                                    }
+                                    if (key === Qt.Key_Up) {
+                                        scrollBy(-Theme.spacing.lg);
+                                    } else if (key === Qt.Key_Down) {
+                                        scrollBy(Theme.spacing.lg);
+                                    } else if (key === Qt.Key_PageUp) {
+                                        scrollBy(-pageStep());
+                                    } else if (key === Qt.Key_PageDown) {
+                                        scrollBy(pageStep());
+                                    } else if (key === Qt.Key_Home) {
+                                        contentY = 0;
+                                    } else if (key === Qt.Key_End) {
+                                        contentY = maximumContentY();
+                                    } else {
+                                        return false;
+                                    }
+                                    return true;
+                                }
+
+                                function maximumContentY() {
+                                    return Math.max(0, contentHeight - height);
+                                }
+
+                                function pageStep() {
+                                    return Math.max(Theme.spacing.lg, height - Theme.spacing.sm);
+                                }
+
+                                function scrollBy(delta) {
+                                    contentY = Math.max(0, Math.min(maximumContentY(), contentY
+                                                                    + delta));
+                                }
+
+                                ScrollBar.vertical: ScrollBar {
+                                    policy: ScrollBar.AsNeeded
+                                }
+
+                                IslandText {
+                                    id: previewName
+
+                                    objectName: "wallpaperPreviewName"
+                                    width: Math.max(0, previewNameViewport.width - Theme.spacing.sm)
+                                    text: root.previewReady ? root.wallpaper.preview.name : ""
+                                    size: "caption"
+                                    color: Theme.color.textSecondary
+                                    wrapMode: Text.WrapAnywhere
+                                    Accessible.ignored: true
+                                    onTextChanged: previewNameViewport.contentY = 0
+                                }
+                            }
+
+                            IslandFocusRing {
+                                visible: previewNameViewport.activeFocus
+                                controlRadius: Theme.radius.sm
+                            }
+                        }
+
+                        IslandText {
+                            objectName: "wallpaperPreviewDetails"
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            text: root.previewReady ? qsTr("%1×%2 · %3").arg(
+                                                          root.wallpaper.preview.width).arg(
+                                                          root.wallpaper.preview.height).arg(
+                                                          root.formatBytes(
+                                                              root.wallpaper.preview.byteSize)) : ""
+                            size: "caption"
+                            color: Theme.color.textSecondary
+                            wrapMode: Text.Wrap
+                            Accessible.name: text
+                        }
                     }
 
                     IslandText {
@@ -678,24 +854,51 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    RowLayout {
+                    GridLayout {
+                        id: previewActions
+
+                        objectName: "wallpaperPreviewActions"
                         Layout.fillWidth: true
-                        spacing: Theme.spacing.sm
+                        Layout.minimumWidth: 0
+                        columns: stackActions ? 1 : 2
+                        columnSpacing: Theme.spacing.sm
+                        rowSpacing: Theme.spacing.sm
+
+                        readonly property real inlineImplicitWidth:
+                            applyButton.implicitContentWidth + clearButton.implicitContentWidth
+                            + Theme.spacing.md * 4 + columnSpacing
+                        readonly property bool stackActions: width + 0.5 < inlineImplicitWidth
 
                         IslandButton {
+                            id: applyButton
+
                             objectName: "wallpaperApplyButton"
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            leftPadding: previewActions.stackActions ? Theme.spacing.sm :
+                                                                       Theme.spacing.md
+                            rightPadding: leftPadding
                             label: root.operationPending ? qsTr("Applying…") :
                                                            root.applyWarningVisible ? qsTr(
                                                                                           "Confirm Apply") :
-                                                                                      qsTr("Apply to all displays")
+                                                                                      qsTr("Apply everywhere")
                             variant: "accent"
                             reducedMotion: root.reducedMotion
                             enabled: root.previewReady && !root.operationPending
+                            Accessible.description: qsTr(
+                                                        "Apply the selected image to every active display")
                             onClicked: root.requestApply()
                         }
 
                         IslandButton {
+                            id: clearButton
+
+                            objectName: "wallpaperClearButton"
+                            Layout.fillWidth: previewActions.stackActions
+                            Layout.minimumWidth: 0
+                            leftPadding: previewActions.stackActions ? Theme.spacing.sm :
+                                                                       Theme.spacing.md
+                            rightPadding: leftPadding
                             label: qsTr("Clear")
                             reducedMotion: root.reducedMotion
                             enabled: root.wallpaper.preview !== null && !root.operationPending

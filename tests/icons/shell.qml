@@ -7,10 +7,13 @@ ShellRoot {
 
     readonly property var assetFiles: ["navigation-back.svg", "launcher.svg",
         "notification-bell.svg", "tray.svg", "session.svg", "wifi.svg", "wifi-off.svg",
-        "bluetooth.svg", "bluetooth-off.svg", "volume-high.svg", "volume-low.svg",
-        "volume-muted.svg", "microphone.svg", "microphone-muted.svg", "brightness.svg",
-        "notification.svg", "media-previous.svg", "media-play.svg", "media-pause.svg",
-        "media-next.svg", "placeholder.svg"]
+        "bluetooth.svg", "bluetooth-off.svg", "control-center-island.svg",
+        "control-center-appearance.svg", "control-center-clock.svg", "control-center-media.svg",
+        "control-center-weather.svg", "control-center-wallpaper.svg",
+        "control-center-displays.svg", "control-center-about.svg", "volume-high.svg",
+        "volume-low.svg", "volume-muted.svg", "microphone.svg", "microphone-muted.svg",
+        "brightness.svg", "notification.svg", "media-previous.svg", "media-play.svg",
+        "media-pause.svg", "media-next.svg", "placeholder.svg"]
     readonly property var boldWirelessAssets: [
         {
             "file": "wifi.svg",
@@ -146,6 +149,16 @@ ShellRoot {
                 === "KDE Plasma System Settings" && String(systemSettings.source)
                 === String(Quickshell.iconPath("preferences-system")) && !systemSettings.tintable,
                 "KDE Settings preserves its full-color application icon");
+        const routeMeanings = ["controlCenterIsland", "controlCenterAppearance",
+                               "controlCenterClock", "controlCenterMedia",
+                               "controlCenterWeather", "controlCenterNotifications", "wifi",
+                               "bluetooth", "controlCenterWallpaper", "controlCenterDisplays",
+                               "controlCenterAbout"];
+        for (let index = 0; index < routeMeanings.length; index += 1) {
+            const routeIcon = IconResolver.resolve(routeMeanings[index], "normal", "", "");
+            require(routeIcon.kind === "nagi" && routeIcon.source !== IconResolver.placeholderSource,
+                    "every Control Center route resolves to owned semantic artwork");
+        }
 
 
         const application = IconResolver.resolve("application", "active", applicationSource,

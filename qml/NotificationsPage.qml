@@ -49,171 +49,197 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Notifications")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "notificationsPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Popup policy is separate from the bounded, memory-only history. Do Not Disturb never suppresses volume, brightness, workspace, or other system feedback.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterNotifications"
+            title: qsTr("Notifications")
+            description: qsTr(
+                             "Choose when notification popups appear and what Nagi keeps in session history.")
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "notificationsPopupPolicySection"
             text: qsTr("Popup policy")
             separated: false
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Notification popups")
+                description: qsTr("Allow notification transients on every eligible island.")
+                value: root.settingsModel.snapshot.notifications.popupsEnabled
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request("notifications", {
+                                                            "popupsEnabled": value
+                                                        })
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Do Not Disturb")
+                description: qsTr(
+                                 "Suppress normal and low-urgency notification popups while retaining eligible history.")
+                value: root.settingsModel.snapshot.notifications.doNotDisturb
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request("notifications", {
+                                                            "doNotDisturb": value
+                                                        })
+            }
+
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Critical notifications")
+                description: qsTr(
+                                 "Let critical notifications bypass Do Not Disturb, or request total notification silence.")
+                value: root.settingsModel.snapshot.notifications.criticalMode
+                choices: [
+                    {
+                        "label": qsTr("Bypass DND"),
+                        "value": "bypass"
+                    },
+                    {
+                        "label": qsTr("Total silence"),
+                        "value": "silence"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request("notifications", {
+                                                            "criticalMode": value
+                                                        })
+            }
         }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Notification popups")
-            description: qsTr("Allow notification transients on every eligible island.")
-            value: root.settingsModel.snapshot.notifications.popupsEnabled
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request("notifications", {
-                                                        "popupsEnabled": value
-                                                    })
-        }
-
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Do Not Disturb")
-            description: qsTr(
-                             "Suppress normal and low-urgency notification popups while retaining eligible history.")
-            value: root.settingsModel.snapshot.notifications.doNotDisturb
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request("notifications", {
-                                                        "doNotDisturb": value
-                                                    })
-        }
-
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Critical notifications")
-            description: qsTr(
-                             "Let critical notifications bypass Do Not Disturb, or request total notification silence.")
-            value: root.settingsModel.snapshot.notifications.criticalMode
-            choices: [
-                {
-                    "label": qsTr("Bypass DND"),
-                    "value": "bypass"
-                },
-                {
-                    "label": qsTr("Total silence"),
-                    "value": "silence"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request("notifications", {
-                                                        "criticalMode": value
-                                                    })
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "notificationsFeedbackSection"
             text: qsTr("Feedback")
+
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Feedback duration")
+                description: qsTr(
+                                 "Scale visible feedback holds without changing freshness, queue, or retention limits.")
+                value: root.settingsModel.snapshot.island.feedbackDuration
+                choices: [
+                    {
+                        "label": qsTr("Short"),
+                        "value": "short"
+                    },
+                    {
+                        "label": qsTr("Normal"),
+                        "value": "normal"
+                    },
+                    {
+                        "label": qsTr("Long"),
+                        "value": "long"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request("island", {
+                                                            "feedbackDuration": value
+                                                        })
+            }
         }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Feedback duration")
-            description: qsTr(
-                             "Scale visible feedback holds without changing freshness, queue, or retention limits.")
-            value: root.settingsModel.snapshot.island.feedbackDuration
-            choices: [
-                {
-                    "label": qsTr("Short"),
-                    "value": "short"
-                },
-                {
-                    "label": qsTr("Normal"),
-                    "value": "normal"
-                },
-                {
-                    "label": qsTr("Long"),
-                    "value": "long"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request("island", {
-                                                        "feedbackDuration": value
-                                                    })
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "notificationsIslandContentSection"
             text: qsTr("Island content")
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Dashboard recents")
+                description: qsTr("Show the fixed bounded recent subset in Expanded.")
+                value: root.settingsModel.snapshot.notifications.dashboardVisible
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request("notifications", {
+                                                            "dashboardVisible": value
+                                                        })
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("History")
+                description: qsTr("Show the session-only notification history route in the island.")
+                value: root.settingsModel.snapshot.notifications.historyVisible
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request("notifications", {
+                                                            "historyVisible": value
+                                                        })
+            }
         }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Dashboard recents")
-            description: qsTr("Show the fixed bounded recent subset in Expanded.")
-            value: root.settingsModel.snapshot.notifications.dashboardVisible
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request("notifications", {
-                                                        "dashboardVisible": value
-                                                    })
-        }
-
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("History")
-            description: qsTr("Show the session-only notification history route in the island.")
-            value: root.settingsModel.snapshot.notifications.historyVisible
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request("notifications", {
-                                                        "historyVisible": value
-                                                    })
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "notificationsHistorySection"
             text: qsTr("History")
-        }
 
-        SettingActionRow {
-            Layout.fillWidth: true
-            label: qsTr("Clear history")
-            description: qsTr(
-                             "Forget every retained snapshot without closing live protocol notifications or writing to disk.")
-            actionLabel: root.notificationService.historyCount === 0 ? qsTr("History empty") : qsTr(
-                                                                           "Clear")
-            actionVariant: "danger"
-            writable: root.notificationService.historyCount > 0
-            reducedMotion: root.reducedMotion
-            onActionRequested: root.notificationService.clearHistory()
-        }
+            SettingActionRow {
+                Layout.fillWidth: true
+                separatorVisible: notificationHistoryNoteEntry.visible
+                label: qsTr("Clear history")
+                description: qsTr(
+                                 "Forget every retained snapshot without closing live protocol notifications or writing to disk.")
+                actionLabel: root.notificationService.historyCount === 0 ? qsTr("History empty") :
+                                                                           qsTr("Clear")
+                actionVariant: "danger"
+                writable: root.notificationService.historyCount > 0
+                reducedMotion: root.reducedMotion
+                onActionRequested: root.notificationService.clearHistory()
+            }
 
-        IslandText {
-            Layout.fillWidth: true
-            text: qsTr(
-                      "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime.")
-            size: "caption"
-            tone: "muted"
-            wrapMode: Text.Wrap
-        }
+            Item {
+                id: notificationHistoryNoteEntry
+                readonly property bool separatorVisible: false
+                Layout.fillWidth: true
+                implicitHeight: notificationHistoryNotes.implicitHeight + Theme.spacing.md * 2
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.failureText !== ""
-            text: root.failureText
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
+                ColumnLayout {
+                    id: notificationHistoryNotes
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacing.sm
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        text: qsTr(
+                                  "Per-application rules and notification actions are unavailable. Actions remain capability-gated by the packaged Quickshell runtime.")
+                        size: "caption"
+                        tone: "muted"
+                        wrapMode: Text.Wrap
+                    }
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: root.failureText !== ""
+                        text: root.failureText
+                        size: "caption"
+                        color: Theme.color.danger
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.AlertMessage
+                        Accessible.name: text
+                    }
+                }
+
+                Rectangle {
+                    objectName: "controlCenterSettingRowSeparator"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    visible: notificationHistoryNoteEntry.separatorVisible
+                    height: Theme.size.hairlineWidth
+                    color: Theme.color.surfaceBorder
+                    opacity: 0.72
+                }
+            }
         }
 
         SettingsResetActions {

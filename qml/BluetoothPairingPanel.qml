@@ -64,6 +64,7 @@ IslandPanel {
             text: qsTr("Pairing with %1").arg(root.deviceName)
             textFormat: Text.PlainText
             size: "title"
+            color: Theme.snapshot.controlFillForeground
             wrapMode: Text.Wrap
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -96,9 +97,10 @@ IslandPanel {
             text: root.displayValue
             textFormat: Text.PlainText
             size: "display"
+            color: Theme.snapshot.controlFillForeground
             horizontalAlignment: Text.AlignHCenter
-            Accessible.name: (root.prompt === "display-pin" ? qsTr("PIN: %1") : qsTr(
-                                                                  "Passkey: %1")).arg(text)
+            Accessible.name: root.prompt === "display-pin" ? qsTr("Pairing PIN") : qsTr(
+                                                                 "Pairing passkey")
         }
 
         IslandText {
@@ -108,7 +110,7 @@ IslandPanel {
             size: "caption"
             color: Theme.color.textSecondary
             horizontalAlignment: Text.AlignHCenter
-            Accessible.name: text
+            Accessible.name: qsTr("Pairing entry progress")
         }
 
         WifiSecretField {

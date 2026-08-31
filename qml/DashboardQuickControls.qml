@@ -70,6 +70,44 @@ FocusScope {
         return Theme.color.surface;
     }
 
+    function iconTintForState(state, pressed, hovered) {
+        if (pressed) {
+            if (state === "active") {
+                return Theme.snapshot.surfaceActiveAccent;
+            }
+            if (state === "pending") {
+                return Theme.snapshot.surfaceActiveWarning;
+            }
+            return state === "error" ? Theme.contrastingForeground(Theme.snapshot.danger,
+                                                                   Theme.snapshot.surfaceActive, 3) :
+                                       Theme.snapshot.surfaceActiveForeground;
+        }
+        if (hovered) {
+            if (state === "active") {
+                return Theme.snapshot.surfaceHoverAccent;
+            }
+            if (state === "pending") {
+                return Theme.snapshot.surfaceHoverWarning;
+            }
+            return state === "error" ? Theme.contrastingForeground(Theme.snapshot.danger,
+                                                                   Theme.snapshot.surfaceHover, 3) :
+                                       Theme.snapshot.surfaceHoverForeground;
+        }
+        if (state === "error") {
+            return Theme.color.danger;
+        }
+        if (state === "pending") {
+            return Theme.snapshot.surfaceHoverWarning;
+        }
+        if (state === "active") {
+            return Theme.snapshot.surfaceActiveAccent;
+        }
+        if (state === "off") {
+            return Theme.snapshot.controlFillForeground;
+        }
+        return Theme.color.textPrimary;
+    }
+
     function toggleWifi() {
         return connectivity !== null && connectivity.wifiAvailable && !connectivity.wifiPending
                 && connectivity.toggleWifi();
@@ -154,6 +192,8 @@ FocusScope {
                         anchors.centerIn: parent
                         meaning: "wifi"
                         semanticState: root.wifiSemanticState
+                        tint: root.iconTintForState(root.wifiSemanticState, wifiButton.pressed,
+                                                    wifiButton.hovered)
                         size: "lg"
                     }
                 }
@@ -213,6 +253,9 @@ FocusScope {
                         anchors.centerIn: parent
                         meaning: "bluetooth"
                         semanticState: root.bluetoothSemanticState
+                        tint: root.iconTintForState(root.bluetoothSemanticState,
+                                                    bluetoothButton.pressed,
+                                                    bluetoothButton.hovered)
                         size: "lg"
                     }
                 }

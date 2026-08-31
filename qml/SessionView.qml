@@ -197,6 +197,26 @@ FocusScope {
 
                             required property int index
                             required property var modelData
+                            readonly property bool usesDangerFill: modelData.action === "powerOff"
+                            readonly property color contentForeground: {
+                                if (usesDangerFill) {
+                                    return Theme.color.danger;
+                                }
+                                if (pressed) {
+                                    return modelData.danger ? Theme.textForeground(
+                                                                  Theme.snapshot.danger,
+                                                                  Theme.snapshot.surfaceActive) :
+                                                              Theme.snapshot.surfaceActiveForeground;
+                                }
+                                if (hovered) {
+                                    return modelData.danger ? Theme.textForeground(
+                                                                  Theme.snapshot.danger,
+                                                                  Theme.snapshot.surfaceHover) :
+                                                              Theme.snapshot.surfaceHoverForeground;
+                                }
+                                return modelData.danger ? Theme.color.danger :
+                                                          Theme.color.textPrimary;
+                            }
                             objectName: "sessionActionButton"
                             implicitWidth: view.actionCellWidth
                             implicitHeight: view.actionCellHeight
@@ -242,16 +262,16 @@ FocusScope {
 
                             background: Rectangle {
                                 radius: Theme.radius.md
-                                color: actionButton.modelData.action === "powerOff"
-                                       ? actionButton.pressed ? Theme.color.dangerFillPressed :
-                                                                actionButton.hovered
-                                                                ? Theme.color.dangerFillHover :
-                                                                  Theme.color.dangerFill :
-                                                                  actionButton.pressed
-                                                                  ? Theme.color.surfaceActive :
-                                                                    actionButton.hovered
-                                                                    ? Theme.color.surfaceHover :
-                                                                      "transparent"
+                                color: actionButton.usesDangerFill ? actionButton.pressed
+                                                                     ? Theme.color.dangerFillPressed :
+                                                                       actionButton.hovered
+                                                                       ? Theme.color.dangerFillHover :
+                                                                         Theme.color.dangerFill :
+                                                                         actionButton.pressed
+                                                                         ? Theme.color.surfaceActive :
+                                                                           actionButton.hovered
+                                                                           ? Theme.color.surfaceHover :
+                                                                             "transparent"
                             }
 
                             contentItem: Item {
@@ -265,14 +285,14 @@ FocusScope {
                                         size: "lg"
                                         semanticState: actionButton.modelData.danger ? "error" :
                                                                                        "normal"
+                                        tint: actionButton.contentForeground
                                     }
 
                                     IslandText {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: actionButton.modelData.label
                                         textFormat: Text.PlainText
-                                        color: actionButton.modelData.danger ? Theme.color.danger :
-                                                                               Theme.color.textPrimary
+                                        color: actionButton.contentForeground
                                         size: "label"
                                         font.weight: Theme.type.weightMedium
                                     }

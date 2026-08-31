@@ -3,10 +3,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
-IslandPanel {
+Item {
     id: root
 
     required property var network
+    required property bool separatorVisible
     property bool busy: false
     property bool reducedMotion: false
 
@@ -15,8 +16,9 @@ IslandPanel {
     signal forgetRequested(int token)
 
     Layout.fillWidth: true
-    implicitHeight: content.implicitHeight + Theme.spacing.lg * 2
-    color: network.connected ? Theme.color.surfaceActive : Theme.color.controlFill
+    implicitWidth: content.implicitWidth
+    implicitHeight: Math.max(Theme.size.controlCenterSettingRowMinimumHeight,
+                             content.implicitHeight + Theme.spacing.md * 2)
     Accessible.role: Accessible.ListItem
     Accessible.name: network.connected ? qsTr("%1, %2, signal %3 percent, connected").arg(
                                              network.ssid).arg(securityLabel()).arg(
@@ -35,8 +37,9 @@ IslandPanel {
     ColumnLayout {
         id: content
 
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.lg
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.sm
 
         RowLayout {
@@ -52,6 +55,7 @@ IslandPanel {
                     text: root.network.ssid
                     textFormat: Text.PlainText
                     size: "body"
+                    color: Theme.snapshot.controlFillForeground
                     elide: Text.ElideRight
                     Accessible.ignored: true
                 }
@@ -74,7 +78,7 @@ IslandPanel {
                 visible: root.network.connected
                 text: qsTr("Connected")
                 size: "caption"
-                color: Theme.snapshot.accent
+                color: Theme.snapshot.controlFillAccent
                 Accessible.ignored: true
             }
         }
@@ -138,5 +142,16 @@ IslandPanel {
             wrapMode: Text.Wrap
             Accessible.name: text
         }
+    }
+    Rectangle {
+        objectName: "wifiNetworkSeparator"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Theme.size.hairlineWidth
+        color: Theme.color.surfaceBorder
+        opacity: 0.72
+        visible: root.separatorVisible
+        Accessible.ignored: true
     }
 }

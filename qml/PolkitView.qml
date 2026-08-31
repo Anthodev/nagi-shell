@@ -494,7 +494,7 @@ FocusScope {
                             anchors.fill: parent
                             leftPadding: Theme.spacing.md
                             rightPadding: Theme.spacing.md
-                            color: Theme.color.textPrimary
+                            color: Theme.snapshot.controlFillForeground
                             selectionColor: Theme.snapshot.accent
                             selectedTextColor: Theme.snapshot.accentForeground
                             font.pixelSize: Theme.type.body

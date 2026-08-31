@@ -110,34 +110,27 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Weather")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "weatherPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "controlCenterWeather"
+            title: qsTr("Weather")
+            description: qsTr("Configure opt-in weather forecasts for one confirmed location.")
         }
 
-        IslandPanel {
+        ControlCenterSectionPanel {
+            objectName: "weatherPrivacySection"
             Layout.fillWidth: true
-            implicitHeight: privacyColumn.implicitHeight + Theme.spacing.lg * 2
-            color: Theme.color.controlFill
+            text: qsTr("Privacy before configuration")
+            separated: false
 
             ColumnLayout {
-                id: privacyColumn
-
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.lg
+                Layout.fillWidth: true
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
                 spacing: Theme.spacing.sm
-
-                IslandText {
-                    Layout.fillWidth: true
-                    text: qsTr("Privacy before configuration")
-                    size: "title"
-                    Accessible.role: Accessible.Heading
-                    Accessible.name: text
-                }
 
                 IslandText {
                     Layout.fillWidth: true
@@ -150,19 +143,27 @@ Flickable {
                     Accessible.name: text
                 }
             }
-        }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("I understand the Weather privacy disclosure")
-            description: qsTr(
-                             "Required before a manual city or postal search. This choice is saved only with a confirmed location.")
-            value: root.privacyAccepted
-            writable: root.settingsModel.writable
-            onValueRequested: value => {
-                root.privacyAccepted = value;
-                if (!value) {
-                    root.locationSearch.clear();
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: Theme.size.hairlineWidth
+                color: Theme.color.surfaceBorder
+                opacity: 0.72
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                label: qsTr("I understand the Weather privacy disclosure")
+                description: qsTr(
+                                 "Required before a manual city or postal search. This choice is saved only with a confirmed location.")
+                value: root.privacyAccepted
+                writable: root.settingsModel.writable
+                separatorVisible: false
+                onValueRequested: value => {
+                    root.privacyAccepted = value;
+                    if (!value) {
+                        root.locationSearch.clear();
+                    }
                 }
             }
         }
@@ -184,6 +185,7 @@ Flickable {
                     Layout.fillWidth: true
                     text: root.settingsModel.snapshot.weather.locationLabel
                     size: "title"
+                    color: Theme.snapshot.controlFillForeground
                     wrapMode: Text.Wrap
                     Accessible.name: qsTr("Confirmed Weather location: %1").arg(text)
                 }
@@ -216,207 +218,218 @@ Flickable {
             }
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "weatherLocationSection"
             Layout.fillWidth: true
             text: root.configured ? qsTr("Replace location") : qsTr("Choose a location")
-        }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing.sm
-
-            Rectangle {
+            ColumnLayout {
                 Layout.fillWidth: true
-                implicitHeight: Theme.size.controlHeightMd
-                radius: Theme.radius.md
-                color: Theme.color.controlFill
-                border.width: Theme.size.hairlineWidth
-                border.color: searchInput.activeFocus ? Theme.snapshot.focusRing :
-                                                        Theme.color.surfaceBorder
-                opacity: root.lookupAllowed ? 1 : Theme.opacity.disabled
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
+                spacing: Theme.spacing.sm
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.sm
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: Theme.size.controlHeightMd
+                        radius: Theme.radius.md
+                        color: Theme.color.controlFill
+                        border.width: Theme.size.hairlineWidth
+                        border.color: searchInput.activeFocus ? Theme.snapshot.focusRing :
+                                                                Theme.color.surfaceBorder
+                        opacity: root.lookupAllowed ? 1 : Theme.opacity.disabled
+
+                        IslandText {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.spacing.md
+                            text: qsTr("City or postal code")
+                            tone: "muted"
+                            verticalAlignment: Text.AlignVCenter
+                            visible: searchInput.text === ""
+                        }
+
+                        TextInput {
+                            id: searchInput
+
+                            anchors.fill: parent
+                            leftPadding: Theme.spacing.md
+                            rightPadding: Theme.spacing.md
+                            enabled: root.lookupAllowed && !root.locationSearch.inFlight
+                            color: Theme.snapshot.controlFillForeground
+                            selectionColor: Theme.snapshot.accent
+                            selectedTextColor: Theme.snapshot.accentForeground
+                            font.pixelSize: Theme.type.sizeForItem(this, "body")
+                            font.family: Theme.type.familyForItem(this)
+                            verticalAlignment: TextInput.AlignVCenter
+                            clip: true
+                            activeFocusOnTab: true
+                            inputMethodHints: Qt.ImhNoPredictiveText
+                            maximumLength: 128
+                            Accessible.role: Accessible.EditableText
+                            Accessible.name: qsTr("City or postal location")
+                            Keys.onReturnPressed: event => {
+                                root.search();
+                                event.accepted = true;
+                            }
+                            Keys.onEnterPressed: event => {
+                                root.search();
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
+                    IslandButton {
+                        label: root.locationSearch.inFlight ? qsTr("Searching…") : qsTr("Search")
+                        reducedMotion: root.reducedMotion
+                        enabled: root.lookupAllowed && !root.locationSearch.inFlight
+                                 && searchInput.text.trim().length >= 2
+                        onClicked: root.search()
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.locationSearch.results.length > 0
+                    spacing: Theme.spacing.sm
+                    Accessible.role: Accessible.List
+                    Accessible.name: qsTr("Location search results")
+
+                    Repeater {
+                        model: root.visible ? root.locationSearch.results : []
+
+                        delegate: IslandButton {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            label: modelData.label
+                            reducedMotion: root.reducedMotion
+                            Accessible.role: Accessible.ListItem
+                            Accessible.description: qsTr("Use this location and enable Weather")
+                            onClicked: root.confirm(modelData)
+                        }
+                    }
+                }
 
                 IslandText {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.spacing.md
-                    text: qsTr("City or postal code")
-                    tone: "muted"
-                    verticalAlignment: Text.AlignVCenter
-                    visible: searchInput.text === ""
-                }
-
-                TextInput {
-                    id: searchInput
-
-                    anchors.fill: parent
-                    leftPadding: Theme.spacing.md
-                    rightPadding: Theme.spacing.md
-                    enabled: root.lookupAllowed && !root.locationSearch.inFlight
-                    color: Theme.color.textPrimary
-                    selectionColor: Theme.snapshot.accent
-                    selectedTextColor: Theme.snapshot.accentForeground
-                    font.pixelSize: Theme.type.sizeForItem(this, "body")
-                    font.family: Theme.type.familyForItem(this)
-                    verticalAlignment: TextInput.AlignVCenter
-                    clip: true
-                    activeFocusOnTab: true
-                    inputMethodHints: Qt.ImhNoPredictiveText
-                    maximumLength: 128
-                    Accessible.role: Accessible.EditableText
-                    Accessible.name: qsTr("City or postal location")
-                    Keys.onReturnPressed: event => {
-                        root.search();
-                        event.accepted = true;
-                    }
-                    Keys.onEnterPressed: event => {
-                        root.search();
-                        event.accepted = true;
-                    }
-                }
-            }
-
-            IslandButton {
-                label: root.locationSearch.inFlight ? qsTr("Searching…") : qsTr("Search")
-                reducedMotion: root.reducedMotion
-                enabled: root.lookupAllowed && !root.locationSearch.inFlight
-                         && searchInput.text.trim().length >= 2
-                onClicked: root.search()
-            }
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            visible: root.locationSearch.results.length > 0
-            spacing: Theme.spacing.sm
-            Accessible.role: Accessible.List
-            Accessible.name: qsTr("Location search results")
-
-            Repeater {
-                model: root.visible ? root.locationSearch.results : []
-
-                delegate: IslandButton {
-                    required property var modelData
-
                     Layout.fillWidth: true
-                    label: modelData.label
-                    reducedMotion: root.reducedMotion
-                    Accessible.role: Accessible.ListItem
-                    Accessible.description: qsTr("Use this location and enable Weather")
-                    onClicked: root.confirm(modelData)
+                    visible: root.lookupFailureText() !== ""
+                    text: root.lookupFailureText()
+                    size: "caption"
+                    color: Theme.color.danger
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
+                }
+
+                IslandText {
+                    Layout.fillWidth: true
+                    text: root.locationSearch.attribution
+                    size: "caption"
+                    tone: "muted"
+                    wrapMode: Text.Wrap
+                    Accessible.name: text
                 }
             }
         }
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.lookupFailureText() !== ""
-            text: root.lookupFailureText()
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            text: root.locationSearch.attribution
-            size: "caption"
-            tone: "muted"
-            wrapMode: Text.Wrap
-            Accessible.name: text
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "weatherForecastPreferencesSection"
+            Layout.fillWidth: true
             text: qsTr("Forecast preferences")
-        }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Temperature")
-            description: qsTr("Follow the locale or override temperature independently.")
-            value: root.settingsModel.snapshot.weather.temperatureUnit
-            choices: [
-                {
-                    "label": qsTr("Locale"),
-                    "value": "auto"
-                },
-                {
-                    "label": qsTr("Celsius"),
-                    "value": "celsius"
-                },
-                {
-                    "label": qsTr("Fahrenheit"),
-                    "value": "fahrenheit"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "temperatureUnit": value
-                                                    })
-        }
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                label: qsTr("Temperature")
+                description: qsTr("Follow the locale or override temperature independently.")
+                value: root.settingsModel.snapshot.weather.temperatureUnit
+                choices: [
+                    {
+                        "label": qsTr("Locale"),
+                        "value": "auto"
+                    },
+                    {
+                        "label": qsTr("Celsius"),
+                        "value": "celsius"
+                    },
+                    {
+                        "label": qsTr("Fahrenheit"),
+                        "value": "fahrenheit"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                separatorVisible: true
+                onValueRequested: value => root.request({
+                                                            "temperatureUnit": value
+                                                        })
+            }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Wind speed")
-            description: qsTr("Follow the locale or override wind independently.")
-            value: root.settingsModel.snapshot.weather.windUnit
-            choices: [
-                {
-                    "label": qsTr("Locale"),
-                    "value": "auto"
-                },
-                {
-                    "label": "km/h",
-                    "value": "kmh"
-                },
-                {
-                    "label": "mph",
-                    "value": "mph"
-                },
-                {
-                    "label": "m/s",
-                    "value": "ms"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "windUnit": value
-                                                    })
-        }
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                label: qsTr("Wind speed")
+                description: qsTr("Follow the locale or override wind independently.")
+                value: root.settingsModel.snapshot.weather.windUnit
+                choices: [
+                    {
+                        "label": qsTr("Locale"),
+                        "value": "auto"
+                    },
+                    {
+                        "label": "km/h",
+                        "value": "kmh"
+                    },
+                    {
+                        "label": "mph",
+                        "value": "mph"
+                    },
+                    {
+                        "label": "m/s",
+                        "value": "ms"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                separatorVisible: true
+                onValueRequested: value => root.request({
+                                                            "windUnit": value
+                                                        })
+            }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Refresh preference")
-            description: qsTr(
-                             "Provider cache expiry, minimum gaps, throttling, Retry-After, and backoff always take precedence.")
-            value: root.settingsModel.snapshot.weather.refreshPreset
-            choices: [
-                {
-                    "label": "15 minutes",
-                    "value": "15m"
-                },
-                {
-                    "label": "30 minutes",
-                    "value": "30m"
-                },
-                {
-                    "label": "1 hour",
-                    "value": "1h"
-                },
-                {
-                    "label": "3 hours",
-                    "value": "3h"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "refreshPreset": value
-                                                    })
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                label: qsTr("Refresh preference")
+                description: qsTr(
+                                 "Provider cache expiry, minimum gaps, throttling, Retry-After, and backoff always take precedence.")
+                value: root.settingsModel.snapshot.weather.refreshPreset
+                choices: [
+                    {
+                        "label": "15 minutes",
+                        "value": "15m"
+                    },
+                    {
+                        "label": "30 minutes",
+                        "value": "30m"
+                    },
+                    {
+                        "label": "1 hour",
+                        "value": "1h"
+                    },
+                    {
+                        "label": "3 hours",
+                        "value": "3h"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                separatorVisible: false
+                onValueRequested: value => root.request({
+                                                            "refreshPreset": value
+                                                        })
+            }
         }
 
         IslandText {

@@ -156,6 +156,7 @@ FocusScope {
                                                               + view.temperatureSuffix(
                                                                   view.current.temperatureUnit)
                                 size: "display"
+                                color: Theme.snapshot.controlFillForeground
                                 Accessible.name: qsTr("Current temperature: %1").arg(text)
                             }
 
@@ -426,6 +427,7 @@ FocusScope {
                 Layout.fillWidth: true
                 text: card.heading
                 size: "caption"
+                color: Theme.snapshot.controlFillForeground
                 horizontalAlignment: Text.AlignHCenter
             }
 
@@ -439,6 +441,7 @@ FocusScope {
                 Layout.fillWidth: true
                 text: card.temperature
                 size: "body"
+                color: Theme.snapshot.controlFillForeground
                 horizontalAlignment: Text.AlignHCenter
                 font.weight: Theme.type.weightMedium
             }

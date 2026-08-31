@@ -35,6 +35,7 @@ ShellRoot {
     property real preemptedExpandedOffset: 0
     property real preemptedLauncherOffset: 0
     readonly property int maximumRetryAttempts: 500
+    property int workspaceFullProbeStage: 0
     readonly property int soakCycleCount: 100
     property int soakCycle: 0
     property bool soakInteractiveCancellationPending: false
@@ -113,6 +114,30 @@ ShellRoot {
             Qt.exit(1);
             throw new Error(message);
         }
+    }
+
+    function requireNaturalSourceGeometry(source, label) {
+        require(source !== null && source.width > 0 && source.height > 0
+                && Math.abs(source.width - source.implicitWidth) <= 0.5
+                && Math.abs(source.height - source.implicitHeight) <= 0.5,
+                label + " root keeps natural actual geometry: actual="
+                + (source === null ? "null" : source.width + "x" + source.height) + " implicit="
+                + (source === null ? "null" : source.implicitWidth + "x"
+                                     + source.implicitHeight));
+    }
+
+    function requireWorkspacePresentationGeometry(source, label) {
+        requireNaturalSourceGeometry(source, label);
+        require(source.workspace && source.workspaceDisplayText === "02"
+                && source.workspacePosition === 2 && source.workspaceCount === 4,
+                label + " renders the two-digit position and four-desktop projection");
+        require(source.workspaceBadgeItem !== null
+                && source.workspaceBadgeItem.width === Theme.size.islandWorkspaceIndicatorWidth
+                && source.workspaceBadgeItem.height === Theme.size.islandWorkspaceIndicatorHeight,
+                label + " keeps the shared 28 by 22 workspace badge geometry");
+        require(Math.abs(source.contentCenterX - source.width / 2) <= 1
+                && Math.abs(source.workspaceIndicatorCenterX - source.width / 2) <= 1,
+                label + " centers its badge and desktop dots in the compact source root");
     }
     function captureSoakRegistry() {
         const tokens = [];
@@ -1114,6 +1139,11 @@ ShellRoot {
                     "surface keeps the outer radius override while standard panels default to md");
             initialSurfaceToken = host.surfaceToken;
             initialSurfaceGeneration = host.surfaceGeneration;
+            require(host.fallbackSurface.workspaceProjection
+                    === fakeVirtualDesktops.projectionFor(host.fallbackSurface.screen)
+                    && host.fallbackSurface.workspaceProjection.available
+                    && host.fallbackSurface.workspaceProjection.currentPosition === 1,
+                    "actual surface binds Idle to its own output-local workspace projection");
             require(mountedRegionCount === 0,
                     "Idle performs no hidden dashboard projection work");
             startGeometrySampling("expanding", function () {
@@ -1607,11 +1637,74 @@ ShellRoot {
                 }
             }
         } else if (step === 13) {
-            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible,
-                            "final dashboard cancellation did not restore Idle")) {
+            if (workspaceFullProbeStage === 0) {
+                if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null,
+                                "final dashboard cancellation did not restore Idle")) {
+                    return;
+                }
+                host.reducedMotion = false;
+                require(coordinator.requestWorkspace("surface-workspace-full", 3, 1,
+                                                     host.surfaceToken),
+                        "Full workspace transient enters");
+                workspaceFullProbeStage = 1;
+                retry.restart();
                 return;
             }
-            host.reducedMotion = false;
+            if (workspaceFullProbeStage === 1) {
+                if (!awaitState(coordinator.ownerName === "workspace"
+                                && host.contentTransitionRunning
+                                && host.contentOutgoingItem !== null
+                                && host.contentIncomingItem !== null
+                                && host.contentOutgoingItem.sourceItem !== null
+                                && host.contentIncomingItem.sourceItem !== null
+                                && host.contentIncomingItem.sourceItem.workspace,
+                                "Full workspace transient did not mount both retained source roots")) {
+                    return;
+                }
+                const idleSource = host.contentOutgoingItem.sourceItem;
+                const workspaceSource = host.contentIncomingItem.sourceItem;
+                require(idleSource.width > 0 && idleSource.height > 0
+                        && Math.abs(idleSource.width - idleSource.implicitWidth) <= 0.5
+                        && Math.abs(idleSource.height - idleSource.implicitHeight) <= 0.5
+                        && workspaceSource.width > 0 && workspaceSource.height > 0
+                        && Math.abs(workspaceSource.width - workspaceSource.implicitWidth) <= 0.5
+                        && Math.abs(workspaceSource.height - workspaceSource.implicitHeight) <= 0.5,
+                        "Full retained Idle and workspace roots keep natural actual geometry: idle actual="
+                        + idleSource.width + "x" + idleSource.height + " implicit="
+                        + idleSource.implicitWidth + "x" + idleSource.implicitHeight
+                        + ", workspace actual=" + workspaceSource.width + "x"
+                        + workspaceSource.height + " implicit=" + workspaceSource.implicitWidth + "x"
+                        + workspaceSource.implicitHeight);
+                requireWorkspacePresentationGeometry(workspaceSource,
+                                                     "Full workspace transient");
+                workspaceFullProbeStage = 2;
+                retry.restart();
+                return;
+            }
+            if (workspaceFullProbeStage === 2) {
+                if (!awaitState(coordinator.ownerName === "workspace"
+                                && coordinator.presentationVisible && host.transientCommitted
+                                && !host.contentTransitionRunning
+                                && host.contentOutgoingItem === null,
+                                "Full workspace transient did not settle and commit")) {
+                    return;
+                }
+                requireWorkspacePresentationGeometry(host.contentIncomingItem.sourceItem,
+                                                     "settled Full workspace transient");
+                require(coordinator.invalidateTransient("surface-workspace-full", 3),
+                        "Full workspace source invalidates");
+                workspaceFullProbeStage = 3;
+                retry.restart();
+                return;
+            }
+            if (!awaitState(coordinator.ownerName === "idle" && coordinator.presentationVisible
+                            && !host.contentTransitionRunning
+                            && host.contentOutgoingItem === null,
+                            "Full workspace invalidation did not restore Idle")) {
+                return;
+            }
             require(coordinator.requestVolume("surface-volume", 1, 1, host.surfaceToken),
                     "actual surface accepts a compact value transient");
             require(!coordinator.presentationVisible,
@@ -1801,6 +1894,8 @@ ShellRoot {
                     && host.contentIncomingItem !== null && host.contentIncomingOpacity === 1,
                     "Minimal motion synchronously settles transient geometry and content");
             requireMorphSettled("Minimal workspace transient");
+            requireWorkspacePresentationGeometry(host.contentIncomingItem.sourceItem,
+                                                 "Minimal workspace transient");
             require(coordinator.invalidateTransient("surface-workspace", 3),
                     "Minimal source invalidates");
         } else if (step === 19) {
@@ -2539,6 +2634,43 @@ ShellRoot {
     }
 
     QtObject {
+        id: fakeVirtualDesktops
+
+        readonly property var outputToken: ({})
+        readonly property var projection: Object.freeze({
+                                                           "available": true,
+                                                           "currentId": "second",
+                                                           "currentName": "Desktop 2",
+                                                           "currentPosition": 1,
+                                                           "desktops": Object.freeze([{
+                                                                   "id": "first",
+                                                                   "name": "Desktop 1",
+                                                                   "position": 0
+                                                               }, {
+                                                                   "id": "second",
+                                                                   "name": "Desktop 2",
+                                                                   "position": 1
+                                                               }, {
+                                                                   "id": "third",
+                                                                   "name": "Desktop 3",
+                                                                   "position": 2
+                                                               }, {
+                                                                   "id": "fourth",
+                                                                   "name": "Desktop 4",
+                                                                   "position": 3
+                                                               }])
+                                                       })
+
+        function outputTokenFor(screen) {
+            return screen === null || screen === undefined ? null : outputToken;
+        }
+
+        function projectionFor(screen) {
+            return screen === null || screen === undefined ? null : projection;
+        }
+    }
+
+    QtObject {
         id: fakeMedia
 
         readonly property bool available: true
@@ -2581,9 +2713,11 @@ ShellRoot {
                     "value": ""
                 };
             }
+            const fullWorkspace = sourceToken === "surface-workspace-full"
+                                  && sourceGeneration === 3 && sourceRevision === 1;
             const soakGeneration = sourceGeneration - 3000;
-            if (sourceToken === "surface-workspace"
-                    && ((sourceGeneration === 3 && sourceRevision === 1)
+            if ((fullWorkspace || sourceToken === "surface-workspace")
+                    && (fullWorkspace || (sourceGeneration === 3 && sourceRevision === 1)
                         || (Number.isInteger(soakGeneration) && soakGeneration >= 0
                             && soakGeneration < test.soakCycleCount
                             && sourceRevision === soakGeneration + 1))) {
@@ -2964,6 +3098,7 @@ ShellRoot {
         id: host
 
         coordinator: coordinatorCore
+        virtualDesktops: fakeVirtualDesktops
         dashboardMediaContent: mediaRegion
         dashboardClockContent: clockRegion
         dashboardStatusContent: statusRegion

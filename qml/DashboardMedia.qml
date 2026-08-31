@@ -120,6 +120,10 @@ FocusScope {
                         IslandIcon {
                             anchors.centerIn: parent
                             meaning: "mediaPrevious"
+                            tint: previousButton.pressed ? Theme.snapshot.surfaceActiveForeground :
+                                                           previousButton.hovered
+                                                           ? Theme.snapshot.surfaceHoverForeground :
+                                                             semanticTint
                         }
                     }
                     IslandFocusRing {
@@ -156,6 +160,10 @@ FocusScope {
                             anchors.centerIn: parent
                             meaning: root.media !== null && root.media.playbackState === "playing"
                                      ? "mediaPause" : "mediaPlay"
+                            tint: playbackButton.pressed ? Theme.snapshot.surfaceActiveForeground :
+                                                           playbackButton.hovered
+                                                           ? Theme.snapshot.surfaceHoverForeground :
+                                                             semanticTint
                         }
                     }
                     IslandFocusRing {
@@ -189,6 +197,10 @@ FocusScope {
                         IslandIcon {
                             anchors.centerIn: parent
                             meaning: "mediaNext"
+                            tint: nextButton.pressed ? Theme.snapshot.surfaceActiveForeground :
+                                                       nextButton.hovered
+                                                       ? Theme.snapshot.surfaceHoverForeground :
+                                                         semanticTint
                         }
                     }
                     IslandFocusRing {

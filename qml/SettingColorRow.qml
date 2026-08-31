@@ -4,6 +4,8 @@ import QtQuick.Controls
 ControlCenterSettingRow {
     id: root
 
+    controlPlacement: ControlCenterSettingRow.Inline
+
     required property string value
     property bool allowAlpha: false
     property bool writable: true
@@ -30,13 +32,13 @@ ControlCenterSettingRow {
     TextField {
         id: input
 
-        width: Theme.spacing.xxl * 4
-        height: Theme.size.controlHeightMd
+        implicitWidth: Theme.spacing.xxl * 4
+        implicitHeight: Theme.size.controlHeightMd
         text: root.value
         enabled: root.writable
         selectByMouse: true
         maximumLength: root.allowAlpha ? 9 : 7
-        color: Theme.color.textPrimary
+        color: Theme.snapshot.controlFillForeground
         selectionColor: Theme.snapshot.accent
         selectedTextColor: Theme.snapshot.accentForeground
         font.family: Theme.type.familyForItem(this)

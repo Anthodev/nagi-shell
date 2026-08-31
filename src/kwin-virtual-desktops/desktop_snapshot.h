@@ -8,11 +8,13 @@
 
 namespace nagi::kwin {
 
-inline constexpr int SnapshotProtocolVersion = 1;
+inline constexpr int SnapshotProtocolVersion = 2;
 inline constexpr qsizetype MaximumSnapshotLength = 65536;
 inline constexpr qsizetype MaximumDesktopCount = 256;
 inline constexpr qsizetype MaximumDesktopIdLength = 1024;
 inline constexpr qsizetype MaximumDesktopNameLength = 256;
+inline constexpr qsizetype MaximumOutputCount = 64;
+inline constexpr qsizetype MaximumOutputNameLength = 256;
 inline constexpr qsizetype HelperEpochLength = 32;
 
 struct Desktop {

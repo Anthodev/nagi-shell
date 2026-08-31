@@ -14,17 +14,17 @@ Flickable {
 
     readonly property var playerChoices: {
         const result = [
-            {
-                "label": qsTr("Automatic"),
-                "value": ""
-            }
-        ];
+                  {
+                      "label": qsTr("Automatic"),
+                      "value": ""
+                  }
+              ];
         const applications = media.availableApplications ?? [];
         let selectedPresent = settingsModel.snapshot.media.preferredApplication === "";
         for (let index = 0; index < applications.length; ++index) {
             result.push(applications[index]);
             selectedPresent = selectedPresent || applications[index].value
-            === settingsModel.snapshot.media.preferredApplication;
+                    === settingsModel.snapshot.media.preferredApplication;
         }
         if (!selectedPresent) {
             result.push({
@@ -71,120 +71,133 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Media")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "mediaPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Choose where the one shared MPRIS selection appears. Disabling Media disconnects player observation and clears artwork and timing work.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterMedia"
+            title: qsTr("Media")
+            description: qsTr("Choose which players Nagi follows and where media controls appear.")
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "mediaVisibilitySection"
             text: qsTr("Visibility")
             separated: false
-        }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Media integration")
-            description: qsTr("Observe compatible MPRIS players for this session.")
-            value: root.settingsModel.snapshot.media.enabled
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "enabled": value
-                                                    })
-        }
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Media integration")
+                description: qsTr("Observe compatible MPRIS players for this session.")
+                value: root.settingsModel.snapshot.media.enabled
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "enabled": value
+                                                        })
+            }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Compact media")
-            description: qsTr("Show the selected track in Idle when available.")
-            value: root.settingsModel.snapshot.media.compactVisible
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "compactVisible": value
-                                                    })
-        }
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Compact media")
+                description: qsTr("Show the selected track in Idle when available.")
+                value: root.settingsModel.snapshot.media.compactVisible
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "compactVisible": value
+                                                        })
+            }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Dashboard media")
-            description: qsTr("Show artwork, metadata, timing, and controls in Expanded.")
-            value: root.settingsModel.snapshot.media.dashboardVisible
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "dashboardVisible": value
-                                                    })
-        }
-
-        ControlCenterSectionHeading {
-            objectName: "mediaPlayerSelectionSection"
-            text: qsTr("Player selection")
-        }
-
-        ControlCenterSettingRow {
-            Layout.fillWidth: true
-            label: qsTr("Player policy")
-            description: qsTr(
-                             "Automatic keeps the newest-playing policy. A preferred application wins while relevant and otherwise falls back automatically.")
-
-            ComboBox {
-                id: playerPolicy
-
-                model: root.playerChoices
-                textRole: "label"
-                valueRole: "value"
-                currentIndex: root.selectedPlayerIndex()
-                enabled: root.settingsModel.writable && root.settingsModel.snapshot.media.enabled
-                font.family: Theme.type.familyForItem(this)
-                font.pixelSize: Theme.type.sizeForItem(this, "body")
-                Accessible.role: Accessible.ComboBox
-                Accessible.name: qsTr("Media player policy")
-                Accessible.description: qsTr(
-                                            "Automatic preserves recency; a relevant preferred application wins.")
-                onActivated: index => {
-                    const value = root.playerChoices[index].value;
-                    root.request(value === "" ? {
-                                                    "playerPolicy": "automatic"
-                                                } : {
-                                     "playerPolicy": "preferred",
-                                     "preferredApplication": value
-                                 });
-                }
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Dashboard media")
+                description: qsTr("Show artwork, metadata, timing, and controls in Expanded.")
+                value: root.settingsModel.snapshot.media.dashboardVisible
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "dashboardVisible": value
+                                                        })
             }
         }
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: !root.settingsModel.snapshot.media.enabled
-            text: qsTr("Player selection is unavailable while the integration is disabled.")
-            size: "caption"
-            tone: "muted"
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.StaticText
-            Accessible.name: text
-        }
+        ControlCenterSectionPanel {
+            objectName: "mediaPlayerSelectionSection"
+            text: qsTr("Player selection")
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.failureText !== ""
-            text: root.failureText
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
+            ControlCenterSettingRow {
+                Layout.fillWidth: true
+                separatorVisible: mediaNoteEntry.visible
+                label: qsTr("Player policy")
+                description: qsTr(
+                                 "Automatic keeps the newest-playing policy. A preferred application wins while relevant and otherwise falls back automatically.")
+
+                ComboBox {
+                    id: playerPolicy
+
+                    model: root.playerChoices
+                    textRole: "label"
+                    valueRole: "value"
+                    currentIndex: root.selectedPlayerIndex()
+                    enabled: root.settingsModel.writable
+                             && root.settingsModel.snapshot.media.enabled
+                    font.family: Theme.type.familyForItem(this)
+                    font.pixelSize: Theme.type.sizeForItem(this, "body")
+                    Accessible.role: Accessible.ComboBox
+                    Accessible.name: qsTr("Media player policy")
+                    Accessible.description: qsTr(
+                                                "Automatic preserves recency; a relevant preferred application wins.")
+                    onActivated: index => {
+                        const value = root.playerChoices[index].value;
+                        root.request(value === "" ? {
+                                                        "playerPolicy": "automatic"
+                                                    } : {
+                                         "playerPolicy": "preferred",
+                                         "preferredApplication": value
+                                     });
+                    }
+                }
+            }
+
+            Item {
+                id: mediaNoteEntry
+                Layout.fillWidth: true
+                visible: !root.settingsModel.snapshot.media.enabled || root.failureText !== ""
+                implicitHeight: mediaNotes.implicitHeight + Theme.spacing.md * 2
+
+                ColumnLayout {
+                    id: mediaNotes
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacing.sm
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: !root.settingsModel.snapshot.media.enabled
+                        text: qsTr(
+                                  "Player selection is unavailable while the integration is disabled.")
+                        size: "caption"
+                        tone: "muted"
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
+                    }
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: root.failureText !== ""
+                        text: root.failureText
+                        size: "caption"
+                        color: Theme.color.danger
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.AlertMessage
+                        Accessible.name: text
+                    }
+                }
+            }
         }
 
         SettingsResetActions {

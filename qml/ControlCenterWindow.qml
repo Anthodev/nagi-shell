@@ -27,52 +27,66 @@ FloatingWindow {
     property bool settingsRecoveryConfirmationVisible: false
     property var settingsRecoveryReturnFocus: null
     property bool closeUnloadRequested: false
+    property bool routeActivationFocusPending: false
+    property string routeActivationPageId: ""
+    property int routeActivationReadyFrames: 0
     signal unloadRequested
 
     readonly property var availableRoutes: Object.freeze([
                                                              {
                                                                  "id": "island",
-                                                                 "name": qsTr("Island")
+                                                                 "name": qsTr("Island"),
+                                                                 "icon": "controlCenterIsland"
                                                              },
                                                              {
                                                                  "id": "appearance",
-                                                                 "name": qsTr("Appearance")
+                                                                 "name": qsTr("Appearance"),
+                                                                 "icon": "controlCenterAppearance"
                                                              },
                                                              {
                                                                  "id": "clock-date",
-                                                                 "name": qsTr("Clock & Date")
+                                                                 "name": qsTr("Clock & Date"),
+                                                                 "icon": "controlCenterClock"
                                                              },
                                                              {
                                                                  "id": "media",
-                                                                 "name": qsTr("Media")
+                                                                 "name": qsTr("Media"),
+                                                                 "icon": "controlCenterMedia"
                                                              },
                                                              {
                                                                  "id": "weather",
-                                                                 "name": qsTr("Weather")
+                                                                 "name": qsTr("Weather"),
+                                                                 "icon": "controlCenterWeather"
                                                              },
                                                              {
                                                                  "id": "notifications",
-                                                                 "name": qsTr("Notifications")
+                                                                 "name": qsTr("Notifications"),
+                                                                 "icon": "controlCenterNotifications"
                                                              },
                                                              {
                                                                  "id": "wifi",
-                                                                 "name": qsTr("Wi-Fi")
+                                                                 "name": qsTr("Wi-Fi"),
+                                                                 "icon": "wifi"
                                                              },
                                                              {
                                                                  "id": "bluetooth",
-                                                                 "name": qsTr("Bluetooth")
+                                                                 "name": qsTr("Bluetooth"),
+                                                                 "icon": "bluetooth"
                                                              },
                                                              {
                                                                  "id": "wallpaper",
-                                                                 "name": qsTr("Wallpaper")
+                                                                 "name": qsTr("Wallpaper"),
+                                                                 "icon": "controlCenterWallpaper"
                                                              },
                                                              {
                                                                  "id": "displays",
-                                                                 "name": qsTr("Displays")
+                                                                 "name": qsTr("Displays"),
+                                                                 "icon": "controlCenterDisplays"
                                                              },
                                                              {
                                                                  "id": "about",
-                                                                 "name": qsTr("About")
+                                                                 "name": qsTr("About"),
+                                                                 "icon": "controlCenterAbout"
                                                              }
                                                          ])
     readonly property string layoutMode: width >= Theme.size.controlCenterResponsiveBreakpoint
@@ -80,7 +94,6 @@ FloatingWindow {
     readonly property bool pageLoaded: pageLoader.active && pageLoader.item !== null
     readonly property int loadedPageCount: pageLoaded ? 1 : 0
     readonly property var loadedPageItem: pageLoaded ? pageLoader.item : null
-    readonly property string activeRouteName: routeName(currentPageId)
     readonly property string diagnosticText: currentPageId === "about" && pageLoader.item !== null
                                              ? pageLoader.item.diagnosticText : ""
     readonly property bool weatherLookupAllowed: currentPageId === "weather" && pageLoader.item
@@ -170,35 +183,6 @@ FloatingWindow {
                 || routeId === "displays" || routeId === "about";
     }
 
-    function routeName(routeId) {
-        switch (routeId) {
-        case "island":
-            return qsTr("Island");
-        case "appearance":
-            return qsTr("Appearance");
-        case "clock-date":
-            return qsTr("Clock & Date");
-        case "media":
-            return qsTr("Media");
-        case "weather":
-            return qsTr("Weather");
-        case "notifications":
-            return qsTr("Notifications");
-        case "wifi":
-            return qsTr("Wi-Fi");
-        case "bluetooth":
-            return qsTr("Bluetooth");
-        case "wallpaper":
-            return qsTr("Wallpaper");
-        case "displays":
-            return qsTr("Displays");
-        case "about":
-            return qsTr("About");
-        default:
-            return "";
-        }
-    }
-
     function normalizeRoute(routeId) {
         if (routeId === "" || routeId === "control-center") {
             return routeAvailable(currentPageId) ? currentPageId : "displays";
@@ -232,9 +216,128 @@ FloatingWindow {
         if (!routeAvailable(routeId)) {
             return false;
         }
+        requestRouteActivationFocus(routeId);
         currentPageId = routeId;
         compactNavigationVisible = false;
-        Qt.callLater(focusCurrentContext);
+        return true;
+    }
+
+    function cancelRouteActivationFocus() {
+        routeActivationFocusPending = false;
+        routeActivationPageId = "";
+        routeActivationReadyFrames = 0;
+    }
+
+    function requestRouteActivationFocus(routeId) {
+        routeActivationPageId = routeId;
+        routeActivationReadyFrames = 0;
+        routeActivationFocusPending = true;
+    }
+
+    function pageContainsItem(page, item) {
+        let candidate = item;
+        for (let depth = 0; candidate !== null && candidate !== undefined && depth < 128; depth
+             += 1) {
+            if (candidate === page) {
+                return true;
+            }
+            candidate = candidate.parent;
+        }
+        return false;
+    }
+
+    function pageFocusFallback(page) {
+        if (page === null || page === undefined) {
+            return null;
+        }
+        const maximumCandidates = 512;
+        const candidates = [page];
+        for (let index = 0; index < candidates.length && index < maximumCandidates; index += 1) {
+            const candidate = candidates[index];
+            if (candidate !== page && candidate.controlCenterPageFocusTarget === true) {
+                return candidate;
+            }
+            const children = candidate.children ?? [];
+            const remaining = maximumCandidates - candidates.length;
+            const childCount = Math.min(children.length, remaining);
+            for (let childIndex = 0; childIndex < childCount; childIndex += 1) {
+                candidates.push(children[childIndex]);
+            }
+        }
+        return null;
+    }
+
+    function loadedPageFocusTarget(page) {
+        if (page === null || page === undefined) {
+            return null;
+        }
+        const target = page.nextItemInFocusChain(true);
+        if (target !== null && target !== page && pageContainsItem(page, target)) {
+            return target;
+        }
+        return pageFocusFallback(page);
+    }
+
+    function pageFocusTargetReady(page, target) {
+        let candidate = target;
+        for (let depth = 0; candidate !== null && candidate !== undefined && depth < 128; depth
+             += 1) {
+            if (!candidate.visible || !candidate.enabled || candidate.width <= 0 || candidate.height
+                    <= 0) {
+                return false;
+            }
+            if (candidate === page) {
+                return true;
+            }
+            candidate = candidate.parent;
+        }
+        return false;
+    }
+
+    function revealPageFocusTarget(page, target) {
+        if (page === null || target === null || page.contentItem === undefined || page.contentY
+                === undefined || page.contentHeight === undefined) {
+            return false;
+        }
+        page.cancelFlick();
+        const position = target.mapToItem(page.contentItem, 0, 0);
+        if (!Number.isFinite(position.y)) {
+            return false;
+        }
+        const inset = Theme.size.focusRingGap;
+        const targetTop = position.y - inset;
+        const targetBottom = position.y + target.height + inset;
+        const maximumContentY = Math.max(0, page.contentHeight - page.height);
+        page.contentY = Math.max(0, Math.min(maximumContentY, page.contentY));
+        if (targetTop < page.contentY) {
+            page.contentY = Math.max(0, Math.min(maximumContentY, targetTop));
+        } else if (targetBottom > page.contentY + page.height) {
+            page.contentY = Math.max(0, Math.min(maximumContentY, targetBottom - page.height));
+        }
+        return true;
+    }
+
+    function completeRouteActivationFocus() {
+        if (!routeActivationFocusPending || routeActivationPageId !== currentPageId || !visible
+                || compactNavigationVisible || !pageLoaded) {
+            return false;
+        }
+        const page = loadedPageItem;
+        const target = loadedPageFocusTarget(page);
+        if (target === null) {
+            routeActivationReadyFrames = 0;
+            return false;
+        }
+        if (!pageFocusTargetReady(page, target)) {
+            routeActivationReadyFrames = 0;
+            return false;
+        }
+        target.forceActiveFocus(Qt.TabFocusReason);
+        if (!target.activeFocus) {
+            return false;
+        }
+        revealPageFocusTarget(page, target);
+        cancelRouteActivationFocus();
         return true;
     }
 
@@ -247,26 +350,66 @@ FloatingWindow {
         return 0;
     }
 
+    function revealRoute(viewport, route) {
+        if (viewport === null || route === null || viewport.height <= 0) {
+            return false;
+        }
+        viewport.cancelFlick();
+        const position = route.mapToItem(viewport.contentItem, 0, 0);
+        const routeTop = position.y;
+        const routeBottom = routeTop + route.height;
+        const maximumContentY = Math.max(0, viewport.contentHeight - viewport.height);
+        viewport.contentY = Math.max(0, Math.min(maximumContentY, viewport.contentY));
+        if (routeTop < viewport.contentY) {
+            viewport.contentY = Math.max(0, Math.min(maximumContentY, routeTop));
+        } else if (routeBottom > viewport.contentY + viewport.height) {
+            viewport.contentY = Math.max(0, Math.min(maximumContentY, routeBottom
+                                                     - viewport.height));
+        }
+        return true;
+    }
+
+    function revealFocusedRoute(viewport, repeater) {
+        if (viewport === null || repeater === null || repeater === undefined) {
+            return false;
+        }
+        for (let index = 0; index < availableRoutes.length; index += 1) {
+            const route = repeater.itemAt(index);
+            if (route !== null && route.activeFocus) {
+                return revealRoute(viewport, route);
+            }
+        }
+        const maximumContentY = Math.max(0, viewport.contentHeight - viewport.height);
+        viewport.contentY = Math.max(0, Math.min(maximumContentY, viewport.contentY));
+        return false;
+    }
+
+    function forceNavigationFocus(target) {
+        if (target === null) {
+            return false;
+        }
+        if (target.activeFocus && target.visualFocus !== undefined && !target.visualFocus) {
+            target.focus = false;
+        }
+        target.forceActiveFocus(Qt.TabFocusReason);
+        return target.activeFocus;
+    }
+
     function focusCurrentContext() {
+        cancelRouteActivationFocus();
         if (!visible) {
-            return;
+            return false;
         }
         if (layoutMode === "compact" && compactNavigationVisible) {
-            const compactRoute = compactRouteRepeater.itemAt(currentRouteIndex());
-            if (compactRoute !== null) {
-                compactRoute.forceActiveFocus(Qt.TabFocusReason);
-            }
+            return forceNavigationFocus(compactRouteRepeater.itemAt(currentRouteIndex()));
         } else if (layoutMode === "compact") {
-            compactBack.forceActiveFocus(Qt.TabFocusReason);
-        } else {
-            const sidebarRoute = sidebarRouteRepeater.itemAt(currentRouteIndex());
-            if (sidebarRoute !== null) {
-                sidebarRoute.forceActiveFocus(Qt.TabFocusReason);
-            }
+            return forceNavigationFocus(compactBack);
         }
+        return forceNavigationFocus(sidebarRouteRepeater.itemAt(currentRouteIndex()));
     }
 
     function raiseExisting() {
+        cancelRouteActivationFocus();
         minimized = false;
         visible = true;
         if (backingWindow !== null) {
@@ -292,6 +435,7 @@ FloatingWindow {
 
     function open(routeId, initiatingSurfaceToken) {
         const nextRoute = normalizeRoute(routeId);
+        cancelRouteActivationFocus();
         if (visible) {
             currentPageId = nextRoute;
             compactNavigationVisible = false;
@@ -313,6 +457,7 @@ FloatingWindow {
     }
 
     function requestCloseUnload() {
+        cancelRouteActivationFocus();
         if (closeUnloadRequested) {
             return;
         }
@@ -329,6 +474,7 @@ FloatingWindow {
     }
 
     function rehomeAfterDisplayLoss() {
+        cancelRouteActivationFocus();
         if (activeTargetScreen === null || (connected(activeTargetScreen) && connected(screen))) {
             return;
         }
@@ -345,29 +491,75 @@ FloatingWindow {
     }
     onClosed: requestCloseUnload()
     onLayoutModeChanged: {
+        cancelRouteActivationFocus();
         if (layoutMode === "sidebar") {
             compactNavigationVisible = false;
         }
         Qt.callLater(focusCurrentContext);
     }
 
+    FrameAnimation {
+        running: root.routeActivationFocusPending && root.visible
+
+        onTriggered: {
+            if (root.routeActivationPageId !== root.currentPageId
+                    || root.compactNavigationVisible) {
+                root.cancelRouteActivationFocus();
+                return;
+            }
+            const page = root.loadedPageItem;
+            if (page === null || pageLoader.status !== Loader.Ready || pageLoader.width <= 0
+                    || pageLoader.height <= 0 || page.width <= 0 || page.height <= 0) {
+                root.routeActivationReadyFrames = 0;
+                return;
+            }
+            root.routeActivationReadyFrames += 1;
+            if (root.routeActivationReadyFrames < 2) {
+                return;
+            }
+            root.completeRouteActivationFocus();
+        }
+    }
+
     component RouteButton: AbstractButton {
         id: routeButton
 
         required property string routeLabel
+        required property string routeIcon
         property bool selected: false
         required property int routeIndex
         required property var routeRepeater
+        required property var routeViewport
+        required property color iconWellSurface
+        required property color hoverIconWellSurface
+        required property color navigationSurface
+        required property color selectedSurface
+        required property color iconWellForeground
+        required property color hoverIconWellForeground
+        required property color navigationForeground
+        required property color selectedForeground
+        required property color selectedAccent
+        required property color selectedIconAccent
 
-        implicitHeight: Theme.size.controlHeightLg
+        implicitHeight: Theme.size.controlCenterRouteHeight
         implicitWidth: implicitContentWidth + leftPadding + rightPadding
-        leftPadding: Theme.spacing.lg
-        rightPadding: Theme.spacing.md
+        Layout.minimumWidth: 0
+        Layout.minimumHeight: Theme.size.controlCenterRouteHeight
+        leftPadding: Theme.spacing.sm
+        rightPadding: Theme.spacing.sm
+        topPadding: (Theme.size.controlCenterRouteHeight
+                     - Theme.size.controlCenterRouteIconWellSize) / 2
+        bottomPadding: topPadding
         focusPolicy: Qt.StrongFocus
         hoverEnabled: true
         Accessible.role: Accessible.ListItem
         Accessible.name: routeLabel
         Accessible.description: qsTr("Open %1").arg(routeLabel)
+        onActiveFocusChanged: {
+            if (activeFocus) {
+                routeViewport.revealItem(routeButton);
+            }
+        }
 
         function focusRouteAt(index) {
             const target = routeRepeater.itemAt(index);
@@ -398,7 +590,7 @@ FloatingWindow {
 
         background: Rectangle {
             radius: Theme.radius.sm
-            color: routeButton.selected ? Theme.color.surfaceActive : routeButton.hovered
+            color: routeButton.selected ? routeButton.selectedSurface : routeButton.hovered
                                           ? Theme.color.surfaceHover : "transparent"
 
             Rectangle {
@@ -409,20 +601,69 @@ FloatingWindow {
                 height: Theme.spacing.lg
                 radius: 1
                 visible: routeButton.selected
-                color: Theme.snapshot.accent
+                color: routeButton.selectedAccent
             }
         }
 
-        contentItem: IslandText {
-            text: routeButton.routeLabel
-            size: "body"
-            font.weight: routeButton.selected ? Theme.type.weightSemibold : Theme.type.weightMedium
-            color: routeButton.selected ? Theme.snapshot.accent : Theme.color.textPrimary
-            horizontalAlignment: Text.AlignLeft
-            verticalAlignment: Text.AlignVCenter
+        contentItem: RowLayout {
+            spacing: Theme.spacing.sm
+
+            Rectangle {
+                objectName: "controlCenterRouteIconWell-" + routeButton.routeIndex
+                Layout.minimumWidth: Theme.size.controlCenterRouteIconWellSize
+                Layout.preferredWidth: Theme.size.controlCenterRouteIconWellSize
+                Layout.maximumWidth: Theme.size.controlCenterRouteIconWellSize
+                Layout.minimumHeight: Theme.size.controlCenterRouteIconWellSize
+                Layout.preferredHeight: Theme.size.controlCenterRouteIconWellSize
+                Layout.maximumHeight: Theme.size.controlCenterRouteIconWellSize
+                radius: width / 2
+                color: routeButton.selected ? routeButton.navigationSurface : routeButton.hovered
+                                              ? routeButton.hoverIconWellSurface :
+                                                routeButton.iconWellSurface
+
+                IslandIcon {
+                    objectName: "controlCenterRouteIcon-" + routeButton.routeIndex
+                    anchors.centerIn: parent
+                    meaning: routeButton.routeIcon
+                    semanticState: routeButton.selected ? "active" : "normal"
+                    tint: routeButton.selected ? routeButton.selectedIconAccent :
+                                                 routeButton.hovered
+                                                 ? routeButton.hoverIconWellForeground :
+                                                   routeButton.iconWellForeground
+                    size: "md"
+                    Accessible.ignored: true
+                }
+            }
+
+            IslandText {
+                objectName: "controlCenterRouteLabel-" + routeButton.routeIndex
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: routeButton.routeLabel
+                size: "body"
+                font.weight: routeButton.selected ? Theme.type.weightSemibold :
+                                                    Theme.type.weightMedium
+                color: routeButton.selected ? routeButton.selectedForeground : routeButton.hovered
+                                              ? Theme.snapshot.surfaceHoverForeground :
+                                                routeButton.navigationForeground
+                wrapMode: Text.NoWrap
+                maximumLineCount: 1
+                elide: Text.ElideRight
+                clip: true
+                horizontalAlignment: Text.AlignLeft
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
+        Item {
+            id: routeFocusBounds
+
+            anchors.fill: parent
+            anchors.margins: Theme.size.focusRingGap
         }
 
         IslandFocusRing {
+            anchors.fill: routeFocusBounds
             visible: routeButton.visualFocus
             controlRadius: Theme.radius.sm
         }
@@ -437,6 +678,7 @@ FloatingWindow {
     }
 
     Rectangle {
+        objectName: "controlCenterWindowContent"
         anchors.fill: parent
         color: Theme.color.surfaceOpaque
 
@@ -450,6 +692,7 @@ FloatingWindow {
                 if (root.settingsRecoveryConfirmationVisible) {
                     root.cancelSettingsRecoveryReset();
                 } else if (root.layoutMode === "compact" && !root.compactNavigationVisible) {
+                    root.cancelRouteActivationFocus();
                     root.compactNavigationVisible = true;
                     Qt.callLater(root.focusCurrentContext);
                 } else {
@@ -460,21 +703,24 @@ FloatingWindow {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.spacing.lg
-                spacing: Theme.spacing.lg
+                spacing: 0
 
                 Rectangle {
+                    objectName: "controlCenterRail"
                     Layout.preferredWidth: Theme.size.controlCenterSidebarWidth
+                    Layout.minimumWidth: Theme.size.controlCenterSidebarWidth
+                    Layout.maximumWidth: Theme.size.controlCenterSidebarWidth
                     Layout.fillHeight: true
                     visible: root.layoutMode === "sidebar"
-                    radius: Theme.radius.lg
-                    color: Theme.color.surface
-                    border.width: Theme.size.hairlineWidth
-                    border.color: Theme.color.surfaceBorder
+                    color: Theme.color.controlCenterRailSurface
+                    border.width: 0
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: Theme.spacing.md
+                        anchors.leftMargin: Theme.spacing.md
+                        anchors.rightMargin: Theme.spacing.md
+                        anchors.topMargin: Theme.spacing.lg
+                        anchors.bottomMargin: Theme.spacing.lg
                         spacing: Theme.spacing.md
 
                         IslandText {
@@ -482,6 +728,7 @@ FloatingWindow {
                             text: qsTr("Nagi Control Center")
                             size: "title"
                             font.weight: Theme.type.weightSemibold
+                            color: Theme.snapshot.controlCenterRailForeground
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
                             elide: Text.ElideRight
@@ -495,69 +742,119 @@ FloatingWindow {
                             color: Theme.color.surfaceBorder
                         }
 
-                        ColumnLayout {
-                            id: sidebarNavigation
+                        Flickable {
+                            id: sidebarRouteViewport
 
+                            objectName: "controlCenterSidebarRouteViewport"
                             Layout.fillWidth: true
-                            spacing: Theme.spacing.xs
-                            Accessible.role: Accessible.List
-                            Accessible.name: qsTr("Control Center pages")
+                            Layout.fillHeight: true
+                            contentWidth: width
+                            contentHeight: sidebarNavigation.implicitHeight
+                            readonly property bool overflowing: contentHeight > height + 0.5
+                            onHeightChanged: root.revealFocusedRoute(sidebarRouteViewport,
+                                                                     sidebarRouteRepeater)
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            flickableDirection: Flickable.VerticalFlick
+                            interactive: overflowing
+                            pixelAligned: true
 
-                            Repeater {
-                                id: sidebarRouteRepeater
-                                model: root.availableRoutes
+                            function revealItem(item) {
+                                return root.revealRoute(sidebarRouteViewport, item);
+                            }
 
-                                delegate: RouteButton {
-                                    required property var modelData
-                                    required property int index
+                            ScrollBar.vertical: ScrollBar {
+                                policy: sidebarRouteViewport.overflowing ? ScrollBar.AlwaysOn :
+                                                                           ScrollBar.AlwaysOff
+                            }
 
-                                    routeIndex: index
-                                    routeRepeater: sidebarRouteRepeater
-                                    objectName: "controlCenterSidebarRoute-" + modelData.id
-                                    Layout.fillWidth: true
-                                    routeLabel: modelData.name
-                                    selected: root.currentPageId === modelData.id
-                                    onClicked: root.selectRoute(modelData.id)
+                            ColumnLayout {
+                                id: sidebarNavigation
+
+                                width: sidebarRouteViewport.width
+                                height: implicitHeight
+                                spacing: Theme.spacing.xs
+                                Accessible.role: Accessible.List
+                                Accessible.name: qsTr("Control Center pages")
+
+                                Repeater {
+                                    id: sidebarRouteRepeater
+                                    model: root.availableRoutes
+
+                                    delegate: RouteButton {
+                                        required property var modelData
+                                        required property int index
+
+                                        routeIndex: index
+                                        routeRepeater: sidebarRouteRepeater
+                                        routeViewport: sidebarRouteViewport
+                                        iconWellSurface: Theme.color.surfaceOpaque
+                                        hoverIconWellSurface: Theme.color.surfaceOpaque
+                                        navigationSurface: Theme.color.controlCenterRailSurface
+                                        selectedSurface:
+                                            Theme.color.controlCenterRailSelectedSurface
+                                        iconWellForeground: Theme.color.textPrimary
+                                        hoverIconWellForeground: Theme.color.textPrimary
+                                        navigationForeground:
+                                            Theme.snapshot.controlCenterRailForeground
+                                        selectedForeground:
+                                            Theme.snapshot.controlCenterRailSelectedForeground
+                                        selectedAccent:
+                                            Theme.snapshot.controlCenterRailSelectedAccent
+                                        selectedIconAccent: Theme.snapshot.controlCenterRailAccent
+                                        objectName: "controlCenterSidebarRoute-" + modelData.id
+                                        Layout.fillWidth: true
+                                        routeLabel: modelData.name
+                                        routeIcon: modelData.icon
+                                        selected: root.currentPageId === modelData.id
+                                        onClicked: root.selectRoute(modelData.id)
+                                    }
                                 }
                             }
                         }
+                    }
 
-                        Item {
-                            Layout.fillHeight: true
-                        }
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        width: Theme.size.hairlineWidth
+                        color: Theme.color.surfaceBorder
+                        opacity: 0.72
                     }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: Theme.spacing.md
+                    Layout.leftMargin: root.layoutMode === "sidebar" ? Theme.spacing.xl :
+                                                                       Theme.spacing.lg
+                    Layout.rightMargin: root.layoutMode === "sidebar" ? Theme.spacing.xl :
+                                                                        Theme.spacing.lg
+                    Layout.topMargin: root.layoutMode === "sidebar" ? Theme.spacing.xl :
+                                                                      Theme.spacing.lg
+                    Layout.bottomMargin: root.layoutMode === "sidebar" ? Theme.spacing.xl :
+                                                                         Theme.spacing.lg
+                    spacing: Theme.spacing.sm
 
                     RowLayout {
+                        objectName: "controlCenterCompactBackRow"
                         Layout.fillWidth: true
                         visible: root.layoutMode === "compact" && !root.compactNavigationVisible
                         spacing: Theme.spacing.sm
 
                         IslandButton {
                             id: compactBack
+                            objectName: "controlCenterCompactBack"
 
                             label: qsTr("All settings")
+                            showActiveFocusRing: true
                             reducedMotion: root.reducedMotion
-                            Accessible.description: qsTr("Return to Control Center navigation")
                             onClicked: {
+                                root.cancelRouteActivationFocus();
                                 root.compactNavigationVisible = true;
                                 Qt.callLater(root.focusCurrentContext);
                             }
-                        }
-
-                        IslandText {
-                            Layout.fillWidth: true
-                            text: root.activeRouteName
-                            size: "title"
-                            font.weight: Theme.type.weightSemibold
-                            horizontalAlignment: Text.AlignRight
-                            Accessible.role: Accessible.Heading
-                            Accessible.name: text
                         }
                     }
 
@@ -586,26 +883,69 @@ FloatingWindow {
                             color: Theme.color.surfaceBorder
                         }
 
-                        Repeater {
-                            id: compactRouteRepeater
-                            model: root.availableRoutes
+                        Flickable {
+                            id: compactRouteViewport
 
-                            delegate: RouteButton {
-                                required property var modelData
-                                required property int index
-
-                                routeIndex: index
-                                routeRepeater: compactRouteRepeater
-                                objectName: "controlCenterCompactRoute-" + modelData.id
-                                Layout.fillWidth: true
-                                routeLabel: modelData.name
-                                selected: root.currentPageId === modelData.id
-                                onClicked: root.selectRoute(modelData.id)
-                            }
-                        }
-
-                        Item {
+                            objectName: "controlCenterCompactRouteViewport"
+                            Layout.fillWidth: true
                             Layout.fillHeight: true
+                            contentWidth: width
+                            contentHeight: compactRouteList.implicitHeight
+                            readonly property bool overflowing: contentHeight > height + 0.5
+                            onHeightChanged: root.revealFocusedRoute(compactRouteViewport,
+                                                                     compactRouteRepeater)
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            flickableDirection: Flickable.VerticalFlick
+                            interactive: overflowing
+                            pixelAligned: true
+
+                            function revealItem(item) {
+                                return root.revealRoute(compactRouteViewport, item);
+                            }
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: compactRouteViewport.overflowing ? ScrollBar.AlwaysOn :
+                                                                           ScrollBar.AlwaysOff
+                            }
+
+                            ColumnLayout {
+                                id: compactRouteList
+
+                                width: compactRouteViewport.width
+                                height: implicitHeight
+                                spacing: Theme.spacing.xs
+
+                                Repeater {
+                                    id: compactRouteRepeater
+                                    model: root.availableRoutes
+
+                                    delegate: RouteButton {
+                                        required property var modelData
+                                        required property int index
+
+                                        routeIndex: index
+                                        routeRepeater: compactRouteRepeater
+                                        routeViewport: compactRouteViewport
+                                        iconWellSurface: Theme.color.controlFill
+                                        hoverIconWellSurface: Theme.color.surfaceOpaque
+                                        navigationSurface: Theme.color.surfaceOpaque
+                                        selectedSurface: Theme.color.surfaceActive
+                                        iconWellForeground: Theme.snapshot.controlFillForeground
+                                        hoverIconWellForeground: Theme.color.textPrimary
+                                        navigationForeground: Theme.color.textPrimary
+                                        selectedForeground: Theme.snapshot.surfaceActiveForeground
+                                        selectedAccent: Theme.snapshot.surfaceActiveAccent
+                                        selectedIconAccent: Theme.snapshot.accent
+                                        objectName: "controlCenterCompactRoute-" + modelData.id
+                                        Layout.fillWidth: true
+                                        routeLabel: modelData.name
+                                        routeIcon: modelData.icon
+                                        selected: root.currentPageId === modelData.id
+                                        onClicked: root.selectRoute(modelData.id)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -727,7 +1067,12 @@ FloatingWindow {
                                                                                            === "displays"
                                                                                            ? displaysPageComponent :
                                                                                              aboutPageComponent
-                        onLoaded: Qt.callLater(root.focusCurrentContext)
+                        onLoaded: {
+                            root.routeActivationReadyFrames = 0;
+                            if (!root.routeActivationFocusPending) {
+                                Qt.callLater(root.focusCurrentContext);
+                            }
+                        }
                     }
                 }
             }

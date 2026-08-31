@@ -3,10 +3,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
-IslandPanel {
+Item {
     id: root
 
     required property var device
+    required property bool separatorVisible
     property bool busy: false
     property bool reducedMotion: false
 
@@ -16,8 +17,9 @@ IslandPanel {
     signal unpairRequested(int token, string name)
 
     Layout.fillWidth: true
-    implicitHeight: content.implicitHeight + Theme.spacing.lg * 2
-    color: device.connected ? Theme.color.surfaceActive : Theme.color.controlFill
+    implicitWidth: content.implicitWidth
+    implicitHeight: Math.max(Theme.size.controlCenterSettingRowMinimumHeight,
+                             content.implicitHeight + Theme.spacing.md * 2)
     Accessible.role: Accessible.ListItem
     Accessible.name: device.signal >= 0 ? qsTr("%1, %2, signal %3 percent").arg(device.name).arg(statusText(
                                                                                                      )).arg(device.signal) :
@@ -46,8 +48,9 @@ IslandPanel {
     ColumnLayout {
         id: content
 
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.lg
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.sm
 
         RowLayout {
@@ -63,6 +66,7 @@ IslandPanel {
                     text: root.device.name
                     textFormat: Text.PlainText
                     size: "body"
+                    color: Theme.snapshot.controlFillForeground
                     elide: Text.ElideRight
                     Accessible.ignored: true
                 }
@@ -82,7 +86,8 @@ IslandPanel {
             IslandText {
                 text: root.statusText()
                 size: "caption"
-                color: root.device.connected ? Theme.snapshot.accent : Theme.color.textSecondary
+                color: root.device.connected ? Theme.snapshot.controlFillAccent :
+                                               Theme.color.textSecondary
                 Accessible.ignored: true
             }
         }
@@ -133,5 +138,18 @@ IslandPanel {
                 Layout.fillWidth: true
             }
         }
+    }
+
+    Rectangle {
+        objectName: "bluetoothDeviceSeparator"
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Theme.size.hairlineWidth
+        color: Theme.color.surfaceBorder
+        opacity: 0.72
+        visible: root.separatorVisible
+        Accessible.ignored: true
     }
 }

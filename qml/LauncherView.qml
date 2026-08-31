@@ -402,7 +402,7 @@ FocusScope {
                         anchors.fill: parent
                         leftPadding: Theme.spacing.md
                         rightPadding: Theme.spacing.md
-                        color: Theme.color.textPrimary
+                        color: Theme.snapshot.controlFillForeground
                         selectionColor: Theme.snapshot.accent
                         selectedTextColor: Theme.snapshot.accentForeground
                         font.pixelSize: Theme.type.body
@@ -471,7 +471,7 @@ FocusScope {
                             readonly property var application: modelData.application
                             readonly property bool selected: ListView.isCurrentItem
                             readonly property int storedPinIndex:
-                            view.applicationModel.pinIds.indexOf(application.id)
+                                view.applicationModel.pinIds.indexOf(application.id)
                             readonly property real labelLaneWidth: labelColumn.width
                             readonly property real primaryLabelWidth: primaryLabel.width
                             readonly property real metadataLabelWidth: metadataLabel.width
@@ -479,6 +479,20 @@ FocusScope {
                                                                                            pinAction.width,
                                                                                            0).x
                             readonly property bool pinned: storedPinIndex >= 0
+                            readonly property color primaryForeground: selected
+                                                                       ? Theme.snapshot.surfaceActiveForeground :
+                                                                         hover.hovered
+                                                                         ? Theme.snapshot.surfaceHoverForeground :
+                                                                           Theme.color.textPrimary
+                            readonly property color secondaryForeground: selected
+                                                                         ? Theme.textForeground(
+                                                                               Theme.snapshot.textSecondary,
+                                                                               Theme.snapshot.surfaceActive) :
+                                                                           hover.hovered
+                                                                           ? Theme.textForeground(
+                                                                                 Theme.snapshot.textSecondary,
+                                                                                 Theme.snapshot.surfaceHover) :
+                                                                             Theme.color.textSecondary
 
                             width: ListView.view.width
                             implicitHeight: view.resultRowExtent
@@ -546,6 +560,7 @@ FocusScope {
                                                                                      Quickshell.iconPath(
                                                                                          row.application.icon)
                                     applicationName: row.application.name
+                                    tint: row.primaryForeground
                                 }
 
                                 ColumnLayout {
@@ -558,6 +573,7 @@ FocusScope {
                                         text: row.application.name
                                         textFormat: Text.PlainText
                                         font.weight: Theme.type.weightSemibold
+                                        color: row.primaryForeground
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
@@ -569,6 +585,7 @@ FocusScope {
                                                                                      qsTr("Application")
                                         textFormat: Text.PlainText
                                         tone: "secondary"
+                                        color: row.secondaryForeground
                                         size: "caption"
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true

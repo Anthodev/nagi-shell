@@ -19,10 +19,12 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         text: root.text
-        size: "title"
+        size: "caption"
+        tone: "secondary"
         font.weight: Theme.type.weightSemibold
+        font.capitalization: Font.AllUppercase
         wrapMode: Text.Wrap
         Accessible.role: Accessible.Heading
-        Accessible.name: text
+        Accessible.name: root.text
     }
 }

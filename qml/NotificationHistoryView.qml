@@ -39,6 +39,9 @@ FocusScope {
     component HistoryRowContent: RowLayout {
         required property var record
         property bool actionExposed: false
+        required property color primaryForeground
+        required property color secondaryForeground
+        required property color mutedForeground
         readonly property bool plainTextOnly: appNameLabel.textFormat === Text.PlainText
                                               && summaryLabel.textFormat === Text.PlainText
                                               && bodyLabel.textFormat === Text.PlainText
@@ -69,6 +72,7 @@ FocusScope {
                     tone: "secondary"
                     size: "caption"
                     font.weight: Theme.type.weightMedium
+                    color: secondaryForeground
                     elide: Text.ElideRight
                 }
 
@@ -78,6 +82,7 @@ FocusScope {
                                                                                                   qsTr("Recent")
                     textFormat: Text.PlainText
                     tone: "muted"
+                    color: mutedForeground
                     size: "caption"
                 }
             }
@@ -90,6 +95,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 visible: text !== ""
                 font.weight: Theme.type.weightSemibold
+                color: primaryForeground
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
@@ -103,6 +109,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 visible: text !== ""
                 tone: "secondary"
+                color: secondaryForeground
                 wrapMode: Text.Wrap
                 maximumLineCount: 3
                 elide: Text.ElideRight
@@ -252,6 +259,27 @@ FocusScope {
 
                     readonly property string recordKey: String(model.firstAdmissionSequence)
                     readonly property bool plainTextOnly: rowContent.plainTextOnly
+                    readonly property color primaryForeground: activeFocus
+                                                               ? Theme.snapshot.surfaceActiveForeground :
+                                                                 rowHover.hovered
+                                                                 ? Theme.snapshot.surfaceHoverForeground :
+                                                                   Theme.color.textPrimary
+                    readonly property color secondaryForeground: activeFocus ? Theme.textForeground(
+                                                                                   Theme.snapshot.textSecondary,
+                                                                                   Theme.snapshot.surfaceActive) :
+                                                                               rowHover.hovered
+                                                                               ? Theme.textForeground(
+                                                                                     Theme.snapshot.textSecondary,
+                                                                                     Theme.snapshot.surfaceHover) :
+                                                                                 Theme.color.textSecondary
+                    readonly property color mutedForeground: activeFocus ? Theme.textForeground(
+                                                                               Theme.snapshot.textMuted,
+                                                                               Theme.snapshot.surfaceActive) :
+                                                                           rowHover.hovered
+                                                                           ? Theme.textForeground(
+                                                                                 Theme.snapshot.textMuted,
+                                                                                 Theme.snapshot.surfaceHover) :
+                                                                             Theme.color.textMuted
 
                     width: ListView.view.width
                     implicitHeight: view.historyRowExtent
@@ -299,6 +327,9 @@ FocusScope {
                         anchors.fill: parent
                         anchors.margins: Theme.spacing.md
                         record: row.model
+                        primaryForeground: row.primaryForeground
+                        secondaryForeground: row.secondaryForeground
+                        mutedForeground: row.mutedForeground
                         actionExposed: rowHover.hovered || row.activeFocus || activeFocus
                         onDismissRequested: view.dismissRecord(row.recordKey, row.index)
                     }

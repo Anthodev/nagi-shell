@@ -178,6 +178,14 @@ FocusScope {
                         anchors.centerIn: parent
                         meaning: channel.muteMeaning
                         semanticState: channel.muteState
+                        tint: muteButton.pressed ? channel.muteState === "pending"
+                                                   ? Theme.snapshot.surfaceActiveWarning :
+                                                     Theme.snapshot.surfaceActiveForeground :
+                                                     muteButton.hovered ? channel.muteState
+                                                                          === "pending"
+                                                                          ? Theme.snapshot.surfaceHoverWarning :
+                                                                            Theme.snapshot.surfaceHoverForeground :
+                                                                            semanticTint
                     }
                 }
                 IslandFocusRing {
@@ -210,6 +218,8 @@ FocusScope {
 
         required property string label
         required property bool pending
+        readonly property string restingForeground: pending ? Theme.snapshot.textSecondary :
+                                                              Theme.snapshot.textMuted
 
         implicitHeight: Theme.size.controlHeightMd
         leftPadding: Theme.spacing.md
@@ -232,7 +242,12 @@ FocusScope {
             verticalAlignment: Text.AlignVCenter
             text: control.label
             textFormat: Text.PlainText
-            tone: control.pending ? "secondary" : "muted"
+            color: control.pressed ? Theme.textForeground(control.restingForeground,
+                                                          Theme.snapshot.surfaceActive) :
+                                     control.hovered ? Theme.textForeground(
+                                                           control.restingForeground,
+                                                           Theme.snapshot.surfaceHover) :
+                                                       control.restingForeground
             size: "caption"
             elide: Text.ElideRight
         }

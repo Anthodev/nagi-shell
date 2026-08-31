@@ -43,13 +43,13 @@ FocusScope {
                                                  && adapter.inputEasyEffectsInternalDefault === true
     readonly property bool easyEffectsAvailable: {
         if (applicationModel === null || applicationModel === undefined
-            || applicationModel.available !== true || typeof applicationModel.eligible
-            !== "function") {
+                || applicationModel.available !== true || typeof applicationModel.eligible
+                !== "function") {
             return false;
         }
         const discoveryGeneration = applicationModel.applications;
         return discoveryGeneration !== undefined && applicationModel.eligible(easyEffectsDesktopId)
-        === true;
+                === true;
     }
     readonly property bool presetStatusRefreshing: easyEffectsStatus !== null && easyEffectsStatus
                                                    !== undefined && easyEffectsStatus.refreshing
@@ -270,7 +270,7 @@ FocusScope {
     Component.onCompleted: syncPresetStatusInterest()
     Component.onDestruction: {
         if (presetStatusOwnerEpoch > 0 && easyEffectsStatus !== null
-            && typeof easyEffectsStatus.deactivate === "function") {
+                && typeof easyEffectsStatus.deactivate === "function") {
             easyEffectsStatus.deactivate(presetStatusOwnerEpoch);
         }
     }
@@ -409,6 +409,7 @@ FocusScope {
                             text: qsTr("EasyEffects presets")
                             textFormat: Text.PlainText
                             font.weight: Theme.type.weightMedium
+                            color: Theme.snapshot.controlFillForeground
                             Accessible.role: Accessible.Heading
                             Accessible.name: text
                         }
@@ -564,6 +565,16 @@ FocusScope {
                                                              ? modelData
                                                                === dropdownOverlay.controller.currentName :
                                                                modelData.isDefault === true)
+                        readonly property color contentForeground: selected
+                                                                   ? Theme.snapshot.surfaceActiveForeground :
+                                                                     pressed ? Theme.snapshot.controlFillPressedForeground :
+                                                                               hovered
+                                                                               || visualFocus
+                                                                               ? Theme.snapshot.controlFillHoverForeground :
+                                                                                 Theme.color.textPrimary
+                        readonly property color contentAccent: selected
+                                                               ? Theme.snapshot.surfaceActiveAccentText :
+                                                                 Theme.snapshot.accent
 
                         width: popupList.width
                         height: Theme.size.controlHeightMd
@@ -614,6 +625,7 @@ FocusScope {
                                 text: popupItem.itemLabel
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
+                                color: popupItem.contentForeground
                             }
 
                             IslandText {
@@ -621,7 +633,7 @@ FocusScope {
                                 text: dropdownOverlay.controller === null ? "" :
                                                                             dropdownOverlay.controller.selectedLabel
                                 textFormat: Text.PlainText
-                                color: Theme.snapshot.accent
+                                color: popupItem.contentAccent
                                 size: "caption"
                                 font.weight: Theme.type.weightMedium
                             }
@@ -759,6 +771,7 @@ FocusScope {
                 text: presetRow.statusValue
                 textFormat: Text.PlainText
                 size: "caption"
+                color: Theme.snapshot.controlFillForeground
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 Accessible.role: Accessible.StaticText
@@ -768,6 +781,10 @@ FocusScope {
 
         AbstractButton {
             id: presetButton
+            readonly property color contentForeground: pressed
+                                                       ? Theme.snapshot.controlFillPressedForeground :
+                                                         hovered ? Theme.snapshot.controlFillHoverForeground :
+                                                                   Theme.snapshot.surfaceActiveForeground
             objectName: "audioEasyEffects" + (presetRow.pipeline === "output" ? "Output" : "Input")
                         + "PresetDropdown"
 
@@ -825,11 +842,13 @@ FocusScope {
                                                                                              >= 0 ? presetRow.currentName :
                                                                                                     qsTr("Choose a preset")
                     textFormat: Text.PlainText
+                    color: presetButton.contentForeground
                     elide: Text.ElideRight
                 }
                 IslandIcon {
                     meaning: "dropdown"
                     size: "sm"
+                    tint: presetButton.contentForeground
                     rotation: presetRow.popupOpen ? 180 : 0
                 }
             }
@@ -1059,6 +1078,35 @@ FocusScope {
 
         AbstractButton {
             id: dropdownButton
+            readonly property color contentForeground: pressed
+                                                       ? Theme.snapshot.controlFillPressedForeground :
+                                                         hovered ? Theme.snapshot.controlFillHoverForeground :
+                                                                   Theme.snapshot.surfaceActiveForeground
+            readonly property color leadingIconTint: {
+                if (section.pending) {
+                    if (pressed) {
+                        return Theme.contrastingForeground(Theme.snapshot.warning,
+                                                           Theme.snapshot.controlFillPressed, 3);
+                    }
+                    if (hovered) {
+                        return Theme.contrastingForeground(Theme.snapshot.warning,
+                                                           Theme.snapshot.controlFillHover, 3);
+                    }
+                    return Theme.snapshot.surfaceActiveWarning;
+                }
+                if (section.confirmedIndex >= 0) {
+                    if (pressed) {
+                        return Theme.contrastingForeground(Theme.snapshot.accent,
+                                                           Theme.snapshot.controlFillPressed, 3);
+                    }
+                    if (hovered) {
+                        return Theme.contrastingForeground(Theme.snapshot.accent,
+                                                           Theme.snapshot.controlFillHover, 3);
+                    }
+                    return Theme.snapshot.surfaceActiveAccent;
+                }
+                return contentForeground;
+            }
             objectName: "audio" + (section.role === "output" ? "Output" : "Input") + "Dropdown"
 
             Layout.fillWidth: true
@@ -1110,6 +1158,7 @@ FocusScope {
                     meaning: section.meaning
                     semanticState: section.pending ? "pending" : section.confirmedIndex >= 0
                                                      ? "active" : "normal"
+                    tint: dropdownButton.leadingIconTint
                 }
 
                 IslandText {
@@ -1117,11 +1166,13 @@ FocusScope {
                     Layout.maximumWidth: section.maximumLabelWidth
                     text: section.confirmedLabel
                     textFormat: Text.PlainText
+                    color: dropdownButton.contentForeground
                     elide: Text.ElideRight
                 }
                 IslandIcon {
                     meaning: "dropdown"
                     size: "sm"
+                    tint: dropdownButton.contentForeground
                     rotation: section.popupOpen ? 180 : 0
                 }
             }

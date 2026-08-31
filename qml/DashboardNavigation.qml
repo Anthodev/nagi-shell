@@ -167,6 +167,8 @@ Item {
             IslandIcon {
                 anchors.centerIn: parent
                 meaning: control.meaning
+                tint: control.pressed ? Theme.snapshot.surfaceActiveForeground : control.hovered
+                                        ? Theme.snapshot.surfaceHoverForeground : semanticTint
             }
         }
         IslandFocusRing {

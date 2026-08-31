@@ -193,6 +193,23 @@ FocusScope {
                         id: trayButton
 
                         readonly property bool attention: cell.modelData.status === "needsAttention"
+                        readonly property color contentForeground: pressed ? Theme.textForeground(
+                                                                                 Theme.snapshot.textSecondary,
+                                                                                 Theme.snapshot.surfaceActive) :
+                                                                             hovered ? Theme.textForeground(
+                                                                                           Theme.snapshot.textSecondary,
+                                                                                           Theme.snapshot.surfaceHover) :
+                                                                                       attention
+                                                                                       ? Theme.textForeground(
+                                                                                             Theme.snapshot.textSecondary,
+                                                                                             Theme.snapshot.surfaceActive) :
+                                                                                         Theme.color.textSecondary
+                        readonly property color contentAccent: pressed
+                                                               ? Theme.snapshot.surfaceActiveAccent :
+                                                                 hovered ? Theme.snapshot.surfaceHoverAccent :
+                                                                           attention
+                                                                           ? Theme.snapshot.surfaceActiveAccent :
+                                                                             Theme.snapshot.accent
                         readonly property var modelData: cell.modelData
                         objectName: "trayItemButton"
                         anchors.centerIn: parent
@@ -251,7 +268,7 @@ FocusScope {
                                 anchors.centerIn: parent
                                 visible: trayIcon.showingFallback
                                 text: cell.modelData.label.slice(0, 1).toUpperCase()
-                                tone: "secondary"
+                                color: trayButton.contentForeground
                                 font.weight: Font.DemiBold
                             }
 
@@ -276,7 +293,7 @@ FocusScope {
                                 width: 5
                                 height: 5
                                 radius: width / 2
-                                color: Theme.snapshot.accent
+                                color: trayButton.contentAccent
                                 visible: trayButton.attention
                             }
                         }

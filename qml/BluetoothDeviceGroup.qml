@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
-ColumnLayout {
+ControlCenterSectionPanel {
     id: root
 
     required property string title
@@ -18,25 +18,20 @@ ColumnLayout {
 
     Layout.fillWidth: true
     visible: devices.length > 0
-    spacing: Theme.spacing.sm
+    text: root.title
     Accessible.role: Accessible.List
     Accessible.name: qsTr("%1 Bluetooth devices").arg(title)
 
-    IslandText {
-        Layout.fillWidth: true
-        text: root.title
-        size: "heading"
-        Accessible.role: Accessible.Heading
-        Accessible.name: text
-    }
-
     Repeater {
+        id: deviceRepeater
         model: root.devices
 
         delegate: BluetoothDeviceRow {
+            required property int index
             required property var modelData
 
             device: modelData
+            separatorVisible: index < deviceRepeater.count - 1
             busy: root.busy
             reducedMotion: root.reducedMotion
             onPairRequested: token => root.pairRequested(token)

@@ -5,6 +5,7 @@
 # product tests for CI.
 #
 # Environment contract:
+#   - Avrea Linux x86_64 runners with 2 vCPUs and 8 GB RAM.
 #   - Pinned Fedora 44 container aligned with the supported local toolchain.
 #   - Quickshell installed from the stable errornointernet/quickshell COPR and
 #     PipeWire, GIO, KF6 GlobalAccel, systemd unit verification, and Python D-Bus
@@ -46,7 +47,7 @@ env:
 jobs:
   nondisplay:
     name: Display-independent checks
-    runs-on: ubuntu-latest
+    runs-on: avrea-ubuntu-latest-2-vcpu
     timeout-minutes: 10
     container:
       image: fedora:44
@@ -73,7 +74,7 @@ jobs:
 
   surface-state:
     name: Surface checks (virtual KWin)
-    runs-on: ubuntu-latest
+    runs-on: avrea-ubuntu-latest-2-vcpu
     timeout-minutes: 15
     container:
       image: fedora:44

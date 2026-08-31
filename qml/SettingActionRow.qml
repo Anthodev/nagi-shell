@@ -3,6 +3,8 @@ import QtQuick
 ControlCenterSettingRow {
     id: root
 
+    controlPlacement: ControlCenterSettingRow.Inline
+
     property string actionLabel: ""
     property string actionVariant: "standard"
     property bool writable: true

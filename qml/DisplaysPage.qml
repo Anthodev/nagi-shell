@@ -53,64 +53,64 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Displays")
-            size: "title"
-            font.weight: Theme.type.weightSemibold
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "displaysPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Choose where Nagi islands are visible and which enabled display receives global actions when the pointer has no usable target.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterDisplays"
+            title: qsTr("Displays")
+            description: qsTr(
+                             "Choose which displays show Nagi and which enabled display receives global actions by default.")
         }
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "displaysActiveSection"
+            Layout.fillWidth: true
             text: qsTr("Active")
             separated: false
-        }
+            Accessible.role: Accessible.List
 
-        Repeater {
-            model: root.activeRows()
+            Repeater {
+                id: activeRepeater
 
-            delegate: ControlCenterSettingRow {
-                id: activeRow
+                model: root.activeRows()
 
-                required property var modelData
+                delegate: ControlCenterSettingRow {
+                    id: activeRow
 
-                Layout.fillWidth: true
-                label: modelData.label
-                description: modelData.reliable ? qsTr("Remembered across sessions") : qsTr(
-                                                      "Available for this session only")
+                    required property int index
+                    required property var modelData
 
-                RowLayout {
-                    spacing: Theme.spacing.sm
+                    Layout.fillWidth: true
+                    label: modelData.label
+                    description: modelData.reliable ? qsTr("Remembered across sessions") : qsTr(
+                                                          "Available for this session only")
+                    controlPlacement: ControlCenterSettingRow.Auto
+                    separatorVisible: index < activeRepeater.count - 1
+                    Accessible.role: Accessible.ListItem
 
-                    IslandButton {
-                        label: activeRow.modelData.enabled ? qsTr("Disable island") : qsTr(
-                                                                 "Enable island")
-                        reducedMotion: root.reducedMotion
-                        enabled: root.displayController && (!activeRow.modelData.enabled
-                                                            || root.displayController.enabledDisplayCount
-                                                            > 1)
-                        onClicked: root.requestEnabled(activeRow.modelData.screen,
-                                                       !activeRow.modelData.enabled)
-                    }
+                    RowLayout {
+                        spacing: Theme.spacing.sm
 
-                    IslandButton {
-                        label: activeRow.modelData.fallback ? qsTr("Fallback") : qsTr(
-                                                                  "Make fallback")
-                        reducedMotion: root.reducedMotion
-                        variant: activeRow.modelData.fallback ? "accent" : "standard"
-                        enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
-                        onClicked: root.requestFallback(activeRow.modelData.screen)
+                        IslandButton {
+                            label: activeRow.modelData.enabled ? qsTr("Disable island") : qsTr(
+                                                                     "Enable island")
+                            reducedMotion: root.reducedMotion
+                            enabled: root.displayController && (!activeRow.modelData.enabled
+                                                                || root.displayController.enabledDisplayCount
+                                                                > 1)
+                            onClicked: root.requestEnabled(activeRow.modelData.screen,
+                                                           !activeRow.modelData.enabled)
+                        }
+
+                        IslandButton {
+                            label: activeRow.modelData.fallback ? qsTr("Fallback") : qsTr(
+                                                                      "Make fallback")
+                            reducedMotion: root.reducedMotion
+                            variant: activeRow.modelData.fallback ? "accent" : "standard"
+                            enabled: activeRow.modelData.enabled && !activeRow.modelData.fallback
+                            onClicked: root.requestFallback(activeRow.modelData.screen)
+                        }
                     }
                 }
             }
@@ -127,41 +127,51 @@ Flickable {
             Accessible.name: text
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "displaysRememberedSection"
-            text: qsTr("Remembered")
-        }
-
-        IslandText {
             Layout.fillWidth: true
-            visible: !root.displayController || root.displayController.rememberedDisplays.length
-                     === 0
-            text: qsTr("No disconnected displays can be remembered reliably on this platform.")
-            size: "body"
-            tone: "muted"
-            wrapMode: Text.Wrap
-        }
+            text: qsTr("Remembered")
+            Accessible.role: Accessible.List
 
-        Repeater {
-            model: root.displayController ? root.displayController.rememberedDisplays : []
-
-            delegate: ControlCenterSettingRow {
-                id: rememberedRow
-
-                required property var modelData
-
+            IslandText {
                 Layout.fillWidth: true
-                label: modelData.label
-                description: qsTr("Disconnected display")
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
+                visible: !root.displayController
+                         || root.displayController.rememberedDisplays.length === 0
+                text: qsTr("No disconnected displays can be remembered reliably on this platform.")
+                size: "body"
+                tone: "muted"
+                wrapMode: Text.Wrap
+            }
 
-                IslandButton {
-                    label: qsTr("Forget")
-                    reducedMotion: root.reducedMotion
-                    variant: "danger"
-                    Accessible.description: qsTr(
-                                                "Forget this disconnected display after confirmation")
-                    onClicked: root.displayController.confirmForget(
-                                   rememberedRow.modelData.identity)
+            Repeater {
+                id: rememberedRepeater
+
+                model: root.displayController ? root.displayController.rememberedDisplays : []
+
+                delegate: ControlCenterSettingRow {
+                    id: rememberedRow
+
+                    required property int index
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    label: modelData.label
+                    description: qsTr("Disconnected display")
+                    controlPlacement: ControlCenterSettingRow.Inline
+                    separatorVisible: index < rememberedRepeater.count - 1
+                    Accessible.role: Accessible.ListItem
+
+                    IslandButton {
+                        label: qsTr("Forget")
+                        reducedMotion: root.reducedMotion
+                        variant: "danger"
+                        Accessible.description: qsTr(
+                                                    "Forget this disconnected display after confirmation")
+                        onClicked: root.displayController.confirmForget(
+                                       rememberedRow.modelData.identity)
+                    }
                 }
             }
         }
