@@ -30,6 +30,8 @@ ShellRoot {
     property bool reducedMotion: false
     property bool displaysPageEnabled: true
 
+    property var workspaceRouteRecord: null
+    readonly property string workspaceRouteSourceToken: "display-workspace-source"
     function require(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -103,6 +105,13 @@ ShellRoot {
                     && snapshot.generation === record.generation
                     && snapshot.ownerName !== "none",
                     label + " keeps every registry row attached to its exact generation");
+            const projection = fixtureVirtualDesktops.projectionFor(record.screen);
+            const outputToken = fixtureVirtualDesktops.outputTokenFor(record.screen);
+            require(record.surface.workspaceProjection === projection && projection.available
+                    && projection.currentPosition
+                    === fixtureVirtualDesktops.screenIndex(record.screen)
+                    && host.surfaceTokenForOutput(outputToken) === record.token,
+                    label + " binds each surface and opaque output token to the same live screen");
             for (let peerIndex = index + 1; peerIndex < host.registry.length; peerIndex += 1) {
                 const peer = host.registry[peerIndex];
                 require(peer.token !== record.token && peer.screen !== record.screen,
@@ -271,6 +280,49 @@ ShellRoot {
                     "global action routes through the native pointer-screen bridge");
             require(coordinator.resetToIdle(pointerToken),
                     "pointer-routed dashboard returns to its initiating surface Idle");
+            require(host.surfaceTokenForOutput(fixtureVirtualDesktops.staleOutputToken) === null,
+                    "unknown opaque output identity has no live-surface fallback");
+            workspaceRouteRecord = host.registry[host.registry.length - 1];
+            const workspaceOutputToken = fixtureVirtualDesktops.outputTokenFor(
+                                           workspaceRouteRecord.screen);
+            fixtureWorkspaceSource.confirmedWorkspaceChanged(workspaceRouteSourceToken, 1, 1,
+                                                              workspaceOutputToken);
+            stage = "workspace-route-requested";
+            retry.restart();
+            return;
+        }
+
+        if (stage === "workspace-route-requested") {
+            const routed = coordinator.surfaceSnapshot(workspaceRouteRecord.token);
+            if (!awaitState(routed.ownerName === "workspace" && routed.presentationVisible
+                            && ownerCount("workspace") === 1,
+                            "workspace feedback did not settle on exactly its output surface")) {
+                return;
+            }
+            for (let index = 0; index < host.registry.length; index += 1) {
+                const record = host.registry[index];
+                const snapshot = coordinator.surfaceSnapshot(record.token);
+                require(record.token === workspaceRouteRecord.token
+                        ? snapshot.ownerName === "workspace" : snapshot.ownerName === "idle",
+                        "workspace output routing leaves every peer surface Idle");
+            }
+            fixtureWorkspaceSource.confirmedWorkspaceChanged(workspaceRouteSourceToken, 1, 2,
+                                                              fixtureVirtualDesktops.staleOutputToken);
+            require(coordinator.surfaceSnapshot(workspaceRouteRecord.token).ownerSourceRevision
+                    === 1 && ownerCount("workspace") === 1
+                    && coordinator.pendingTransientCount === 1,
+                    "stale opaque output token is rejected without rerouting or coalescing");
+            fixtureWorkspaceSource.confirmedWorkspaceInvalidated(workspaceRouteSourceToken, 1);
+            stage = "workspace-route-cleared";
+            retry.restart();
+            return;
+        }
+
+        if (stage === "workspace-route-cleared") {
+            if (!awaitState(coordinator.pendingTransientCount === 0 && allOwners("idle"),
+                            "workspace invalidation did not restore every surface to Idle")) {
+                return;
+            }
             stage = "cycle-start";
             advance();
             return;
@@ -289,6 +341,9 @@ ShellRoot {
                 return;
             }
             requireRegistry(expectedOutputs - 1, "Interactive transfer");
+            require(host.surfaceTokenForOutput(
+                        fixtureVirtualDesktops.outputTokenFor(victimScreen)) === null,
+                    "disabled output identity cannot target a detached surface");
             requireRetiredRejected("Interactive transfer");
             const transferred = coordinator.surfaceSnapshot(coordinator.interactiveHostToken);
             require(coordinator.interactiveHostToken !== retiredToken
@@ -572,6 +627,104 @@ ShellRoot {
     }
 
     QtObject {
+        id: fixtureVirtualDesktops
+
+        readonly property var staleOutputToken: ({})
+        readonly property var outputTokens: Object.freeze([Object.freeze({}), Object.freeze({}),
+                                                            Object.freeze({})])
+        readonly property var desktops: Object.freeze([Object.freeze({
+                                                               "id": "desktop-1",
+                                                               "name": "Desktop 1",
+                                                               "position": 0
+                                                           }), Object.freeze({
+                                                               "id": "desktop-2",
+                                                               "name": "Desktop 2",
+                                                               "position": 1
+                                                           }), Object.freeze({
+                                                               "id": "desktop-3",
+                                                               "name": "Desktop 3",
+                                                               "position": 2
+                                                           })])
+        readonly property var projections: Object.freeze([Object.freeze({
+                                                                  "available": true,
+                                                                  "currentId": "desktop-1",
+                                                                  "currentName": "Desktop 1",
+                                                                  "currentPosition": 0,
+                                                                  "desktops":
+                                                                  fixtureVirtualDesktops.desktops
+                                                              }), Object.freeze({
+                                                                  "available": true,
+                                                                  "currentId": "desktop-2",
+                                                                  "currentName": "Desktop 2",
+                                                                  "currentPosition": 1,
+                                                                  "desktops":
+                                                                  fixtureVirtualDesktops.desktops
+                                                              }), Object.freeze({
+                                                                  "available": true,
+                                                                  "currentId": "desktop-3",
+                                                                  "currentName": "Desktop 3",
+                                                                  "currentPosition": 2,
+                                                                  "desktops":
+                                                                  fixtureVirtualDesktops.desktops
+                                                              })])
+        readonly property var unavailableProjection: Object.freeze({
+                                                                       "available": false,
+                                                                       "currentId": "",
+                                                                       "currentName": "",
+                                                                       "currentPosition": -1,
+                                                                       "desktops":
+                                                                       Object.freeze([])
+                                                                   })
+
+        function screenIndex(screen) {
+            for (let index = 0; index < Quickshell.screens.length; index += 1) {
+                if (Quickshell.screens[index] === screen) {
+                    return index;
+                }
+            }
+            return -1;
+        }
+
+        function outputTokenFor(screen) {
+            const index = screenIndex(screen);
+            return index < 0 || index >= outputTokens.length ? null : outputTokens[index];
+        }
+
+        function projectionFor(screen) {
+            const index = screenIndex(screen);
+            return index < 0 || index >= projections.length ? unavailableProjection :
+                                                               projections[index];
+        }
+    }
+
+    QtObject {
+        id: fixtureWorkspaceSource
+
+        signal confirmedWorkspaceChanged(var sourceToken, int sourceGeneration, int revision,
+                                         var outputToken)
+        signal confirmedWorkspaceInvalidated(var sourceToken, int sourceGeneration)
+
+        function resolveTransient(sourceToken, sourceGeneration, revision) {
+            if (sourceToken !== test.workspaceRouteSourceToken || sourceGeneration !== 1
+                    || revision !== 1) {
+                return null;
+            }
+            return Object.freeze({
+                                     "detail": "Current desktop",
+                                     "iconName": "preferences-desktop-virtual-symbolic",
+                                     "primary": "Desktop 3",
+                                     "value": "3 / 3"
+                                 });
+        }
+    }
+
+    TransientCoordinatorBridge {
+        coordinator: coordinator
+        surfaceHost: test.host
+        workspaceSource: fixtureWorkspaceSource
+    }
+
+    QtObject {
         id: fixtureApplicationModel
 
         readonly property bool initialized: false
@@ -592,6 +745,8 @@ ShellRoot {
 
         IslandSurfaceHost {
             coordinator: test.stateCoordinator
+            virtualDesktops: fixtureVirtualDesktops
+            workspaceTransientSource: fixtureWorkspaceSource
             reducedMotion: test.reducedMotion
             applicationModel: fixtureApplicationModel
 

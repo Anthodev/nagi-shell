@@ -17,7 +17,10 @@ ShellRoot {
 
     property int workspaceChangeCount: 0
     property int workspaceInvalidationCount: 0
-    property string lastSourceToken: ""
+    property var lastSourceToken: null
+    property var lastOutputToken: null
+    property var lastInvalidatedSourceToken: null
+    property int lastInvalidatedSourceGeneration: 0
     property int lastSourceGeneration: 0
     property int lastRevision: 0
     property bool protocolComplete: false
@@ -36,26 +39,25 @@ ShellRoot {
         }
     }
 
-    function snapshotLine(epoch, currentId, showTransient, desktops) {
+    function snapshotLine(epoch, desktops, outputs) {
         return JSON.stringify({
-                                  "version": 1,
+                                  "version": 2,
                                   "helperEpoch": epoch,
-                                  "available": true,
-                                  "currentId": currentId,
-                                  "showTransient": showTransient,
-                                  "desktops": desktops
+                                  "desktops": desktops,
+                                  "outputs": outputs
                               });
     }
 
     function unavailableLine(epoch) {
-        return JSON.stringify({
-                                  "version": 1,
-                                  "helperEpoch": epoch,
-                                  "available": false,
-                                  "currentId": null,
-                                  "showTransient": false,
-                                  "desktops": []
-                              });
+        return snapshotLine(epoch, [], []);
+    }
+
+    function output(name, currentId, showTransient) {
+        return {
+            "name": name,
+            "currentId": currentId,
+            "showTransient": showTransient
+        };
     }
 
     function fixtureScript() {
@@ -82,25 +84,23 @@ with log_path.open("a", encoding="utf-8") as stream:
 
 def snapshot(epoch):
     return {
-        "version": 1,
+        "version": 2,
         "helperEpoch": epoch,
-        "available": True,
-        "currentId": "first",
-        "showTransient": False,
         "desktops": [
             {"id": "first", "name": "Desktop 1", "position": 0},
             {"id": "second", "name": "Desktop 2", "position": 1},
+        ],
+        "outputs": [
+            {"name": "Lifecycle-1", "currentId": "first", "showTransient": False},
         ],
     }
 
 def unavailable(epoch):
     return {
-        "version": 1,
+        "version": 2,
         "helperEpoch": epoch,
-        "available": False,
-        "currentId": None,
-        "showTransient": False,
         "desktops": [],
+        "outputs": [],
     }
 
 def publish(message):
@@ -166,7 +166,22 @@ finally:
             "name": "Desktop 2",
             "position": 1
         };
-        const initial = snapshotLine(epochA, "first", false, [secondDesktop, firstDesktop]);
+        const thirdDesktop = {
+            "id": "third",
+            "name": "Desktop 3",
+            "position": 2
+        };
+        const desktops = [thirdDesktop, firstDesktop, secondDesktop];
+        const initialOutputs = [output("Panel-A", "first", false),
+                                output("Panel-B", "second", false),
+                                output("Panel-C", "third", false)];
+        const initial = snapshotLine(epochA, desktops, initialOutputs);
+
+        const unavailable = adapter.projectionFor(screenA);
+        require(adapter.outputCount === 0 && adapter.desktopCount === 0 && !unavailable.available
+                && unavailable.currentId === "" && unavailable.currentPosition === -1
+                && unavailable.desktops.length === 0 && adapter.outputTokenFor(screenA) === null,
+                "canonical startup exposes one output-local unavailable projection");
 
         const malformedEpochs = ["", "a".repeat(31), "a".repeat(33),
                                  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -175,124 +190,262 @@ finally:
             adapter.acceptSnapshotLine(unavailableLine(malformedEpochs[index]));
         }
         const wrongVersion = JSON.parse(unavailableLine(epochA));
-        wrongVersion.version = 2;
+        wrongVersion.version = 1;
         adapter.acceptSnapshotLine(JSON.stringify(wrongVersion));
         adapter.acceptSnapshotLine("not json");
-        adapter.acceptSnapshotLine("{\"version\":1");
+        adapter.acceptSnapshotLine("{\"version\":2");
         adapter.acceptSnapshotLine("x".repeat(adapter.maximumLineLength + 1));
-        require(!adapter.available,
+        require(adapter.outputCount === 0,
                 "malformed versions, epochs, JSON, and line bounds preserve unavailable state");
 
         adapter.acceptSnapshotLine(initial);
-        require(adapter.available && adapter.desktops.length === 2 && adapter.desktops[0].id
-                === "first", "valid shared state is ordered and available");
-        require(adapter.currentId === "first" && adapter.currentName === "Desktop 1"
-                && adapter.currentPosition === 0, "shared current desktop resolves coherently");
-        require(workspaceChangeCount === 0 && adapter.resolveTransient(adapter.transientSourceToken,
-                                                                       1, 1) === null,
-                "startup synchronization never creates a transient");
+        const projectionA = adapter.projectionFor(screenA);
+        const projectionB = adapter.projectionFor(screenB);
+        const projectionC = adapter.projectionFor(screenC);
+        const projectionKeys = Object.keys(projectionA).sort().join(",");
+        require(adapter.outputCount === 3 && adapter.desktopCount === 3
+                && projectionA.available && projectionA.currentId === "first"
+                && projectionA.currentPosition === 0 && projectionB.currentId === "second"
+                && projectionB.currentPosition === 1 && projectionC.currentId === "third"
+                && projectionC.currentPosition === 2
+                && projectionA.desktops[0].id === "first"
+                && projectionA.desktops === projectionB.desktops
+                && projectionKeys === "available,currentId,currentName,currentPosition,desktops",
+                "three divergent outputs expose exact normalized screen-local projections");
+        const outputTokenA = adapter.outputTokenFor(screenA);
+        const outputTokenB = adapter.outputTokenFor(screenB);
+        const outputTokenC = adapter.outputTokenFor(screenC);
+        require(outputTokenA !== null && outputTokenB !== null && outputTokenC !== null
+                && outputTokenA !== outputTokenB && outputTokenA !== outputTokenC
+                && outputTokenB !== outputTokenC && outputTokenA !== "Panel-A"
+                && String(outputTokenA).indexOf("Panel-A") === -1
+                && projectionA.outputName === undefined && projectionA.name === undefined,
+                "projection and output-token APIs never expose raw output identity");
+        require(workspaceChangeCount === 0 && workspaceInvalidationCount === 0
+                && adapter.resolveTransient("Panel-A", 1, 1) === null,
+                "startup synchronization never creates feedback");
 
-        adapter.acceptSnapshotLine(snapshotLine(epochB, "second", true, [firstDesktop,
-                                                                         secondDesktop]));
-        require(adapter.currentId === "first", "a different live helper epoch is rejected");
-
-        const outputTopLevel = JSON.parse(snapshotLine(epochA, "second", true, [firstDesktop,
-                                                                                secondDesktop]));
-        outputTopLevel.outputName = "DP-1";
-        adapter.acceptSnapshotLine(JSON.stringify(outputTopLevel));
-        const outputDesktop = JSON.parse(snapshotLine(epochA, "second", true, [firstDesktop,
-                                                                               secondDesktop]));
-        outputDesktop.desktops[0].outputId = "forbidden";
-        adapter.acceptSnapshotLine(JSON.stringify(outputDesktop));
-        require(adapter.currentId === "first",
-                "output-related fields are rejected at every wire level");
-
-        const oversizedId = "i".repeat(1025);
-        adapter.acceptSnapshotLine(snapshotLine(epochA, oversizedId, false, [
-                                                    {
-                                                        "id": oversizedId,
-                                                        "name": "Bounded",
-                                                        "position": 0
-                                                    }
+        adapter.acceptSnapshotLine(snapshotLine(epochB, desktops, [
+                                                    output("Panel-A", "second", true),
+                                                    output("Panel-B", "second", false),
+                                                    output("Panel-C", "third", false)
                                                 ]));
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "first", false, [
-                                                    {
-                                                        "id": "first",
-                                                        "name": "n".repeat(257),
-                                                        "position": 0
-                                                    }
-                                                ]));
-        const tooManyDesktops = [];
-        for (let index = 0; index < 257; index += 1) {
-            tooManyDesktops.push({
-                                     "id": "desktop-" + index,
-                                     "name": "Desktop",
-                                     "position": index
-                                 });
+        require(adapter.projectionFor(screenA).currentId === "first",
+                "a different live helper epoch is rejected");
+
+        const invalidPayloads = [];
+        const extraTopLevel = JSON.parse(initial);
+        extraTopLevel.available = true;
+        invalidPayloads.push(extraTopLevel);
+        invalidPayloads.push({
+                                 "version": 1,
+                                 "helperEpoch": epochA,
+                                 "available": true,
+                                 "currentId": "first",
+                                 "showTransient": false,
+                                 "desktops": desktops
+                             });
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": desktops,
+                                 "outputs": []
+                             });
+        const outputExtraField = JSON.parse(initial);
+        outputExtraField.outputs[0].connector = "forbidden";
+        invalidPayloads.push(outputExtraField);
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": desktops,
+                                 "outputs": [output("Panel-A", "first", false),
+                                             output("Panel-A", "second", false)]
+                             });
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": desktops,
+                                 "outputs": [output("Panel-A", "missing", false)]
+                             });
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": desktops,
+                                 "outputs": [output("Panel-A", "second", true),
+                                             output("Panel-B", "third", true)]
+                             });
+        const tooManyOutputs = [];
+        for (let index = 0; index < 65; index += 1) {
+            tooManyOutputs.push(output("Panel-" + index, "first", false));
         }
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "desktop-0", false, tooManyDesktops));
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "first", false, [
-                                                    {
-                                                        "id": "first",
-                                                        "name": "Desktop 1",
-                                                        "position": 1
-                                                    },
-                                                    {
-                                                        "id": "second",
-                                                        "name": "Desktop 2",
-                                                        "position": 1
-                                                    }
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": desktops,
+                                 "outputs": tooManyOutputs
+                             });
+        invalidPayloads.push({
+                                 "version": 2,
+                                 "helperEpoch": epochA,
+                                 "desktops": [{
+                                         "id": "first",
+                                         "name": "Desktop 1",
+                                         "position": 1
+                                     }, {
+                                         "id": "second",
+                                         "name": "Desktop 2",
+                                         "position": 1
+                                     }],
+                                 "outputs": [output("Panel-A", "first", false)]
+                             });
+        for (let index = 0; index < invalidPayloads.length; index += 1) {
+            adapter.acceptSnapshotLine(JSON.stringify(invalidPayloads[index]));
+        }
+        require(adapter.outputCount === 3 && adapter.projectionFor(screenA) === projectionA
+                && adapter.outputTokenFor(screenB) === outputTokenB
+                && workspaceChangeCount === 0 && workspaceInvalidationCount === 0,
+                "exact v2 keys, bounds, references, and single-feedback rules reject atomically");
+
+        const renamedThird = {
+            "id": "third",
+            "name": "Focus",
+            "position": 2
+        };
+        const renamedDesktops = [secondDesktop, renamedThird, firstDesktop];
+        adapter.acceptSnapshotLine(snapshotLine(epochA, renamedDesktops, [
+                                                    output("Panel-C", "third", false),
+                                                    output("Panel-A", "first", false),
+                                                    output("Panel-B", "second", false)
                                                 ]));
-        require(adapter.currentId === "first" && adapter.desktops.length === 2,
-                "ID, name, count, and dense-position bounds reject atomically");
+        require(adapter.projectionFor(screenC).currentName === "Focus"
+                && adapter.projectionFor(screenA).desktops[2].name === "Focus"
+                && adapter.outputTokenFor(screenA) === outputTokenA
+                && adapter.outputTokenFor(screenB) === outputTokenB
+                && adapter.outputTokenFor(screenC) === outputTokenC
+                && workspaceChangeCount === 0 && workspaceInvalidationCount === 0,
+                "desktop structure and output order refresh every projection silently");
 
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "second", false, [firstDesktop,
-                                                                          secondDesktop]));
-        require(adapter.currentId === "second" && workspaceChangeCount === 0
-                && workspaceInvalidationCount === 1,
-                "non-transient shared change invalidates stale feedback once");
-
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "first", true, [firstDesktop,
-                                                                        secondDesktop]));
-        require(workspaceChangeCount === 1 && lastSourceToken === "workspace-current"
-                && lastSourceGeneration === 1 && lastRevision === 3,
-                "one confirmed shared switch publishes one scoped revision");
+        adapter.acceptSnapshotLine(snapshotLine(epochA, renamedDesktops, [
+                                                    output("Panel-C", "third", false),
+                                                    output("Panel-A", "first", false),
+                                                    output("Panel-B", "third", true)
+                                                ]));
+        require(workspaceChangeCount === 1 && workspaceInvalidationCount === 0
+                && lastOutputToken === outputTokenB && lastSourceToken !== "Panel-B"
+                && String(lastSourceToken).indexOf("Panel-B") === -1
+                && lastSourceGeneration === 1 && lastRevision === 3
+                && adapter.projectionFor(screenA).currentId === "first"
+                && adapter.projectionFor(screenB).currentId === "third"
+                && adapter.projectionFor(screenC).currentId === "third",
+                "only the genuinely changed feedback output emits its opaque identity");
+        const firstLifecycleSourceToken = lastSourceToken;
         const switched = adapter.resolveTransient(lastSourceToken, lastSourceGeneration,
                                                   lastRevision);
-        require(switched !== null && switched.primary === "Desktop 1" && switched.detail
-                === "Current desktop" && switched.value === "1 / 2",
-                "exact confirmed revision resolves its presentation");
+        require(switched !== null && switched.primary === "Focus" && switched.detail
+                === "Current desktop" && switched.value === "3 / 3"
+                && adapter.resolveTransient(lastSourceToken, 2, lastRevision) === null
+                && adapter.resolveTransient(lastSourceToken, 1, lastRevision - 1) === null
+                && adapter.resolveTransient(outputTokenB, 1, lastRevision) === null,
+                "only the exact opaque source generation and revision resolve feedback");
 
-        const renamedFirst = {
-            "id": "first",
-            "name": "Focus",
-            "position": 0
+        adapter.acceptSnapshotLine(snapshotLine(epochA, renamedDesktops, [
+                                                    output("Panel-A", "first", false),
+                                                    output("Panel-B", "third", false),
+                                                    output("Panel-C", "third", true)
+                                                ]));
+        require(workspaceChangeCount === 1 && workspaceInvalidationCount === 0
+                && adapter.resolveTransient(firstLifecycleSourceToken, 1, 3) === switched,
+                "showTransient without a real output change neither emits nor rewrites feedback");
+
+        const structurallyRenamedThird = {
+            "id": "third",
+            "name": "Deep Focus",
+            "position": 2
         };
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "first", false, [renamedFirst,
-                                                                         secondDesktop]));
-        require(workspaceChangeCount === 1 && workspaceInvalidationCount === 2
-                && adapter.resolveTransient(lastSourceToken, 1, 4) === null,
-                "non-transient metadata change retires the prior presentation");
+        const structurallyChangedDesktops = [secondDesktop, structurallyRenamedThird, firstDesktop];
+        adapter.acceptSnapshotLine(snapshotLine(epochA, structurallyChangedDesktops, [
+                                                    output("Panel-C", "third", false),
+                                                    output("Panel-A", "first", false),
+                                                    output("Panel-B", "third", false)
+                                                ]));
+        require(workspaceChangeCount === 1 && workspaceInvalidationCount === 1
+                && lastInvalidatedSourceToken === firstLifecycleSourceToken
+                && lastInvalidatedSourceGeneration === 1
+                && adapter.projectionFor(screenB).currentName === "Deep Focus"
+                && adapter.resolveTransient(firstLifecycleSourceToken, 1, 3) === null,
+                "silent structural projection changes invalidate and unresolve retained feedback");
 
+        adapter.acceptSnapshotLine(snapshotLine(epochA, structurallyChangedDesktops, [
+                                                    output("Panel-A", "second", false),
+                                                    output("Panel-C", "third", false)
+                                                ]));
+        require(adapter.outputCount === 2 && !adapter.projectionFor(screenB).available
+                && adapter.outputTokenFor(screenB) === null
+                && adapter.outputTokenFor(screenA) === outputTokenA
+                && adapter.outputTokenFor(screenC) === outputTokenC
+                && workspaceInvalidationCount === 2
+                && lastInvalidatedSourceToken === firstLifecycleSourceToken
+                && adapter.resolveTransient(firstLifecycleSourceToken, 1, 3) === null,
+                "removing one output invalidates only its opaque source and leaves peers live");
+        adapter.acceptSnapshotLine(snapshotLine(epochA, structurallyChangedDesktops, [
+                                                    output("Panel-A", "second", false),
+                                                    output("Panel-C", "third", false)
+                                                ]));
+        require(workspaceInvalidationCount === 2,
+                "duplicate output-removal snapshots create no invalidation storm");
+
+        adapter.acceptSnapshotLine(snapshotLine(epochA, structurallyChangedDesktops, [
+                                                    output("Panel-A", "second", false),
+                                                    output("Panel-B", "second", true),
+                                                    output("Panel-C", "third", false)
+                                                ]));
+        const replacementOutputTokenB = adapter.outputTokenFor(screenB);
+        require(adapter.outputCount === 3 && adapter.projectionFor(screenB).currentId === "second"
+                && replacementOutputTokenB !== null && replacementOutputTokenB !== outputTokenB
+                && workspaceChangeCount === 1 && workspaceInvalidationCount === 2,
+                "hotplug recovery uses a fresh opaque output token without replaying feedback");
+        adapter.acceptSnapshotLine(snapshotLine(epochA, structurallyChangedDesktops, [
+                                                    output("Panel-A", "second", false),
+                                                    output("Panel-B", "first", true),
+                                                    output("Panel-C", "third", false)
+                                                ]));
+        require(workspaceChangeCount === 2 && lastOutputToken === replacementOutputTokenB
+                && lastSourceToken === firstLifecycleSourceToken && lastSourceGeneration === 2
+                && lastRevision === 2
+                && adapter.resolveTransient(firstLifecycleSourceToken, 1, 3) === null
+                && adapter.resolveTransient(lastSourceToken, 2, 2) !== null,
+                "recovered output advances only its source generation and rejects stale tuples");
+
+        const preUnavailableTokenA = adapter.outputTokenFor(screenA);
+        const preUnavailableTokenB = adapter.outputTokenFor(screenB);
+        const preUnavailableTokenC = adapter.outputTokenFor(screenC);
         adapter.acceptSnapshotLine(unavailableLine(epochA));
-        require(!adapter.available && adapter.desktops.length === 0 && adapter.currentId === ""
-                && adapter.currentName === "" && adapter.currentPosition === -1,
-                "canonical divergence suppresses the shared projection globally");
-        require(workspaceInvalidationCount === 3,
-                "global unavailability invalidates the source exactly once");
+        require(adapter.outputCount === 0 && adapter.desktopCount === 0
+                && !adapter.projectionFor(screenA).available
+                && !adapter.projectionFor(screenB).available
+                && !adapter.projectionFor(screenC).available
+                && adapter.outputTokenFor(screenA) === null
+                && workspaceInvalidationCount === 5,
+                "canonical helper unavailability invalidates each live output independently");
         adapter.acceptSnapshotLine(unavailableLine(epochA));
-        require(workspaceInvalidationCount === 3,
-                "duplicate unavailable snapshots create no signal storm");
+        require(workspaceInvalidationCount === 5,
+                "duplicate canonical unavailability is idempotent");
 
         adapter.acceptSnapshotLine(initial);
-        require(adapter.available && workspaceChangeCount === 1 && workspaceInvalidationCount === 3,
-                "reconvergence starts a fresh generation without replay");
-        require(adapter.resolveTransient(adapter.transientSourceToken, 2, 1) === null,
-                "recovery revision is not transient-resolvable");
-        adapter.acceptSnapshotLine(snapshotLine(epochA, "second", true, [firstDesktop,
-                                                                         secondDesktop]));
-        require(workspaceChangeCount === 2 && lastSourceGeneration === 2 && lastRevision === 2,
-                "post-recovery switch uses a fresh generation at revision two");
+        require(adapter.outputCount === 3 && workspaceChangeCount === 2
+                && workspaceInvalidationCount === 5
+                && adapter.outputTokenFor(screenA) !== preUnavailableTokenA
+                && adapter.outputTokenFor(screenB) !== preUnavailableTokenB
+                && adapter.outputTokenFor(screenC) !== preUnavailableTokenC,
+                "helper recovery rebuilds fresh output identities without feedback replay");
+        adapter.acceptSnapshotLine(snapshotLine(epochA, desktops, [
+                                                    output("Panel-A", "first", false),
+                                                    output("Panel-B", "second", false),
+                                                    output("Panel-C", "second", true)
+                                                ]));
+        require(workspaceChangeCount === 3 && lastSourceGeneration === 2 && lastRevision === 2
+                && lastOutputToken === adapter.outputTokenFor(screenC),
+                "peer recovery generation and revision advance independently");
         protocolComplete = true;
     }
 
@@ -449,17 +602,36 @@ finally:
         }
     }
 
+    QtObject {
+        id: screenA
+        readonly property string name: "Panel-A"
+    }
+
+    QtObject {
+        id: screenB
+        readonly property string name: "Panel-B"
+    }
+
+    QtObject {
+        id: screenC
+        readonly property string name: "Panel-C"
+    }
+
     KWinVirtualDesktopAdapter {
         id: adapter
         helperPath: "/usr/bin/cat"
-        onConfirmedWorkspaceChanged: function (sourceToken, sourceGeneration, revision) {
+        onConfirmedWorkspaceChanged: function (sourceToken, sourceGeneration, revision,
+                                               outputToken) {
             test.workspaceChangeCount += 1;
             test.lastSourceToken = sourceToken;
             test.lastSourceGeneration = sourceGeneration;
             test.lastRevision = revision;
+            test.lastOutputToken = outputToken;
         }
         onConfirmedWorkspaceInvalidated: function (sourceToken, sourceGeneration) {
             test.workspaceInvalidationCount += 1;
+            test.lastInvalidatedSourceToken = sourceToken;
+            test.lastInvalidatedSourceGeneration = sourceGeneration;
         }
     }
 
@@ -469,13 +641,14 @@ finally:
         sourceComponent: Component {
             KWinVirtualDesktopAdapter {
                 helperPath: test.fixtureScriptPath
-                onAvailableChanged: {
-                    if (available)
+                onOutputCountChanged: {
+                    if (outputCount > 0)
                     test.lifecycleAvailableCount += 1;
                     else
                     test.lifecycleUnavailableCount += 1;
                 }
-                onConfirmedWorkspaceChanged: function (sourceToken, sourceGeneration, revision) {
+                onConfirmedWorkspaceChanged: function (sourceToken, sourceGeneration, revision,
+                                                       outputToken) {
                     test.lifecycleChangeCount += 1;
                 }
                 onConfirmedWorkspaceInvalidated: function (sourceToken, sourceGeneration) {
@@ -491,8 +664,8 @@ finally:
         sourceComponent: Component {
             KWinVirtualDesktopAdapter {
                 helperPath: test.fixtureScriptPath
-                onAvailableChanged: {
-                    if (available && test.lifecycleStage === "destruction-live") {
+                onOutputCountChanged: {
+                    if (outputCount > 0 && test.lifecycleStage === "destruction-live") {
                         destructionTimeout.stop();
                         destructionDestroyTimer.start();
                     }

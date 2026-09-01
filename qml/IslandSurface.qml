@@ -16,6 +16,11 @@ PanelWindow {
     // Normalized idle data sources. Null keeps the matching block collapsed,
     // so harnesses can mount the surface without the full adapter set.
     property var virtualDesktops: null
+    readonly property var workspaceProjection: virtualDesktops !== null && virtualDesktops
+                                               !== undefined
+                                               && typeof virtualDesktops.projectionFor
+                                               === "function" ? virtualDesktops.projectionFor(
+                                                                    screen) : null
     property var clock: null
     property var weather: null
     property var media: null
@@ -2053,7 +2058,9 @@ PanelWindow {
         id: transientLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: ((surface.transientOwner && surface.transientPresentation !== null)
                  || contentTransition.retainsKind(surface.coordinator.ownerWorkspace))
         visible: active
@@ -2099,13 +2106,15 @@ PanelWindow {
 
         parent: surfaceBackground
         anchors.centerIn: parent
+        width: implicitWidth
+        height: implicitHeight
         visible: contentTransition.layerVisible(surface.coordinator.ownerIdle)
         enabled: surface.ownerKind === surface.coordinator.ownerIdle
         Accessible.ignored: !enabled
         workActive: enabled
         externalClockPresentation: true
         externalMediaPresentation: true
-        virtualDesktops: surface.virtualDesktops
+        virtualDesktops: surface.workspaceProjection
         clock: surface.clock
         gamingPerformance: surface.gamingPerformance
         weather: surface.weather

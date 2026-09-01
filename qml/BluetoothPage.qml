@@ -161,11 +161,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Bluetooth")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "bluetoothPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "bluetooth"
+            title: qsTr("Bluetooth")
+            description: qsTr("Pair, connect, and forget Bluetooth devices.")
         }
 
         IslandPanel {

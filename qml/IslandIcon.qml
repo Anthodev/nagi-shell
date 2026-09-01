@@ -37,6 +37,10 @@ Item {
     readonly property bool usesQuickshellIconProvider: !usesSvgMask && rawSource.startsWith(
                                                            "image://icon/")
     readonly property bool loadsAsynchronously: image.asynchronous
+    readonly property bool terminalReady: loadStatus === Image.Ready || (loadStatus === Image.Error
+                                                                         && _loadFailed && String(
+                                                                             displayedSource)
+                                                                         === String(renderedSource))
     property bool _loadFailed: false
     property string _svgTemplate: ""
     property bool _componentReady: false

@@ -5,26 +5,52 @@
     var scriptGeneration = @NAGI_SCRIPT_GENERATION@;
     var callbackPath = "/WorkspaceConsensus";
     var callbackInterface = "io.github.Anthodev.NagiShell.WorkspaceConsensus";
-    var previousAvailable = false;
-    var previousCurrentId = "";
+    var previousOutputs = Object.create(null);
 
     function unavailableSnapshot() {
         return {
-            available: false,
-            currentId: null,
-            showTransient: false,
-            desktops: []
+            desktops: [],
+            outputs: []
         };
     }
 
+    function utf8ByteLength(value) {
+        var length = 0;
+        for (var index = 0; index < value.length; ++index) {
+            var codeUnit = value.charCodeAt(index);
+            if (codeUnit <= 0x7f) {
+                length += 1;
+            } else if (codeUnit <= 0x7ff) {
+                length += 2;
+            } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff
+                       && index + 1 < value.length) {
+                var nextCodeUnit = value.charCodeAt(index + 1);
+                if (nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff) {
+                    length += 4;
+                    index += 1;
+                } else {
+                    length += 3;
+                }
+            } else {
+                length += 3;
+            }
+            if (length > 65536) {
+                return length;
+            }
+        }
+        return length;
+    }
+
     function publish(snapshot) {
-        var encoded;
+        var encoded = null;
         try {
             encoded = JSON.stringify(snapshot);
         } catch (error) {
-            encoded = JSON.stringify(unavailableSnapshot());
+            encoded = null;
         }
-        if (typeof encoded !== "string" || encoded.length > 65536) {
+        if (typeof encoded !== "string" || encoded.length > 65536
+                || utf8ByteLength(encoded) > 65536) {
+            previousOutputs = Object.create(null);
             encoded = JSON.stringify(unavailableSnapshot());
         }
         callDBus(helperDestination,
@@ -36,8 +62,7 @@
     }
 
     function publishUnavailable() {
-        previousAvailable = false;
-        previousCurrentId = "";
+        previousOutputs = Object.create(null);
         publish(unavailableSnapshot());
     }
 
@@ -81,91 +106,119 @@
                 position: position
             });
         }
-        return desktops;
+        return {
+            desktops: desktops,
+            ids: ids
+        };
     }
 
-    function readConsensus(desktops) {
+    function readOutputs(desktopIds) {
         var screens = workspace.screens;
         if (screens === null || screens === undefined
-                || typeof screens.length !== "number" || screens.length < 1
+                || typeof screens.length !== "number"
+                || screens.length < 1 || screens.length > 64
                 || typeof workspace.currentDesktopForScreen !== "function") {
             return null;
         }
 
-        var currentId = "";
+        var outputs = [];
+        var outputScreens = [];
+        var names = Object.create(null);
         for (var index = 0; index < screens.length; ++index) {
-            var screen = screens[index];
-            if (screen === null || screen === undefined) {
+            var output = screens[index];
+            if (output === null || output === undefined
+                    || !validString(output.name, 256, false)
+                    || names[output.name] === true) {
                 return null;
             }
 
-            var desktop = workspace.currentDesktopForScreen(screen);
+            var desktop = workspace.currentDesktopForScreen(output);
             if (desktop === null || desktop === undefined
-                    || !validString(desktop.id, 1024, false)) {
+                    || !validString(desktop.id, 1024, false)
+                    || desktopIds[desktop.id] !== true) {
                 return null;
             }
-            if (index === 0) {
-                currentId = desktop.id;
-            } else if (desktop.id !== currentId) {
-                return null;
-            }
-        }
 
-        for (var desktopIndex = 0; desktopIndex < desktops.length; ++desktopIndex) {
-            if (desktops[desktopIndex].id === currentId) {
-                return currentId;
+            names[output.name] = true;
+            outputs.push({
+                name: output.name,
+                currentId: desktop.id,
+                showTransient: false
+            });
+            outputScreens.push(output);
+        }
+        return {
+            outputs: outputs,
+            screens: outputScreens
+        };
+    }
+
+    function markConfirmedTransient(desktopChange, outputState) {
+        if (desktopChange === null) {
+            return;
+        }
+        for (var index = 0; index < outputState.outputs.length; ++index) {
+            var output = outputState.outputs[index];
+            if (outputState.screens[index] === desktopChange.output
+                    && desktopChange.previousId !== desktopChange.currentId
+                    && output.currentId === desktopChange.currentId
+                    && previousOutputs[output.name] === desktopChange.previousId) {
+                output.showTransient = true;
+                return;
             }
         }
-        return null;
+    }
+
+    function rememberOutputs(outputs) {
+        var next = Object.create(null);
+        for (var index = 0; index < outputs.length; ++index) {
+            next[outputs[index].name] = outputs[index].currentId;
+        }
+        previousOutputs = next;
     }
 
     function recompute(desktopChange) {
         try {
-            var desktops = readDesktopList();
-            if (desktops === null) {
+            var desktopState = readDesktopList();
+            if (desktopState === null) {
                 publishUnavailable();
                 return;
             }
 
-            var currentId = readConsensus(desktops);
-            if (currentId === null) {
+            var outputState = readOutputs(desktopState.ids);
+            if (outputState === null) {
                 publishUnavailable();
                 return;
             }
 
-            var showTransient = desktopChange === true
-                    && previousAvailable
-                    && previousCurrentId !== currentId;
-            previousAvailable = true;
-            previousCurrentId = currentId;
+            markConfirmedTransient(desktopChange, outputState);
+            rememberOutputs(outputState.outputs);
             publish({
-                available: true,
-                currentId: currentId,
-                showTransient: showTransient,
-                desktops: desktops
+                desktops: desktopState.desktops,
+                outputs: outputState.outputs
             });
         } catch (error) {
             publishUnavailable();
         }
     }
 
-    var pendingDesktopChange = false;
+    var pendingDesktopChange = null;
     var pendingStructuralChange = false;
     var recomputeTimer = new QTimer();
     recomputeTimer.singleShot = true;
     recomputeTimer.interval = 0;
     recomputeTimer.timeout.connect(function() {
-        var desktopChange = pendingDesktopChange && !pendingStructuralChange;
-        pendingDesktopChange = false;
+        var desktopChange = pendingStructuralChange ? null : pendingDesktopChange;
+        pendingDesktopChange = null;
         pendingStructuralChange = false;
         recompute(desktopChange);
     });
 
     function scheduleRecompute(desktopChange) {
-        if (desktopChange) {
-            pendingDesktopChange = true;
-        } else {
+        if (desktopChange === null) {
             pendingStructuralChange = true;
+        } else {
+            pendingDesktopChange = desktopChange;
         }
         if (!recomputeTimer.active) {
             recomputeTimer.start();
@@ -182,7 +235,7 @@
         };
         subscription.callback = function() {
             if (subscription.active) {
-                scheduleRecompute(false);
+                scheduleRecompute(null);
             }
         };
         desktop.nameChanged.connect(subscription.callback);
@@ -248,15 +301,27 @@
     }
 
     workspace.currentDesktopChanged.connect(function(previous, current, output) {
-        scheduleRecompute(true);
+        if (previous === null || previous === undefined
+                || current === null || current === undefined
+                || output === null || output === undefined
+                || !validString(previous.id, 1024, false)
+                || !validString(current.id, 1024, false)) {
+            scheduleRecompute(null);
+            return;
+        }
+        scheduleRecompute({
+            output: output,
+            previousId: previous.id,
+            currentId: current.id
+        });
     });
     workspace.screensChanged.connect(function() {
-        scheduleRecompute(false);
+        scheduleRecompute(null);
     });
     workspace.desktopsChanged.connect(function() {
         refreshDesktopNameSubscriptions();
-        scheduleRecompute(false);
+        scheduleRecompute(null);
     });
     refreshDesktopNameSubscriptions();
-    recompute(false);
+    recompute(null);
 })();

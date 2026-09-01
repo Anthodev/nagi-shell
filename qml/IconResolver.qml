@@ -24,6 +24,24 @@ Singleton {
                                                             "restartShell": "restart-shell.svg",
                                                             "wifi": "wifi.svg",
                                                             "bluetooth": "bluetooth.svg",
+                                                            "controlCenterIsland":
+                                                            "control-center-island.svg",
+                                                            "controlCenterAppearance":
+                                                            "control-center-appearance.svg",
+                                                            "controlCenterClock":
+                                                            "control-center-clock.svg",
+                                                            "controlCenterMedia":
+                                                            "control-center-media.svg",
+                                                            "controlCenterWeather":
+                                                            "control-center-weather.svg",
+                                                            "controlCenterNotifications":
+                                                            "notification-bell.svg",
+                                                            "controlCenterWallpaper":
+                                                            "control-center-wallpaper.svg",
+                                                            "controlCenterDisplays":
+                                                            "control-center-displays.svg",
+                                                            "controlCenterAbout":
+                                                            "control-center-about.svg",
                                                             "volumeHigh": "volume-high.svg",
                                                             "volumeLow": "volume-low.svg",
                                                             "volumeMuted": "volume-muted.svg",
@@ -61,6 +79,16 @@ Singleton {
                                                      "restartShell": qsTr("Restart shell"),
                                                      "wifi": qsTr("Wi-Fi"),
                                                      "bluetooth": qsTr("Bluetooth"),
+                                                     "controlCenterIsland": qsTr("Island"),
+                                                     "controlCenterAppearance": qsTr("Appearance"),
+                                                     "controlCenterClock": qsTr("Clock & Date"),
+                                                     "controlCenterMedia": qsTr("Media"),
+                                                     "controlCenterWeather": qsTr("Weather"),
+                                                     "controlCenterNotifications": qsTr(
+                                                                                       "Notifications"),
+                                                     "controlCenterWallpaper": qsTr("Wallpaper"),
+                                                     "controlCenterDisplays": qsTr("Displays"),
+                                                     "controlCenterAbout": qsTr("About"),
                                                      "volumeHigh": qsTr("Volume"),
                                                      "volumeLow": qsTr("Volume"),
                                                      "volumeMuted": qsTr("Muted volume"),

@@ -64,6 +64,7 @@ BRIGHTNESS_LIVE_WRITE_TEST_DIR := $(BUILD_DIR)/brightness-live-write-test
 SESSION_TEST_DIR := $(BUILD_DIR)/session-test
 COORDINATOR_TEST_DIR := $(BUILD_DIR)/coordinator-test
 TRANSIENT_TEST_DIR := $(BUILD_DIR)/transient-test
+WORKSPACE_TEST_DIR := $(BUILD_DIR)/workspace-consensus-test
 WEATHER_TEST_DIR := $(BUILD_DIR)/weather-test
 MEDIA_TEST_DIR := $(BUILD_DIR)/media-test
 AUDIO_TEST_DIR := $(BUILD_DIR)/audio-test
@@ -192,7 +193,7 @@ help:
 		'make wallpaper-helper  Build the Plasma wallpaper service helper' \
 		'make test-native     Test KWin tuple normalization' \
 		'make test-owner-lifecycle  Test KWin owner loss and replacement' \
-		'make test-workspace-consensus  Test shared/divergent KWin workspace truth' \
+		'make test-workspace-consensus  Test per-output KWin workspace projection' \
 		'make test-audio-protocol  Test the audio bridge command boundary' \
 		'make test-audio-volume  Test proportional average-volume writes' \
 		'make test-easyeffects-contract  Test EasyEffects capability and lifecycle contracts' \
@@ -555,15 +556,32 @@ test-owner-lifecycle: check-helper-toolchain $(HELPER) $(OWNER_TEST)
 	@command -v '$(DBUS_RUN_SESSION)' >/dev/null
 	$(DBUS_RUN_SESSION) -- $(OWNER_TEST) $(abspath $(HELPER))
 
-test-workspace-consensus: check-quickshell check-helper-toolchain $(HELPER)
+test-workspace-consensus: check-quickshell check-helper-toolchain platform-plugin $(HELPER) | $(BUILD_DIR)
+	rm -rf $(WORKSPACE_TEST_DIR)
+	mkdir -p $(WORKSPACE_TEST_DIR)/qml $(WORKSPACE_TEST_DIR)/assets/icons/nagi
+	cp tests/workspace-consensus/shell.qml $(WORKSPACE_TEST_DIR)/shell.qml
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml qml/DisplayManager.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml qml/KWinVirtualDesktopAdapter.qml $(WORKSPACE_TEST_DIR)/qml/
+	cp assets/icons/nagi/*.svg $(WORKSPACE_TEST_DIR)/assets/icons/nagi/
 	@set -eu; \
 	for outputs in 1 2 3; do \
+		mkdir -p '$(abspath $(WORKSPACE_TEST_DIR))/config-'"$$outputs" \
+			'$(abspath $(WORKSPACE_TEST_DIR))/data-'"$$outputs" \
+			'$(abspath $(WORKSPACE_TEST_DIR))/cache-'"$$outputs" \
+			'$(abspath $(WORKSPACE_TEST_DIR))/state-'"$$outputs" \
+			'$(abspath $(WORKSPACE_TEST_DIR))/home-'"$$outputs"; \
 		KWIN_TEST_PER_OUTPUT_DESKTOPS=1 $(KWIN_VIRTUAL_RUNNER) \
 			--scale 1 --outputs "$$outputs" --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- \
-			env NAGI_WORKSPACE_HELPER='$(abspath $(HELPER))' \
+			env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' \
+				NAGI_SKIP_DEFAULT_CONFIG_CREATION=1 \
+				XDG_CONFIG_HOME='$(abspath $(WORKSPACE_TEST_DIR))/config-'"$$outputs" \
+				XDG_DATA_HOME='$(abspath $(WORKSPACE_TEST_DIR))/data-'"$$outputs" \
+				XDG_CACHE_HOME='$(abspath $(WORKSPACE_TEST_DIR))/cache-'"$$outputs" \
+				XDG_STATE_HOME='$(abspath $(WORKSPACE_TEST_DIR))/state-'"$$outputs" \
+				HOME='$(abspath $(WORKSPACE_TEST_DIR))/home-'"$$outputs" \
+				NAGI_WORKSPACE_HELPER='$(abspath $(HELPER))' \
 				NAGI_WORKSPACE_CONTROLLER='$(abspath tests/workspace-consensus/controller.js)' \
 				KWIN_TEST_OUTPUTS="$$outputs" \
-				$(QS) -p '$(abspath tests/workspace-consensus)' --no-duplicate; \
+				$(QS) -p '$(abspath $(WORKSPACE_TEST_DIR))' --no-duplicate; \
 	done
 
 test-connectivity-dbus: check-helper-toolchain $(CONNECTIVITY_HELPER) $(CONNECTIVITY_DBUS_TEST)
@@ -716,8 +734,8 @@ test-display-orchestration: check-quickshell platform-plugin | $(BUILD_DIR)
 	rm -rf $(DISPLAY_TEST_DIR)
 	mkdir -p $(DISPLAY_TEST_DIR)/qml $(DISPLAY_TEST_DIR)/assets/icons/nagi
 	cp tests/displays/shell.qml $(DISPLAY_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/DisplayManager.qml qml/DisplaysPage.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(DISPLAY_TEST_DIR)/qml/
-	cp qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml $(DISPLAY_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml qml/DisplayManager.qml qml/DisplaysPage.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(DISPLAY_TEST_DIR)/qml/
+	cp qml/ControlCenterPageHeader.qml qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml $(DISPLAY_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(DISPLAY_TEST_DIR)/assets/icons/nagi/
 	@set -eu; \
 	for outputs in 1 2 3; do \
@@ -852,9 +870,10 @@ test-typography: check-quickshell | $(BUILD_DIR)
 
 test-control-center: settings-helper check-quickshell | $(BUILD_DIR)
 	rm -rf $(CONTROL_CENTER_TEST_DIR)
-	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml
+	mkdir -p $(CONTROL_CENTER_TEST_DIR)/qml $(CONTROL_CENTER_TEST_DIR)/assets/icons/nagi
 	cp tests/control-center/shell.qml $(CONTROL_CENTER_TEST_DIR)/shell.qml
-	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/WallpaperPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IconResolver.qml qml/IslandIcon.qml qml/ControlCenterPageHeader.qml qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml qml/SettingToggleRow.qml qml/SettingSliderRow.qml qml/SettingChoiceRow.qml qml/SettingColorRow.qml qml/SettingActionRow.qml qml/SettingsResetActions.qml qml/IslandPage.qml qml/AppearancePage.qml qml/ClockDatePage.qml qml/MediaPage.qml qml/WeatherPage.qml qml/NotificationsPage.qml qml/WifiSecretField.qml qml/WifiNetworkRow.qml qml/WifiPage.qml qml/BluetoothDeviceRow.qml qml/BluetoothDeviceGroup.qml qml/BluetoothPairingPanel.qml qml/BluetoothPage.qml qml/WallpaperPage.qml qml/DisplaysPage.qml qml/AboutPage.qml qml/ControlCenterWindow.qml $(CONTROL_CENTER_TEST_DIR)/qml/
+	cp assets/icons/nagi/*.svg $(CONTROL_CENTER_TEST_DIR)/assets/icons/nagi/
 	@$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env NAGI_SETTINGS_HELPER='$(abspath $(SETTINGS_HELPER))' NAGI_CONTROL_CENTER_CAPTURE_DIR='$(abspath $(CONTROL_CENTER_TEST_DIR))' QS='$(QS)' bash $(CURDIR)/tests/control-center/run.sh $(abspath $(CONTROL_CENTER_TEST_DIR))
 	@$(KWIN_VIRTUAL_RUNNER) --scale 1 --outputs 1 --width '$(KWIN_TEST_WIDTH)' --height '$(KWIN_TEST_HEIGHT)' -- bash $(CURDIR)/tests/control-center/run-activation.sh
 

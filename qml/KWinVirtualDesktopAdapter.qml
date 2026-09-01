@@ -11,26 +11,20 @@ Scope {
     readonly property var helper: state.helperController === null ? null :
                                                                     state.helperController.helperProcess
 
-    readonly property bool available: state.snapshot.available
-    readonly property var desktops: state.snapshot.desktops
-    readonly property string currentId: state.snapshot.currentId === null ? "" :
-                                                                            state.snapshot.currentId
-    readonly property string currentName: {
-        const current = adapter.currentDesktop();
-        return current === null ? "" : current.name;
-    }
-    readonly property int currentPosition: {
-        const current = adapter.currentDesktop();
-        return current === null ? -1 : current.position;
-    }
-    readonly property string transientSourceToken: "workspace-current"
+    readonly property int desktopCount: state.snapshot.desktops.length
+    readonly property int outputCount: state.records.length
 
-    signal confirmedWorkspaceChanged(string sourceToken, int sourceGeneration, int revision)
-    signal confirmedWorkspaceInvalidated(string sourceToken, int sourceGeneration)
+    signal confirmedWorkspaceChanged(var sourceToken, int sourceGeneration, int revision,
+                                     var outputToken)
+    signal confirmedWorkspaceInvalidated(var sourceToken, int sourceGeneration)
 
     readonly property int maximumLineLength: 65536
     readonly property int maximumDiagnostics: 4
+    readonly property int maximumDesktopCount: 256
+    readonly property int maximumOutputCount: 64
+    readonly property int maximumSourceVersion: 2147483647
     readonly property int maximumRetiredHelperEpochs: 16
+    readonly property int maximumRetiredOutputSources: 64
     readonly property string helperReadyEvent: "ready"
     readonly property int helperReadinessTimeoutMs: 2000
 
@@ -153,11 +147,12 @@ Scope {
             return;
         }
 
-        const envelope = normalizeSnapshot(candidate);
-        if (envelope === null) {
+        if (!stageSnapshot(candidate)) {
             warnBounded("invalid snapshot schema");
             return;
         }
+        const envelope = state.pendingEnvelope;
+        state.pendingEnvelope = null;
 
         if (state.activeHelperEpoch === "") {
             if (state.retiredHelperEpochs["$" + envelope.helperEpoch] === true) {
@@ -188,137 +183,285 @@ Scope {
         applySnapshot(normalized, serialized);
     }
 
-    function currentDesktop() {
-        if (!available) {
-            return null;
-        }
-
-        for (let index = 0; index < desktops.length; index += 1) {
-            if (desktops[index].id === currentId) {
-                return desktops[index];
+    function recordIndexForName(records, name) {
+        for (let index = 0; index < records.length; index += 1) {
+            if (records[index].name === name) {
+                return index;
             }
         }
-
-        return null;
+        return -1;
     }
+
+    function recordIndexForScreen(records, screen) {
+        if (screen === null || screen === undefined || typeof screen.name !== "string"
+                || screen.name.length === 0 || screen.name.length > 256) {
+            return -1;
+        }
+        return recordIndexForName(records, screen.name);
+    }
+
+    function projectionFor(screen) {
+        const index = recordIndexForScreen(state.records, screen);
+        return index < 0 ? state.unavailableProjection : state.records[index].projection;
+    }
+
+    function outputTokenFor(screen) {
+        const index = recordIndexForScreen(state.records, screen);
+        return index < 0 ? null : state.records[index].outputToken;
+    }
+
     function resolveTransient(sourceToken, sourceGeneration, revision) {
-        if (!available || sourceToken !== transientSourceToken || sourceGeneration
-                !== state.sourceGeneration || revision !== state.revision || state.presentation
-                === null) {
-            return null;
-        }
-        return state.presentation;
-    }
-
-    function applySnapshot(normalized, serialized) {
-        const previous = state.snapshot;
-        const previousProjection = projectionFor(previous);
-        const nextProjection = projectionFor(normalized);
-        state.serializedSnapshot = serialized;
-        state.snapshot = normalized;
-
-        if (!normalized.available) {
-            if (previous.available) {
-                adapter.confirmedWorkspaceInvalidated(transientSourceToken, state.sourceGeneration);
-            }
-            state.presentation = null;
-            state.revision = 0;
-            return;
-        }
-
-        if (!previous.available) {
-            state.sourceGeneration += 1;
-            state.revision = 1;
-            state.presentation = null;
-            return;
-        }
-        if (projectionEquals(previousProjection, nextProjection)) {
-            return;
-        }
-
-        state.revision += 1;
-        if (normalized.showTransient) {
-            state.presentation = presentationFor(nextProjection);
-            adapter.confirmedWorkspaceChanged(transientSourceToken, state.sourceGeneration,
-                                              state.revision);
-        } else {
-            state.presentation = null;
-            adapter.confirmedWorkspaceInvalidated(transientSourceToken, state.sourceGeneration);
-        }
-    }
-
-    function projectionFor(snapshot) {
-        if (!snapshot.available) {
-            return null;
-        }
-        for (let index = 0; index < snapshot.desktops.length; index += 1) {
-            const desktop = snapshot.desktops[index];
-            if (desktop.id === snapshot.currentId) {
-                return {
-                    "id": desktop.id,
-                    "name": desktop.name,
-                    "position": desktop.position,
-                    "count": snapshot.desktops.length
-                };
+        for (let index = 0; index < state.records.length; index += 1) {
+            const record = state.records[index];
+            const retained = record.presentation;
+            if (record.sourceToken === sourceToken && record.sourceGeneration === sourceGeneration
+                    && record.revision === revision && retained !== null
+                    && retained.sourceGeneration === sourceGeneration && retained.revision
+                    === revision) {
+                return retained.value;
             }
         }
         return null;
     }
 
-    function projectionEquals(left, right) {
-        return left !== null && right !== null && left.id === right.id && left.name === right.name
-                && left.position === right.position && left.count === right.count;
+    function desktopListsEqual(left, right) {
+        if (left.length !== right.length) {
+            return false;
+        }
+        for (let index = 0; index < left.length; index += 1) {
+            if (left[index].id !== right[index].id || left[index].name !== right[index].name
+                    || left[index].position !== right[index].position) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function projectionForOutput(desktops, output) {
+        for (let index = 0; index < desktops.length; index += 1) {
+            const desktop = desktops[index];
+            if (desktop.id === output.currentId) {
+                return Object.freeze({
+                                         "available": true,
+                                         "currentId": desktop.id,
+                                         "currentName": desktop.name,
+                                         "currentPosition": desktop.position,
+                                         "desktops": desktops
+                                     });
+            }
+        }
+        return state.unavailableProjection;
     }
 
     function presentationFor(projection) {
-        if (projection === null) {
+        if (!projection.available) {
             return null;
         }
-        const boundedName = projection.name.slice(0, 256).trim();
-        return {
-            "iconName": "preferences-desktop-virtual-symbolic",
-            "primary": boundedName === "" ? qsTr("Workspace") : boundedName,
-            "detail": qsTr("Current desktop"),
-            "value": (projection.position + 1) + " / " + projection.count
-        };
+        const boundedName = projection.currentName.slice(0, 256).trim();
+        return Object.freeze({
+                                 "iconName": "preferences-desktop-virtual-symbolic",
+                                 "primary": boundedName === "" ? qsTr("Workspace") : boundedName,
+                                 "detail": qsTr("Current desktop"),
+                                 "value": (projection.currentPosition + 1) + " / "
+                                          + projection.desktops.length
+                             });
     }
 
-    function normalizeSnapshot(candidate) {
-        if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate) ||
-                !exactKeys(candidate, ["version", "helperEpoch", "available", "currentId",
-                                       "showTransient", "desktops"]) || candidate.version !== 1 ||
-                !validHelperEpoch(candidate.helperEpoch) || typeof candidate.available
-                !== "boolean" || typeof candidate.showTransient !== "boolean" || !Array.isArray(
-                    candidate.desktops)) {
-            return null;
-        }
+    function nextOpaqueToken(kind) {
+        state.nextOpaqueIdentity += 1;
+        return "workspace-" + kind + "-" + state.nextOpaqueIdentity;
+    }
 
-        if (!candidate.available) {
-            if (candidate.currentId !== null || candidate.desktops.length !== 0
-                    || candidate.showTransient) {
-                return null;
+    function retiredSourceIndexForName(retiredSources, name) {
+        for (let index = 0; index < retiredSources.length; index += 1) {
+            if (retiredSources[index].name === name) {
+                return index;
             }
-            return {
-                "helperEpoch": candidate.helperEpoch,
-                "snapshot": {
-                    "available": false,
-                    "currentId": null,
-                    "showTransient": false,
-                    "desktops": []
+        }
+        return -1;
+    }
+
+    function retainSource(retiredSources, record) {
+        const next = [];
+        for (let index = 0; index < retiredSources.length; index += 1) {
+            if (retiredSources[index].name !== record.name) {
+                next.push(retiredSources[index]);
+            }
+        }
+        next.push(Object.freeze({
+                                    "name": record.name,
+                                    "sourceGeneration": record.sourceGeneration,
+                                    "sourceToken": record.sourceToken
+                                }));
+        while (next.length > maximumRetiredOutputSources) {
+            next.shift();
+        }
+        return next;
+    }
+
+    function applySnapshot(normalized, serialized) {
+        const previousSnapshot = state.snapshot;
+        const previousRecords = state.records;
+        const sharedDesktopsUnchanged = desktopListsEqual(previousSnapshot.desktops,
+                                                          normalized.desktops);
+        const consumedPrevious = [];
+        const nextRecords = [];
+        const changes = [];
+        const invalidations = [];
+        let retiredSources = state.retiredSources.slice();
+
+        for (let index = 0; index < normalized.outputs.length; index += 1) {
+            const output = normalized.outputs[index];
+            const previousIndex = recordIndexForName(previousRecords, output.name);
+            if (previousIndex >= 0) {
+                consumedPrevious[previousIndex] = true;
+                const previous = previousRecords[previousIndex];
+                const currentChanged = previous.projection.currentId !== output.currentId;
+                const projectionChanged = currentChanged || !sharedDesktopsUnchanged;
+                const confirmedTransient = output.showTransient && currentChanged;
+                const projection = projectionChanged ? projectionForOutput(normalized.desktops,
+                                                                           output) : previous.projection;
+                let sourceGeneration = previous.sourceGeneration;
+                let sourceToken = previous.sourceToken;
+                let revision = previous.revision;
+                let presentation = previous.presentation;
+                if (projectionChanged) {
+                    if (revision < maximumSourceVersion) {
+                        revision += 1;
+                    } else {
+                        invalidations.push(Object.freeze({
+                                                             "sourceGeneration":
+                                                             previous.sourceGeneration,
+                                                             "sourceToken": previous.sourceToken
+                                                         }));
+                        sourceGeneration = previous.sourceGeneration < maximumSourceVersion
+                                ? previous.sourceGeneration + 1 : 1;
+                        sourceToken = previous.sourceGeneration < maximumSourceVersion
+                                ? previous.sourceToken : nextOpaqueToken("source");
+                        revision = 1;
+                        presentation = null;
+                    }
+                    if (!confirmedTransient && presentation !== null) {
+                        invalidations.push(Object.freeze({
+                                                             "sourceGeneration":
+                                                             previous.sourceGeneration,
+                                                             "sourceToken": previous.sourceToken
+                                                         }));
+                        presentation = null;
+                    }
                 }
-            };
+                if (confirmedTransient) {
+                    presentation = Object.freeze({
+                                                     "revision": revision,
+                                                     "sourceGeneration": sourceGeneration,
+                                                     "value": presentationFor(projection)
+                                                 });
+                }
+                const record = Object.freeze({
+                                                 "name": output.name,
+                                                 "outputToken": previous.outputToken,
+                                                 "presentation": presentation,
+                                                 "projection": projection,
+                                                 "revision": revision,
+                                                 "sourceGeneration": sourceGeneration,
+                                                 "sourceToken": sourceToken
+                                             });
+                nextRecords.push(record);
+                if (confirmedTransient) {
+                    changes.push(record);
+                }
+                continue;
+            }
+
+            const retiredIndex = retiredSourceIndexForName(retiredSources, output.name);
+            let sourceGeneration = 1;
+            let sourceToken = null;
+            if (retiredIndex >= 0) {
+                const retired = retiredSources[retiredIndex];
+                retiredSources.splice(retiredIndex, 1);
+                if (retired.sourceGeneration < maximumSourceVersion) {
+                    sourceGeneration = retired.sourceGeneration + 1;
+                    sourceToken = retired.sourceToken;
+                }
+            }
+            if (sourceToken === null) {
+                sourceToken = nextOpaqueToken("source");
+            }
+            nextRecords.push(Object.freeze({
+                                               "name": output.name,
+                                               "outputToken": nextOpaqueToken("output"),
+                                               "presentation": null,
+                                               "projection": projectionForOutput(normalized.desktops,
+                                                                                 output),
+                                               "revision": 1,
+                                               "sourceGeneration": sourceGeneration,
+                                               "sourceToken": sourceToken
+                                           }));
         }
 
-        if (typeof candidate.currentId !== "string" || candidate.currentId.length === 0
-                || candidate.currentId.length > 1024 || candidate.desktops.length === 0
-                || candidate.desktops.length > 256) {
-            return null;
+        for (let index = 0; index < previousRecords.length; index += 1) {
+            if (consumedPrevious[index] === true) {
+                continue;
+            }
+            const removed = previousRecords[index];
+            invalidations.push(Object.freeze({
+                                                 "sourceGeneration": removed.sourceGeneration,
+                                                 "sourceToken": removed.sourceToken
+                                             }));
+            retiredSources = retainSource(retiredSources, removed);
+        }
+
+        state.serializedSnapshot = serialized;
+        state.snapshot = normalized;
+        state.records = Object.freeze(nextRecords);
+        state.retiredSources = Object.freeze(retiredSources);
+
+        for (let index = 0; index < invalidations.length; index += 1) {
+            const invalidation = invalidations[index];
+            adapter.confirmedWorkspaceInvalidated(invalidation.sourceToken,
+                                                  invalidation.sourceGeneration);
+        }
+        for (let index = 0; index < changes.length; index += 1) {
+            const change = changes[index];
+            adapter.confirmedWorkspaceChanged(change.sourceToken, change.sourceGeneration,
+                                              change.revision, change.outputToken);
+        }
+    }
+
+    function stageSnapshot(candidate) {
+        state.pendingEnvelope = null;
+        if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate) ||
+                !exactKeys(candidate, ["version", "helperEpoch", "desktops", "outputs"])
+                || candidate.version !== 2 || !validHelperEpoch(candidate.helperEpoch) ||
+                !Array.isArray(candidate.desktops) || !Array.isArray(candidate.outputs)) {
+            return false;
+        }
+
+        if (candidate.desktops.length === 0 || candidate.outputs.length === 0) {
+            if (candidate.desktops.length !== 0 || candidate.outputs.length !== 0) {
+                return false;
+            }
+            state.pendingEnvelope = Object.freeze({
+                                                      "helperEpoch": candidate.helperEpoch,
+                                                      "snapshot": Object.freeze({
+                                                                                    "desktops":
+                                                                                    Object.freeze(
+                                                                                        []),
+                                                                                    "outputs":
+                                                                                    Object.freeze(
+                                                                                        [])
+                                                                                })
+                                                  });
+            return true;
+        }
+        if (candidate.desktops.length > maximumDesktopCount || candidate.outputs.length
+                > maximumOutputCount) {
+            return false;
         }
 
         const normalizedDesktops = [];
         const ids = {};
         const positions = {};
-        let currentFound = false;
         for (let index = 0; index < candidate.desktops.length; index += 1) {
             const desktop = candidate.desktops[index];
             if (desktop === null || typeof desktop !== "object" || Array.isArray(desktop) || !exactKeys(desktop,
@@ -328,54 +471,72 @@ Scope {
                     || desktop.id.length > 1024 || typeof desktop.name !== "string"
                     || desktop.name.length > 256 || !Number.isInteger(desktop.position)
                     || desktop.position < 0 || desktop.position >= candidate.desktops.length
-                    || ids["$" + desktop.id] === true || positions[desktop.position] === true) {
-                return null;
+                    || ids["$" + desktop.id] === true || positions["$" + desktop.position]
+                    === true) {
+
+                return false;
             }
-
             ids["$" + desktop.id] = true;
-            positions[desktop.position] = true;
-            currentFound = currentFound || desktop.id === candidate.currentId;
-            normalizedDesktops.push({
-                                        "id": desktop.id,
-                                        "name": desktop.name,
-                                        "position": desktop.position
-                                    });
+            positions["$" + desktop.position] = true;
+            normalizedDesktops.push(Object.freeze({
+                                                      "id": desktop.id,
+                                                      "name": desktop.name,
+                                                      "position": desktop.position
+                                                  }));
         }
-
-        if (!currentFound) {
-            return null;
-        }
-
         normalizedDesktops.sort((left, right) => left.position - right.position);
         for (let index = 0; index < normalizedDesktops.length; index += 1) {
             if (normalizedDesktops[index].position !== index) {
-                return null;
+                return false;
             }
         }
+        const frozenDesktops = Object.freeze(normalizedDesktops);
 
-        return {
-            "helperEpoch": candidate.helperEpoch,
-            "snapshot": {
-                "available": true,
-                "currentId": candidate.currentId,
-                "showTransient": candidate.showTransient,
-                "desktops": normalizedDesktops
+        const normalizedOutputs = [];
+        const names = {};
+        let transientSeen = false;
+        for (let index = 0; index < candidate.outputs.length; index += 1) {
+            const output = candidate.outputs[index];
+            if (output === null || typeof output !== "object" || Array.isArray(output) || !exactKeys(
+                        output, ["name", "currentId", "showTransient"]) || typeof output.name
+                    !== "string" || output.name.length === 0 || output.name.length > 256
+                    || typeof output.currentId !== "string" || output.currentId.length === 0
+                    || output.currentId.length > 1024 || typeof output.showTransient !== "boolean"
+                    || names["$" + output.name] === true || ids["$" + output.currentId] !== true || (
+                        output.showTransient && transientSeen)) {
+                return false;
             }
-        };
+            names["$" + output.name] = true;
+            transientSeen = transientSeen || output.showTransient;
+            normalizedOutputs.push(Object.freeze({
+                                                     "name": output.name,
+                                                     "currentId": output.currentId,
+                                                     "showTransient": output.showTransient
+                                                 }));
+        }
+
+        state.pendingEnvelope = Object.freeze({
+                                                  "helperEpoch": candidate.helperEpoch,
+                                                  "snapshot": Object.freeze({
+                                                                                "desktops":
+                                                                                frozenDesktops,
+                                                                                "outputs":
+                                                                                Object.freeze(
+                                                                                    normalizedOutputs)
+                                                                            })
+                                              });
+        return true;
     }
 
     function publishUnavailable() {
-        const serialized
-              = "{\"available\":false,\"currentId\":null,\"showTransient\":false,\"desktops\":[]}";
+        const serialized = "{\"desktops\":[],\"outputs\":[]}";
         if (serialized === state.serializedSnapshot) {
             return;
         }
-        applySnapshot({
-                          "available": false,
-                          "currentId": null,
-                          "showTransient": false,
-                          "desktops": []
-                      }, serialized);
+        applySnapshot(Object.freeze({
+                                        "desktops": Object.freeze([]),
+                                        "outputs": Object.freeze([])
+                                    }), serialized);
     }
 
     function retireActiveHelperEpoch() {
@@ -430,10 +591,8 @@ Scope {
             return;
         }
 
-        const boundedMessage = typeof message === "string" ? message.slice(0, 256) :
-                                                             "invalid helper diagnostic";
         state.diagnosticCount += 1;
-        console.warn("KWin virtual desktop helper: " + boundedMessage);
+        console.warn("KWin virtual desktop helper: diagnostic received");
     }
 
     QtObject {
@@ -445,22 +604,27 @@ Scope {
         property bool startAllowed: true
         property int diagnosticCount: 0
         property int restartAttempts: 0
-        property int sourceGeneration: 0
-        property int revision: 0
+        property double nextOpaqueIdentity: 0
         property string activeHelperEpoch: ""
         property string pendingReadyEpoch: ""
         property var helperController: null
+        property var pendingEnvelope: null
         property var retiredHelperEpochs: ({})
         property var retiredHelperEpochOrder: []
-        property var presentation: null
-        property string serializedSnapshot:
-        "{\"available\":false,\"currentId\":null,\"showTransient\":false,\"desktops\":[]}"
-        property var snapshot: ({
-                                    "available": false,
-                                    "currentId": null,
-                                    "showTransient": false,
-                                    "desktops": []
-                                })
+        property var records: Object.freeze([])
+        property var retiredSources: Object.freeze([])
+        property string serializedSnapshot: "{\"desktops\":[],\"outputs\":[]}"
+        property var snapshot: Object.freeze({
+                                                 "desktops": Object.freeze([]),
+                                                 "outputs": Object.freeze([])
+                                             })
+        property var unavailableProjection: Object.freeze({
+                                                              "available": false,
+                                                              "currentId": "",
+                                                              "currentName": "",
+                                                              "currentPosition": -1,
+                                                              "desktops": Object.freeze([])
+                                                          })
     }
 
     Timer {
@@ -613,6 +777,5 @@ Scope {
         state.helperController = null;
         if (controller !== null)
         controller.beginShutdown();
-        state.presentation = null;
     }
 }

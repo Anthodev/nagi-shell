@@ -112,11 +112,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Weather")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "weatherPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "controlCenterWeather"
+            title: qsTr("Weather")
+            description: qsTr("Configure opt-in weather forecasts for one confirmed location.")
         }
 
         IslandPanel {

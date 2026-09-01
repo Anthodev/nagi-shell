@@ -37,20 +37,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Clock & Date")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "clockPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "One shared clock updates Idle, Expanded, and this preview. Timezone, network time, and the system clock remain managed by KDE.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterClock"
+            title: qsTr("Clock & Date")
+            description: qsTr("Choose how Nagi displays the time and date.")
         }
 
         IslandPanel {

@@ -65,14 +65,11 @@ QString compact(const QJsonObject &object)
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }
 
-QJsonObject availablePayload(
+QJsonObject projectionPayload(
     const QString &currentId = QStringLiteral("desktop-one"),
     bool showTransient = false)
 {
     return QJsonObject{
-        {QStringLiteral("available"), true},
-        {QStringLiteral("currentId"), currentId},
-        {QStringLiteral("showTransient"), showTransient},
         {QStringLiteral("desktops"),
          QJsonArray{
              QJsonObject{
@@ -86,21 +83,34 @@ QJsonObject availablePayload(
                  {QStringLiteral("position"), 1},
              },
          }},
+        {QStringLiteral("outputs"),
+         QJsonArray{
+             QJsonObject{
+                 {QStringLiteral("name"), QStringLiteral("Virtual-1")},
+                 {QStringLiteral("currentId"), currentId},
+                 {QStringLiteral("showTransient"), showTransient},
+             },
+         }},
     };
 }
 
 QJsonObject replacementPayload()
 {
     return QJsonObject{
-        {QStringLiteral("available"), true},
-        {QStringLiteral("currentId"), QStringLiteral("new-owner-desktop")},
-        {QStringLiteral("showTransient"), false},
         {QStringLiteral("desktops"),
          QJsonArray{
              QJsonObject{
                  {QStringLiteral("id"), QStringLiteral("new-owner-desktop")},
                  {QStringLiteral("name"), QStringLiteral("New Desktop")},
                  {QStringLiteral("position"), 0},
+             },
+         }},
+        {QStringLiteral("outputs"),
+         QJsonArray{
+             QJsonObject{
+                 {QStringLiteral("name"), QStringLiteral("Virtual-1")},
+                 {QStringLiteral("currentId"), QStringLiteral("new-owner-desktop")},
+                 {QStringLiteral("showTransient"), false},
              },
          }},
     };
@@ -420,34 +430,94 @@ bool validEpoch(const QJsonObject &snapshot)
         .hasMatch();
 }
 
-bool exactWireSchema(const QJsonObject &snapshot)
+bool hasExactKeys(const QJsonObject &object, const QStringList &expected)
 {
-    const QStringList expected{
-        QStringLiteral("available"),
-        QStringLiteral("currentId"),
-        QStringLiteral("desktops"),
-        QStringLiteral("helperEpoch"),
-        QStringLiteral("showTransient"),
-        QStringLiteral("version"),
-    };
-    if (snapshot.size() != expected.size()) {
+    if (object.size() != expected.size()) {
         return false;
     }
     for (const QString &key : expected) {
-        if (!snapshot.contains(key)) {
-            return false;
-        }
-    }
-    const QJsonArray desktops = snapshot.value(QStringLiteral("desktops")).toArray();
-    for (const QJsonValue &value : desktops) {
-        const QJsonObject desktop = value.toObject();
-        if (desktop.size() != 3 || !desktop.contains(QStringLiteral("id"))
-            || !desktop.contains(QStringLiteral("name"))
-            || !desktop.contains(QStringLiteral("position"))) {
+        if (!object.contains(key)) {
             return false;
         }
     }
     return true;
+}
+
+bool exactWireSchema(const QJsonObject &snapshot)
+{
+    if (!hasExactKeys(
+            snapshot,
+            {
+                QStringLiteral("desktops"),
+                QStringLiteral("helperEpoch"),
+                QStringLiteral("outputs"),
+                QStringLiteral("version"),
+            })
+        || !snapshot.value(QStringLiteral("version")).isDouble()
+        || snapshot.value(QStringLiteral("version")).toDouble() != 2.0
+        || !validEpoch(snapshot)
+        || !snapshot.value(QStringLiteral("desktops")).isArray()
+        || !snapshot.value(QStringLiteral("outputs")).isArray()) {
+        return false;
+    }
+
+    const QJsonArray desktops = snapshot.value(QStringLiteral("desktops")).toArray();
+    for (const QJsonValue &value : desktops) {
+        if (!value.isObject()) {
+            return false;
+        }
+        const QJsonObject desktop = value.toObject();
+        if (!hasExactKeys(
+                desktop,
+                {
+                    QStringLiteral("id"),
+                    QStringLiteral("name"),
+                    QStringLiteral("position"),
+                })
+            || !desktop.value(QStringLiteral("id")).isString()
+            || !desktop.value(QStringLiteral("name")).isString()
+            || !desktop.value(QStringLiteral("position")).isDouble()) {
+            return false;
+        }
+    }
+
+    const QJsonArray outputs = snapshot.value(QStringLiteral("outputs")).toArray();
+    for (const QJsonValue &value : outputs) {
+        if (!value.isObject()) {
+            return false;
+        }
+        const QJsonObject output = value.toObject();
+        if (!hasExactKeys(
+                output,
+                {
+                    QStringLiteral("currentId"),
+                    QStringLiteral("name"),
+                    QStringLiteral("showTransient"),
+                })
+            || !output.value(QStringLiteral("currentId")).isString()
+            || !output.value(QStringLiteral("name")).isString()
+            || !output.value(QStringLiteral("showTransient")).isBool()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QJsonObject outputByName(const QJsonObject &snapshot, const QString &name)
+{
+    for (const QJsonValue &value : snapshot.value(QStringLiteral("outputs")).toArray()) {
+        const QJsonObject output = value.toObject();
+        if (output.value(QStringLiteral("name")).toString() == name) {
+            return output;
+        }
+    }
+    return {};
+}
+
+bool isCanonicalUnavailable(const QJsonObject &snapshot)
+{
+    return snapshot.value(QStringLiteral("desktops")).toArray().isEmpty()
+        && snapshot.value(QStringLiteral("outputs")).toArray().isEmpty();
 }
 
 bool testPermanentInitializationFailure(const QString &helperPath)
@@ -481,8 +551,8 @@ bool testPermanentInitializationFailure(const QString &helperPath)
             validEpoch(helper.snapshots.constFirst()),
             "failed initialization publishes a bounded helper epoch")
         || !require(
-            !helper.snapshots.constFirst().value(QStringLiteral("available")).toBool(),
-            "failed initialization stays unavailable")) {
+            isCanonicalUnavailable(helper.snapshots.constFirst()),
+            "failed initialization stays canonically unavailable")) {
         return false;
     }
     return true;
@@ -515,12 +585,10 @@ bool testLifecycleAndReplacement(
     if (!require(!helper.invalidOutput, "helper emits newline JSON only")
         || !require(exactWireSchema(initial), "initial wire schema is exact")
         || !require(validEpoch(initial), "helper epoch is 32 lowercase hex")
-        || !require(initial.value(QStringLiteral("version")).toInt() == 1, "wire version is one")
-        || !require(!initial.value(QStringLiteral("available")).toBool(), "owner attach starts unavailable")
-        || !require(initial.value(QStringLiteral("currentId")).isNull(), "unavailable current is null")
+        || !require(initial.value(QStringLiteral("version")).toInt() == 2, "wire version is two")
         || !require(
-            initial.value(QStringLiteral("desktops")).toArray().isEmpty(),
-            "unavailable desktop list is empty")
+            isCanonicalUnavailable(initial),
+            "owner attach starts canonically unavailable")
         || !require(firstOwner.scripting.fixtureError.isEmpty(), "generated script fixture parsed")
         || !require(firstOwner.scripting.privatePermissions, "generated script is mode-private")
         || !require(
@@ -530,7 +598,7 @@ bool testLifecycleAndReplacement(
     }
 
     helper.send("{\"op\":\"unknown\"}\n");
-    firstOwner.scripting.publish(availablePayload(), {}, &foreignConnection);
+    firstOwner.scripting.publish(projectionPayload(), {}, &foreignConnection);
     spinEvents(100);
     helper.pump();
     if (!require(helper.process.state() == QProcess::Running, "unknown command does not stop helper")
@@ -538,27 +606,36 @@ bool testLifecycleAndReplacement(
         return false;
     }
 
-    firstOwner.scripting.publish(availablePayload());
+    firstOwner.scripting.publish(projectionPayload());
     if (!require(helper.waitForSnapshots(2), "authenticated callback publishes")
-        || !require(exactWireSchema(helper.snapshots.at(1)), "available wire schema is exact")
+        || !require(exactWireSchema(helper.snapshots.at(1)), "projection wire schema is exact")
         || !require(
             helper.snapshots.at(1).value(QStringLiteral("helperEpoch")).toString() == *firstEpoch,
             "helper epoch is stable across snapshots")
-        || !require(helper.snapshots.at(1).value(QStringLiteral("available")).toBool(), "state is available")
         || !require(
-            helper.snapshots.at(1).value(QStringLiteral("currentId")).toString()
+            helper.snapshots.at(1).value(QStringLiteral("outputs")).toArray().size() == 1,
+            "one output projection is preserved")
+        || !require(
+            outputByName(helper.snapshots.at(1), QStringLiteral("Virtual-1"))
+                    .value(QStringLiteral("currentId"))
+                    .toString()
                 == QStringLiteral("desktop-one"),
-            "current desktop is canonical")) {
+            "output current desktop is canonical")
+        || !require(
+            !outputByName(helper.snapshots.at(1), QStringLiteral("Virtual-1"))
+                 .value(QStringLiteral("showTransient"))
+                 .toBool(),
+            "initial output projection suppresses feedback")) {
         return false;
     }
 
     const qsizetype beforeDedup = helper.snapshots.size();
-    firstOwner.scripting.publish(availablePayload());
-    QJsonObject forbidden = availablePayload(QStringLiteral("desktop-two"), true);
+    firstOwner.scripting.publish(projectionPayload());
+    QJsonObject forbidden = projectionPayload(QStringLiteral("desktop-two"), true);
     forbidden.insert(QStringLiteral("outputName"), QStringLiteral("forbidden"));
     firstOwner.scripting.publish(forbidden);
     firstOwner.scripting.publish(
-        availablePayload(QStringLiteral("desktop-two"), true),
+        projectionPayload(QStringLiteral("desktop-two"), true),
         QStringLiteral("00000000000000000000000000000000"));
     spinEvents(150);
     helper.pump();
@@ -566,11 +643,19 @@ bool testLifecycleAndReplacement(
         return false;
     }
 
-    firstOwner.scripting.publish(availablePayload(QStringLiteral("desktop-two"), true));
-    if (!require(helper.waitForSnapshots(beforeDedup + 1), "confirmed shared switch publishes")
+    firstOwner.scripting.publish(projectionPayload(QStringLiteral("desktop-two"), true));
+    if (!require(helper.waitForSnapshots(beforeDedup + 1), "confirmed output switch publishes")) {
+        return false;
+    }
+    const QJsonObject switchedSnapshot = helper.snapshots.constLast();
+    const QJsonObject switchedOutput =
+        outputByName(switchedSnapshot, QStringLiteral("Virtual-1"));
+    if (!require(exactWireSchema(switchedSnapshot), "changed projection wire schema is exact")
         || !require(
-            helper.snapshots.constLast().value(QStringLiteral("showTransient")).toBool(),
-            "confirmed switch retains transient intent")) {
+            switchedOutput.value(QStringLiteral("currentId")).toString()
+                    == QStringLiteral("desktop-two")
+                && switchedOutput.value(QStringLiteral("showTransient")).toBool(),
+            "changed output retains its current desktop and transient intent")) {
         return false;
     }
 
@@ -597,18 +682,17 @@ bool testLifecycleAndReplacement(
         return false;
     }
 
+    const QJsonObject replacementUnavailable = helper.snapshots.at(beforeReplacement);
     if (!require(!QFileInfo::exists(firstScriptPath), "retired generation temp file is removed")
         || !require(
-            !helper.snapshots.at(beforeReplacement).value(QStringLiteral("available")).toBool(),
-            "unavailable publishes before replacement snapshot")
-        || !require(
-            !helper.snapshots.at(beforeReplacement).value(QStringLiteral("showTransient")).toBool(),
-            "owner replacement never requests feedback")) {
+            exactWireSchema(replacementUnavailable)
+                && isCanonicalUnavailable(replacementUnavailable),
+            "canonical unavailable state publishes before replacement recovery")) {
         return false;
     }
 
     const qsizetype beforeStaleOwner = helper.snapshots.size();
-    firstOwner.scripting.publish(availablePayload(), firstGeneration);
+    firstOwner.scripting.publish(projectionPayload(), firstGeneration);
     secondOwner.scripting.publish(replacementPayload(), firstGeneration);
     spinEvents(150);
     helper.pump();
@@ -619,14 +703,22 @@ bool testLifecycleAndReplacement(
     }
 
     secondOwner.scripting.publish(replacementPayload());
-    if (!require(helper.waitForSnapshots(beforeStaleOwner + 1), "replacement owner publishes")
+    if (!require(helper.waitForSnapshots(beforeStaleOwner + 1), "replacement owner publishes")) {
+        return false;
+    }
+    const QJsonObject replacement = helper.snapshots.constLast();
+    if (!require(exactWireSchema(replacement), "replacement wire schema is exact")
         || !require(
-            helper.snapshots.constLast().value(QStringLiteral("currentId")).toString()
+            outputByName(replacement, QStringLiteral("Virtual-1"))
+                    .value(QStringLiteral("currentId"))
+                    .toString()
                 == QStringLiteral("new-owner-desktop"),
             "replacement projection is accepted")
         || !require(
-            !helper.snapshots.constLast().value(QStringLiteral("showTransient")).toBool(),
-            "replacement projection suppresses feedback")) {
+            !outputByName(replacement, QStringLiteral("Virtual-1"))
+                 .value(QStringLiteral("showTransient"))
+                 .toBool(),
+            "replacement recovery suppresses feedback")) {
         return false;
     }
 
@@ -670,10 +762,12 @@ bool testTimeoutAndEof(
         return false;
     }
 
-    const QString epoch = helper.snapshots.constFirst()
-                              .value(QStringLiteral("helperEpoch"))
-                              .toString();
-    if (!require(validEpoch(helper.snapshots.constFirst()), "timeout helper epoch is valid")
+    const QJsonObject timeoutInitial = helper.snapshots.constFirst();
+    const QString epoch = timeoutInitial.value(QStringLiteral("helperEpoch")).toString();
+    if (!require(
+            exactWireSchema(timeoutInitial) && isCanonicalUnavailable(timeoutInitial),
+            "timeout generation starts canonically unavailable")
+        || !require(validEpoch(timeoutInitial), "timeout helper epoch is valid")
         || !require(epoch != previousEpoch, "new helper process has a new epoch")) {
         return false;
     }
@@ -728,6 +822,13 @@ bool testSignalTermination(const QString &helperPath, FakeKWinOwner &owner)
                 },
                 1500),
             "signal generation loads and runs")) {
+        return false;
+    }
+
+    if (!require(
+            exactWireSchema(helper.snapshots.constFirst())
+                && isCanonicalUnavailable(helper.snapshots.constFirst()),
+            "signal generation starts canonically unavailable")) {
         return false;
     }
 

@@ -296,6 +296,28 @@ Singleton {
         const controlFill = hex(mix(surfaceBase, textPrimary, 0.08));
         const controlFillHover = hex(mix(controlFill, primaryRgb, 0.12));
         const controlFillPressed = hex(mix(controlFill, primaryRgb, 0.20));
+        const railDarkEndpoint = "#02050A";
+        const railLightEndpoint = "#FAFCFE";
+        const railPreferredEndpoint = luminance(textPrimary) > luminance(surfaceBase)
+              ? railDarkEndpoint : railLightEndpoint;
+        const railFallbackEndpoint = railPreferredEndpoint === railDarkEndpoint ? railLightEndpoint :
+                                                                                  railDarkEndpoint;
+        let controlCenterRailSurface = surfaceBase;
+        for (let directionIndex = 0; directionIndex < 2; directionIndex += 1) {
+            const direction = directionIndex === 0 ? railPreferredEndpoint : railFallbackEndpoint;
+            for (let step = 1; step <= 32; step += 1) {
+                const candidate = hex(mix(surfaceBase, direction, step / 32));
+                if (contrast(candidate, surfaceBase) >= 1.08 && contrast(textPrimary, candidate)
+                        >= 4.5 && contrast(primary, candidate) >= 3 && contrast(focusRing,
+                                                                                candidate) >= 3) {
+                    controlCenterRailSurface = candidate;
+                    break;
+                }
+            }
+            if (controlCenterRailSurface !== surfaceBase) {
+                break;
+            }
+        }
         const borderHover = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.28),
                                                surfaceBase, 3, toward));
         const borderPressed = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.42),
@@ -318,10 +340,17 @@ Singleton {
         const success = hex(ensureContrast(palette.success, surfaceBase, 4.5, toward));
         const ratios = Object.freeze({
                                          "accentOnSurface": contrast(primary, surfaceBase),
+                                         "accentOnControlCenterRail": contrast(primary,
+                                                                               controlCenterRailSurface),
                                          "accentForeground": Math.min(contrast(foreground, primary),
                                                                       contrast(foreground, hover),
                                                                       contrast(foreground, pressed)),
+                                         "controlCenterRailOnSurface": contrast(
+                                                                           controlCenterRailSurface,
+                                                                           surfaceBase),
                                          "focusRingOnSurface": contrast(focusRing, surfaceBase),
+                                         "focusRingOnControlCenterRail": contrast(focusRing,
+                                                                                  controlCenterRailSurface),
                                          "progressOnTrack": contrast(progressFill,
                                                                      palette.progressTrack),
                                          "surfaceHoverOnBase": contrast(surfaceHover, surfaceBase),
@@ -333,17 +362,20 @@ Singleton {
                                                                    contrast(danger, dangerFillHover),
                                                                    contrast(danger,
                                                                             dangerFillPressed)),
+                                         "textOnControlCenterRail": contrast(textPrimary,
+                                                                             controlCenterRailSurface),
                                          "textOnSurface": contrast(textPrimary, surfaceBase),
                                          "textSecondaryOnSurface": contrast(textSecondary,
                                                                             surfaceBase),
                                          "textMutedOnSurface": contrast(textMuted, surfaceBase)
                                      });
-        if (ratios.accentOnSurface < 3 || ratios.accentForeground < 4.5
-                || ratios.focusRingOnSurface < 3 || ratios.progressOnTrack < 3
+        if (ratios.accentOnSurface < 3 || ratios.accentOnControlCenterRail < 3
+                || ratios.accentForeground < 4.5 || ratios.focusRingOnSurface < 3
+                || ratios.focusRingOnControlCenterRail < 3 || ratios.progressOnTrack < 3
                 || ratios.surfaceHoverOnBase < 1.08 || ratios.surfaceActiveOnBase < 1.16
                 || ratios.statusOnSurface < 4.5 || ratios.dangerOnFills < 4.5
-                || ratios.textOnSurface < 4.5 || ratios.textSecondaryOnSurface < 4.5
-                || ratios.textMutedOnSurface < 4.5) {
+                || ratios.textOnControlCenterRail < 4.5 || ratios.textOnSurface < 4.5
+                || ratios.textSecondaryOnSurface < 4.5 || ratios.textMutedOnSurface < 4.5) {
             return null;
         }
         return Object.freeze({
@@ -358,6 +390,7 @@ Singleton {
                                  "controlFill": controlFill,
                                  "controlFillHover": controlFillHover,
                                  "controlFillPressed": controlFillPressed,
+                                 "controlCenterRailSurface": controlCenterRailSurface,
                                  "danger": danger,
                                  "dangerFill": dangerFill,
                                  "dangerFillHover": dangerFillHover,
@@ -464,6 +497,7 @@ Singleton {
         readonly property color surfaceOpaque: root.snapshot.surface
         readonly property color surfaceBorder: root.snapshot.surfaceBorder
         readonly property color controlFill: root.snapshot.controlFill
+        readonly property color controlCenterRailSurface: root.snapshot.controlCenterRailSurface
         readonly property color textPrimary: root.snapshot.textPrimary
         readonly property color textSecondary: root.snapshot.textSecondary
         readonly property color textMuted: root.snapshot.textMuted
@@ -532,6 +566,9 @@ Singleton {
             }
             if (role === "title" || role === "heading") {
                 return Math.max(1, Math.round(base * 15 / 13));
+            }
+            if (role === "pageTitle") {
+                return Math.max(1, Math.round(base * 18 / 13));
             }
             if (role === "display") {
                 return Math.max(1, Math.round(base * 48 / 13));

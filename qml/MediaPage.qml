@@ -73,20 +73,12 @@ Flickable {
                         Theme.size.controlCenterContentMaximumWidth)
         spacing: Theme.spacing.md
 
-        IslandText {
-            text: qsTr("Media")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "mediaPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Choose where the one shared MPRIS selection appears. Disabling Media disconnects player observation and clears artwork and timing work.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterMedia"
+            title: qsTr("Media")
+            description: qsTr("Choose which players Nagi follows and where media controls appear.")
         }
 
         ControlCenterSectionHeading {

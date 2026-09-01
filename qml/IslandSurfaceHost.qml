@@ -405,6 +405,21 @@ Scope {
         return record === null ? null : record.screen;
     }
 
+    function surfaceTokenForOutput(outputToken) {
+        if (outputToken === null || outputToken === undefined || virtualDesktops === null
+                || virtualDesktops === undefined || typeof virtualDesktops.outputTokenFor
+                !== "function") {
+            return null;
+        }
+        for (let index = 0; index < registry.length; index += 1) {
+            const mapped = virtualDesktops.outputTokenFor(registry[index].screen);
+            if (mapped !== null && mapped !== undefined && mapped === outputToken) {
+                return registry[index].token;
+            }
+        }
+        return null;
+    }
+
     function unregisterSurface(entry, surface) {
         const next = [];
         let removed = null;

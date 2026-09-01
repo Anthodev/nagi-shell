@@ -266,6 +266,21 @@ ShellRoot {
                     >= 4.5 && snapshot.contrast.focusRingOnSurface >= 3, "maintained scheme "
                     + schemes[index] + " publishes a complete safe palette: " + JSON.stringify(
                         snapshot));
+            const railSurface = snapshot.controlCenterRailSurface;
+            require(Theme.canonicalHex(railSurface) !== null, "maintained scheme "
+                    + schemes[index] + " publishes a canonical Control Center rail surface");
+            const railContrast = Theme.contrast(railSurface, snapshot.surface);
+            require(railContrast >= 1.08 && railContrast < 2, "maintained scheme "
+                    + schemes[index] + " keeps the rail surface distinct and low-contrast ("
+                    + railContrast.toFixed(3) + ")");
+        }
+        const typographyScopes = ["idle", "expanded", "controlCenter"];
+        for (let scopeIndex = 0; scopeIndex < typographyScopes.length; scopeIndex += 1) {
+            const scope = typographyScopes[scopeIndex];
+            const pageTitleSize = Theme.type.sizeFor(scope, "pageTitle");
+            require(pageTitleSize > Theme.type.sizeFor(scope, "title")
+                    && pageTitleSize < Theme.type.sizeFor(scope, "display"), scope
+                    + " typography resolves a pageTitle role between section-title and display scale");
         }
 
         const accentModes = ["nagi", "system", "wallpaper", "custom"];
