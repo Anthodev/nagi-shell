@@ -295,7 +295,7 @@ Singleton {
                 || typeof appearance.borderIntensity !== "number" || !Number.isFinite(
                     appearance.borderIntensity) || appearance.borderIntensity < 0
                 || appearance.borderIntensity > 1 || typeof appearance.blurEnabled !== "boolean" ||
-                !oneOf(appearance.motion, ["full", "reduced", "minimal"]) || !boundedString(
+                !oneOf(appearance.motion, ["full", "fast", "reduced", "minimal"]) || !boundedString(
                     appearance.idleFontFamily, maximumFontFamilyBytes, false) || !Number.isInteger(
                     appearance.idleBaseFontSize) || appearance.idleBaseFontSize
                 < minimumBaseFontSize || appearance.idleBaseFontSize > maximumBaseFontSize ||

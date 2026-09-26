@@ -91,7 +91,7 @@ jobs:
         uses: ./.github/actions/install-toolchain
       - name: Install the virtual KWin compositor
         run: |
-          dnf -y --setopt=install_weak_deps=False install kwin
+          dnf -y --setopt=install_weak_deps=False install kwin libkscreen
           kwin_path="$(command -v kwin_wayland)"
           # Fedora's binary carries file capabilities rejected by container
           # runtimes. A fresh installed copy keeps the executable mode without

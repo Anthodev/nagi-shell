@@ -6,7 +6,6 @@ FocusScope {
     id: root
 
     required property var clock
-    readonly property alias clockBoundsItem: clockColumn
 
     implicitWidth: clockColumn.implicitWidth
     implicitHeight: clockColumn.implicitHeight

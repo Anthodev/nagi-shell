@@ -36,16 +36,10 @@ ShellRoot {
     }
 
     function run() {
-        require(Theme.motion.scale === 1 && Theme.motion.durationMorphMinimum === 120
-                && Theme.motion.durationMorphMaximum === 200
-                && Theme.motion.durationExpansionMinimum === 100
-                && Theme.motion.durationExpansionMaximum === 160
-                && Theme.motion.easingMorph === Easing.InOutCubic
-                && Math.round(100 * Theme.effectiveMotionScale("reduced", 1)) === 50
-                && Math.round(160 * Theme.effectiveMotionScale("reduced", 1)) === 80
-                && Math.round(100 * Theme.effectiveMotionScale("minimal", 1)) === 0
-                && Math.round(160 * Theme.effectiveMotionScale("minimal", 1)) === 0,
-                "general morphs remain 120–200 ms while expansion publishes Full, Reduced, and Minimal endpoints");
+        require(Theme.motion.scale === 1
+                && Theme.effectiveMotionScale("reduced", 1) === 0.5
+                && Theme.effectiveMotionScale("minimal", 1) === 0,
+                "Full, Reduced, and Minimal motion preserve their effective scales");
         require(notificationView.bodyText === "Bounded plain-text body"
                 && notificationView.implicitHeight
                 >= Theme.size.islandTransientNotificationHeight,

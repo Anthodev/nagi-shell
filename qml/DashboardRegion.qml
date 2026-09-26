@@ -8,7 +8,6 @@ Item {
 
     property Component content: null
     property bool active: true
-    property bool presentationExcluded: false
 
     readonly property Item item: contentLoader.item
     readonly property bool ready: contentLoader.status === Loader.Ready && item !== null
@@ -24,7 +23,6 @@ Item {
         anchors.fill: parent
         active: region.active && region.content !== null
         visible: active
-        opacity: region.presentationExcluded ? 0 : 1
         sourceComponent: region.content
     }
 }

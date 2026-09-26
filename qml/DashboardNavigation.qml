@@ -13,6 +13,7 @@ Item {
 
     required property var coordinator
     property var surfaceToken: null
+    property var activationSurface: null
     property bool showHistory: true
     property var applicationModel: null
     readonly property string systemSettingsDesktopId: "systemsettings.desktop"
@@ -38,6 +39,18 @@ Item {
         systemSettingsRequestId = requestId;
         return true;
     }
+    function openInteractive(kind, point) {
+        const surface = activationSurface;
+        const pointer = point !== null && point !== undefined && surface !== null;
+        if (pointer)
+            surface.beginNavigationPointer(kind, point);
+        const accepted = kind === "tray" ? coordinator.openTray(surfaceToken) : kind === "history" ? coordinator.openHistory(
+                                                                                                         surfaceToken) :
+                                                                                                     coordinator.openLauncher(
+                                                                                                         surfaceToken);
+        if (pointer)
+            surface.finishNavigationPointer(kind, accepted);
+    }
 
     readonly property alias topCluster: navigationTopCluster
     readonly property alias bottomCluster: navigationBottomCluster
@@ -62,14 +75,14 @@ Item {
             objectName: "dashboardTray"
             meaning: "tray"
             accessibleName: qsTr("System tray")
-            onOpenRequested: root.coordinator.openTray(root.surfaceToken)
+            onOpenRequested: point => root.openInteractive("tray", point)
         }
 
         RailButton {
             objectName: "dashboardLauncher"
             meaning: "launcher"
             accessibleName: qsTr("Launcher")
-            onOpenRequested: root.coordinator.openLauncher(root.surfaceToken)
+            onOpenRequested: point => root.openInteractive("launcher", point)
         }
 
         RailButton {
@@ -77,7 +90,7 @@ Item {
             objectName: "dashboardHistory"
             meaning: "history"
             accessibleName: qsTr("Notification history")
-            onOpenRequested: root.coordinator.openHistory(root.surfaceToken)
+            onOpenRequested: point => root.openInteractive("history", point)
         }
     }
 
@@ -146,8 +159,8 @@ Item {
         required property string meaning
         required property string accessibleName
         property string failureText: ""
-
-        signal openRequested
+        property var pointerPressPoint: null
+        signal openRequested(var point)
 
         implicitWidth: Theme.size.controlHeightMd
         implicitHeight: Theme.size.controlHeightMd
@@ -156,7 +169,30 @@ Item {
         Accessible.role: Accessible.Button
         Accessible.name: accessibleName
         Accessible.description: failureText
-        onClicked: openRequested()
+        onClicked: {
+            const activation = pointerPressPoint === null || root.activationSurface === null ? null :
+                                                                                               control.mapToItem(
+                                                                                                   root.activationSurface.contentItem,
+                                                                                                   pointerPressPoint);
+            pointerPressPoint = null;
+            openRequested(activation);
+        }
+        onCanceled: pointerPressPoint = null
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key
+                    === Qt.Key_Enter)
+                control.pointerPressPoint = null;
+            event.accepted = false;
+        }
+
+        TapHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
+            onPressedChanged: {
+                if (pressed)
+                    control.pointerPressPoint = Qt.point(point.position.x, point.position.y);
+            }
+            onCanceled: control.pointerPressPoint = null
+        }
 
         background: Rectangle {
             radius: Theme.radius.md

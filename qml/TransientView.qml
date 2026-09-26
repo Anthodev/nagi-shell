@@ -39,6 +39,8 @@ Item {
     readonly property string applicationIconSource: currentLayer.applicationIconSource
     readonly property bool committed: state.committed
     readonly property bool replacementActive: state.replacementActive
+    readonly property string displayedOutgoingKind: state.outgoingKind
+    readonly property real displayedOutgoingEpoch: state.outgoingOwnerEpoch
     readonly property real incomingOpacity: currentLayer.opacity
     readonly property real outgoingOpacity: outgoingLoader.active ? outgoingLoader.opacity : 0
     readonly property bool semanticIconLoaded: currentLayer.semanticIconLoaded
@@ -55,7 +57,7 @@ Item {
     implicitHeight: currentLayer.implicitHeight
     visible: active
 
-    Accessible.ignored: !active
+    Accessible.ignored: !active || !enabled
     Accessible.name: currentLayer.accessibleName
 
     function validPresentation(value) {

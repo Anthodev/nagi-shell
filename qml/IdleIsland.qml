@@ -35,8 +35,8 @@ Item {
     property var gamingPerformance: null
     property bool reducedMotion: false
     property bool workActive: true
-    property bool externalClockPresentation: false
-    property bool externalMediaPresentation: false
+    property bool retainPresentation: false
+    readonly property bool presentationActive: workActive || retainPresentation
     property bool showWorkspace: true
     property bool showWeather: true
     property bool showMedia: true
@@ -67,8 +67,9 @@ Item {
     readonly property int resolvedHeight: Math.max(44, Math.min(48, Math.max(Theme.size.islandIdleHeight,
                                                                              derivedContentHeight)))
 
-    readonly property bool workspaceAvailable: workActive && showWorkspace && virtualDesktops
-                                               !== null && virtualDesktops.available === true
+    readonly property bool workspaceAvailable: presentationActive && showWorkspace
+                                               && virtualDesktops !== null
+                                               && virtualDesktops.available === true
     readonly property string workspaceText: {
         if (!workspaceAvailable) {
             return "";
@@ -83,20 +84,20 @@ Item {
         return displayPosition < 10 ? "0" + displayPosition : String(displayPosition);
     }
     readonly property bool workspaceVisible: workspaceText !== ""
-    readonly property bool clockVisible: workActive && clock !== null && typeof clock.text
+    readonly property bool clockVisible: presentationActive && clock !== null && typeof clock.text
                                          === "string" && clock.text !== ""
     readonly property bool idleDateVisible: clockVisible && clock.showIdleDate === true
                                             && typeof clock.dateText === "string" && clock.dateText
                                             !== ""
-    readonly property bool gamingPerformanceVisible: workActive && gamingPerformance !== null
-                                                     && gamingPerformance.active === true
-    readonly property bool weatherAvailable: workActive && showWeather && weather !== null
+    readonly property bool gamingPerformanceVisible: presentationActive && gamingPerformance
+                                                     !== null && gamingPerformance.active === true
+    readonly property bool weatherAvailable: presentationActive && showWeather && weather !== null
                                              && weather.available === true
     readonly property string temperatureText: weatherAvailable ? Math.round(weather.temperatureC)
                                                                  + "°" : ""
     readonly property string weatherCaptionText: composeWeatherCaption()
 
-    readonly property bool mediaAvailable: workActive && showMedia && media !== null
+    readonly property bool mediaAvailable: presentationActive && showMedia && media !== null
                                            && media.available === true
     readonly property string mediaSummary: composeMediaSummary()
 
@@ -112,7 +113,6 @@ Item {
     readonly property alias gamingPerformanceBoundary: gamingPerformanceSeparator
     readonly property alias clockBlock: clockLabel
     readonly property alias clockGroupBlock: clockGroup
-    readonly property alias clockPresentationItem: clockGroup
     readonly property alias clockDateBlock: clockDateLabel
     readonly property alias clockBoundary: clockSeparator
     readonly property alias weatherBlock: weatherGroup
@@ -121,7 +121,6 @@ Item {
     readonly property alias temperatureBlock: temperatureLabel
     readonly property alias weatherConditionBlock: weatherConditionLabel
     readonly property alias mediaBlock: mediaText
-    readonly property alias mediaPresentationItem: mediaText
 
     // Invisible groups and boundaries consume no space. Each visible separator
     // owns its two optical gaps, preventing optional groups from leaving an
@@ -393,7 +392,6 @@ Item {
                                  gamingPerformanceSeparator, weatherGroup, weatherSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.clockVisible
-            opacity: idle.externalClockPresentation ? 0 : 1
             implicitWidth: clockLabel.implicitWidth + (clockDateLabel.visible ? idle.clockDateGap
                                                                                 + clockDateLabel.implicitWidth :
                                                                                 0)
@@ -437,7 +435,6 @@ Item {
                                  clockGroup, clockSeparator])
             anchors.verticalCenter: parent.verticalCenter
             visible: idle.mediaAvailable && idle.mediaSummary !== ""
-            opacity: idle.externalMediaPresentation ? 0 : 1
             summary: idle.mediaSummary
             maximumWidth: Theme.size.islandIdleMediaMaximumWidth
         }

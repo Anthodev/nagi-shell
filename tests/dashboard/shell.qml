@@ -317,13 +317,10 @@ ShellRoot {
                 && quickRegion !== null && glanceStage !== null && commandsStage !== null
                 && stageColumn !== null, label + " exposes stable glance geometry objects");
         const loadedClock = clockRegion.item;
-        const clockBounds = dashboard.clockPresentationItem;
         const dashboardTime = test.findObject(loadedClock, "dashboardTime");
         const dashboardDate = test.findObject(loadedClock, "dashboardDate");
-        require(loadedClock !== null && clockBounds !== null
-                && loadedClock.clockBoundsItem === clockBounds && clockBounds !== loadedClock
-                && dashboardTime !== null && dashboardDate !== null,
-                label + " exposes the tight loaded clock bounds and rendered text");
+        require(loadedClock !== null && dashboardTime !== null && dashboardDate !== null,
+                label + " renders the dashboard clock and date");
         require(dashboard.mediaReady === expectedMedia && dashboard.gamingReady === expectedGaming
                 && dashboard.glanceMode === (expectedMedia ? "media" : "clock"),
                 label + " publishes the expected media and gaming readiness");
@@ -354,11 +351,8 @@ ShellRoot {
             require(dashboard.glanceSpineX + dashboard.glanceSpineWidth
                     <= dashboard.glanceMediaX + 0.5,
                     label + " keeps equal glance columns non-overlapping");
-            if (dashboard.mediaNaturalWidth > dashboard.spineNaturalWidth + 0.5) {
-                require(Math.abs(loadedClock.width - clockRegion.width) <= 0.5
-                        && clockBounds.width < clockRegion.width - 0.5,
-                        label + " keeps the 50:50 region full-width while the clock presentation stays tight");
-            }
+            require(Math.abs(loadedClock.width - clockRegion.width) <= 0.5,
+                    label + " keeps the clock region aligned with its equal-width column");
             const loadedMedia = mediaRegion.item;
             const loadedArtwork = test.findObject(loadedMedia, "dashboardMediaArtwork");
             require(loadedMedia !== null && loadedArtwork !== null
@@ -411,21 +405,18 @@ ShellRoot {
                     label + " reserves no gaming width or loaded content when absent");
         }
 
-        const clockPosition = clockBounds.mapToItem(dashboard, 0, 0);
         const timePosition = dashboardTime.mapToItem(dashboard, 0, 0);
         const datePosition = dashboardDate.mapToItem(dashboard, 0, 0);
-        const clockCenter = clockPosition.x + clockBounds.width / 2;
         const timeCenter = timePosition.x + dashboardTime.width / 2;
         const dateCenter = datePosition.x + dashboardDate.width / 2;
-        require(Math.abs(clockCenter - dashboard.clockStatusAxisX) <= 1
-                && Math.abs(timeCenter - dashboard.clockStatusAxisX) <= 1
+        require(Math.abs(timeCenter - dashboard.clockStatusAxisX) <= 1
                 && Math.abs(dateCenter - dashboard.clockStatusAxisX) <= 1
                 && Math.abs(dashboardTime.width - dashboardDate.width) <= 0.5,
-                label + " maps tight clock, time, and localized date onto the rendered spine axis");
+                label + " centers time and localized date on the rendered spine axis");
         if (!expectedMedia) {
             const stagePosition = stageColumn.mapToItem(dashboard, 0, 0);
-            require(Math.abs(clockCenter - (stagePosition.x + stageColumn.width / 2)) <= 1,
-                    label + " centers the clock itself on the rendered main-content axis");
+            require(Math.abs(timeCenter - (stagePosition.x + stageColumn.width / 2)) <= 1,
+                    label + " centers the clock on the rendered main-content axis");
         }
     }
 
@@ -502,20 +493,14 @@ ShellRoot {
                 "Output and Input are equal top-aligned audio columns");
         const dashboardTime = test.findObject(dashboard, "dashboardTime");
         const dashboardDate = test.findObject(dashboard, "dashboardDate");
-        const clockPresentation = dashboard.clockPresentationItem;
         const timePosition = dashboardTime.mapToItem(dashboard, 0, 0);
         const datePosition = dashboardDate.mapToItem(dashboard, 0, 0);
-        const clockPresentationPosition = clockPresentation.mapToItem(dashboard, 0, 0);
-        require(dashboardTime !== null && dashboardDate !== null && clockPresentation !== null
+        require(dashboardTime !== null && dashboardDate !== null && clockRegion !== null
                 && Math.abs(timePosition.x + dashboardTime.width / 2
                             - dashboard.clockStatusAxisX) <= 0.5
                 && Math.abs(datePosition.x + dashboardDate.width / 2
-                            - dashboard.clockStatusAxisX) <= 0.5
-                && Math.abs(clockPresentationPosition.x + clockPresentation.width / 2
-                            - dashboard.clockStatusAxisX) <= 0.5
-                && clockPresentation === clockRegion.item.clockBoundsItem
-                && clockPresentation.width < clockRegion.width - 0.5,
-                "expanded time, localized date, and tight morph bounds share the clock/status axis");
+                            - dashboard.clockStatusAxisX) <= 0.5,
+                "expanded time and date stay aligned on the clock/status axis");
         require(mediaView.previous() === "dispatched" && mediaView.togglePlayback()
                 === "dispatched" && mediaView.next() === "dispatched" && mediaActions.join(",")
                 === "previous,toggle,next",
@@ -532,6 +517,15 @@ ShellRoot {
         mediaView.visible = true;
         require(mediaView.artworkRequest === mediaAdapter.artworkSource,
                 "visible media requests only the validated selected artwork");
+        const visibleArtwork = mediaView.artworkRequest;
+        mediaView.active = false;
+        mediaAdapter.artworkSource = "file:///tmp/nagi-dashboard-next-artwork.png";
+        require(mediaView.artworkRequest === visibleArtwork,
+                "outgoing dashboard retains its artwork without requesting a new source");
+        mediaView.active = true;
+        require(mediaView.artworkRequest === mediaAdapter.artworkSource,
+                "the next active dashboard requests its current artwork");
+        mediaAdapter.artworkSource = visibleArtwork;
         mediaView.visible = false;
         require(mediaView.artworkRequest === "", "hidden media drops its artwork request");
 
