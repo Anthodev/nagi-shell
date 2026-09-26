@@ -192,7 +192,7 @@ roots=[]
 | Section | Allowed values and bounds |
 |---|---|
 | `settings` | Exact integer `schema_version=3`; schema V2 upgrades once and newer versions enter read-only compatibility mode |
-| `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full`, `reduced`, or `minimal`; separate Idle, Expanded, and Control Center families of 1–128 UTF-8 bytes plus integer body baselines of `11–18 px`; radius: `8–32` |
+| `appearance` | Scheme: `nagi-dark`, `nagi-oled`, `nagi-light`, `system`, or `custom`; accent: `nagi`, `system`, `wallpaper`, or `custom`; surface/text colors: `#RRGGBB`; custom accent: `#RRGGBB` or migrated `#AARRGGBB`; opacity: `0.85–1`; border: `0–1`; motion: `full` (Smooth), `fast`, `reduced`, or `minimal`; separate Idle, Expanded, and Control Center families of 1–128 UTF-8 bytes plus integer body baselines of `11–18 px`; radius: `8–32` |
 | `island` | Compact height `44–48`, padding `16–32`, expanded width/height fractions `0.6–1`; fixed booleans for compact content and Gaming feedback; duration `short`, `normal`, or `long` |
 | `clock` | Format `auto`, `12h`, or `24h`; seconds and Idle date booleans; date pattern `dddd, d MMMM`, `ddd, d MMM`, `yyyy-MM-dd`, `MM/dd/yyyy`, or `dd/MM/yyyy` |
 | `media` | Integration, compact, and dashboard booleans; `automatic` or `preferred` player policy; preferred desktop-file ID up to 256 UTF-8 bytes |

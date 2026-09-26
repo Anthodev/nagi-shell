@@ -114,8 +114,6 @@ Scope {
                                                                                 fallbackSurface.contentTransitionFromKind
     readonly property int contentTransitionToKind: fallbackSurface === null ? -1 :
                                                                               fallbackSurface.contentTransitionToKind
-    readonly property int contentTransitionDirection: fallbackSurface === null ? 0 :
-                                                                                 fallbackSurface.contentTransitionDirection
     readonly property var contentOutgoingItem: fallbackSurface === null ? null :
                                                                           fallbackSurface.contentOutgoingItem
     readonly property var contentIncomingItem: fallbackSurface === null ? null :
@@ -124,10 +122,6 @@ Scope {
                                                                               fallbackSurface.contentOutgoingOpacity
     readonly property real contentIncomingOpacity: fallbackSurface === null ? 0 :
                                                                               fallbackSurface.contentIncomingOpacity
-    readonly property real contentOutgoingOffset: fallbackSurface === null ? 0 :
-                                                                             fallbackSurface.contentOutgoingOffset
-    readonly property real contentIncomingOffset: fallbackSurface === null ? 0 :
-                                                                             fallbackSurface.contentIncomingOffset
     readonly property bool contentOutgoingEnabled: fallbackSurface !== null
                                                    && fallbackSurface.contentOutgoingEnabled
     readonly property bool contentOutgoingAccessibleIgnored: fallbackSurface === null
@@ -140,18 +134,6 @@ Scope {
                                                                                 fallbackSurface.retainedPresentationCount
     readonly property real contentRenderedOpacityTotal: fallbackSurface === null ? 0 :
                                                                                    fallbackSurface.contentRenderedOpacityTotal
-    readonly property bool clockContinuityActive: fallbackSurface !== null
-                                                  && fallbackSurface.clockContinuityActive
-    readonly property bool mediaContinuityActive: fallbackSurface !== null
-                                                  && fallbackSurface.mediaContinuityActive
-    readonly property real clockContinuityOpacityTotal: fallbackSurface === null ? 0 :
-                                                                                   fallbackSurface.clockContinuityOpacityTotal
-    readonly property real mediaContinuityOpacityTotal: fallbackSurface === null ? 0 :
-                                                                                   fallbackSurface.mediaContinuityOpacityTotal
-    readonly property bool clockContinuityGeometryAligned: fallbackSurface === null
-                                                           || fallbackSurface.clockContinuityGeometryAligned
-    readonly property bool mediaContinuityGeometryAligned: fallbackSurface === null
-                                                           || fallbackSurface.mediaContinuityGeometryAligned
     readonly property var interactiveContent: fallbackSurface === null ? null :
                                                                          fallbackSurface.interactiveContent
     readonly property bool launcherLoaded: fallbackSurface !== null
@@ -189,8 +171,6 @@ Scope {
                                                                       fallbackSurface.historyRowCount
     readonly property bool historyEmptyStateVisible: fallbackSurface !== null
                                                      && fallbackSurface.historyEmptyStateVisible
-    readonly property int geometryAnimationDuration: fallbackSurface === null ? 0 :
-                                                                                fallbackSurface.geometryAnimationDuration
     readonly property bool geometryAnimationRunning: fallbackSurface !== null
                                                      && fallbackSurface.geometryAnimationRunning
     readonly property bool transientCommitted: fallbackSurface !== null
@@ -229,17 +209,6 @@ Scope {
         return fallbackSurface === null ? 0 : fallbackSurface.contentOpacityForKind(kind);
     }
 
-    function contentOffsetForKind(kind) {
-        return fallbackSurface === null ? 0 : fallbackSurface.contentOffsetForKind(kind);
-    }
-
-    function contentStartOpacityForKind(kind) {
-        return fallbackSurface === null ? 0 : fallbackSurface.contentStartOpacityForKind(kind);
-    }
-
-    function contentStartOffsetForKind(kind) {
-        return fallbackSurface === null ? 0 : fallbackSurface.contentStartOffsetForKind(kind);
-    }
     function completeShellMenuAction(token) {
         const surface = surfaceForToken(token);
         return surface !== null && surface.completeShellMenuAction();
@@ -470,6 +439,7 @@ Scope {
 
                 DashboardMedia {
                     media: host.media
+                    active: entry.liveSurface !== null && entry.liveSurface.dashboardWorkActive
                 }
             }
 
@@ -532,6 +502,7 @@ Scope {
                 DashboardNavigation {
                     coordinator: host.coordinator
                     surfaceToken: entry.surfaceToken
+                    activationSurface: entry.liveSurface
                     applicationModel: host.applicationModel
                     showHistory: host.notificationService === null
                                  || host.notificationService.historyVisible !== false

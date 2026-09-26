@@ -533,6 +533,37 @@ ShellRoot {
                 && Theme.effectiveMotionScale("minimal", 1) === 0 && Theme.effectiveMotionScale(
                     "full", 0) === 0,
                 "effective motion always chooses the most restrictive Nagi or KDE preference");
+        require(Theme.effectiveMotionScale("fast", 1) === 1 && Theme.motionMode(
+                    Theme.effectiveMotionScale("fast", 1)) === "full",
+                "Fast keeps the general interface durations at their historical speed");
+        require(Theme.effectiveMorphScale("full", 1) === 1.35
+                && Theme.effectiveMorphScale("fast", 1) === 1
+                && Theme.effectiveMorphScale("reduced", 1) === 0.5
+                && Theme.effectiveMorphScale("minimal", 1) === 0,
+                "island morphs answer Smooth with 1.35 and Fast with the historical speed");
+        require(Theme.effectiveMorphScale("full", 0) === 0
+                && Theme.effectiveMorphScale("fast", 0) === 0
+                && Theme.effectiveMorphScale("reduced", 0) === 0
+                && Theme.effectiveMorphScale("full", 0.5) === 0.5
+                && Theme.effectiveMorphScale("fast", 0.75) === 0.75,
+                "KDE animation policy still outranks every Smooth and Fast morph choice");
+        require(UserConfig.defaultSnapshot(0).appearance.motion === "full",
+                "the Smooth default keeps persisting the established full motion key");
+        const fastCandidate = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        fastCandidate.appearance.motion = "fast";
+        const fastNormalized = UserConfig.validateCandidate(fastCandidate);
+        require(fastNormalized !== null && fastNormalized.appearance.motion === "fast",
+                "the Fast choice passes the strict appearance registry");
+        const mislabeledCandidate = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        mislabeledCandidate.appearance.motion = "smooth";
+        require(UserConfig.validateCandidate(mislabeledCandidate) === null,
+                "Smooth stays a presentation label instead of a persisted key");
+        const fastContent = UserConfig.serializeConfiguration(fastNormalized);
+        const fastParsed = UserConfig.parseConfiguration(fastContent, UserConfig.utf8Length(
+                                                             fastContent));
+        require(fastContent.indexOf("motion=fast") >= 0 && fastParsed !== null
+                && fastParsed.appearance.motion === "fast",
+                "the Fast motion choice roundtrips through configuration serialization and parsing");
     }
 
     function runNormal() {

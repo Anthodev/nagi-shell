@@ -562,13 +562,12 @@ ShellRoot {
             const snapshot = coordinator.surfaceSnapshot(host.surfaceToken);
             require(snapshot.ownerName === "idle" && snapshot.restorationDepth === 0
                     && !host.contentTransitionRunning && !host.geometryAnimationRunning
-                    && host.contentOutgoingItem === null && host.contentIncomingOpacity === 1
-                    && host.geometryAnimationDuration === 0,
+                    && host.contentOutgoingItem === null && host.contentIncomingOpacity === 1,
                     "Minimal motion synchronously clears overlap and geometry work: owner="
                     + snapshot.ownerName + ", depth=" + snapshot.restorationDepth + ", content="
                     + host.contentTransitionRunning + ", geometry=" + host.geometryAnimationRunning
                     + ", outgoing=" + (host.contentOutgoingItem !== null) + ", incomingOpacity="
-                    + host.contentIncomingOpacity + ", duration=" + host.geometryAnimationDuration);
+                    + host.contentIncomingOpacity);
             reducedMotion = false;
             stage = "cycle-settled";
             advance();

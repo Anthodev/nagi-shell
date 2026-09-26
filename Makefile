@@ -561,6 +561,7 @@ test-workspace-consensus: check-quickshell check-helper-toolchain platform-plugi
 	mkdir -p $(WORKSPACE_TEST_DIR)/qml $(WORKSPACE_TEST_DIR)/assets/icons/nagi
 	cp tests/workspace-consensus/shell.qml $(WORKSPACE_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml qml/DisplayManager.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml qml/KWinVirtualDesktopAdapter.qml $(WORKSPACE_TEST_DIR)/qml/
+	cp qml/GeometryMotion.qml $(WORKSPACE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(WORKSPACE_TEST_DIR)/assets/icons/nagi/
 	@set -eu; \
 	for outputs in 1 2 3; do \
@@ -727,6 +728,7 @@ test-surface-state: check-quickshell platform-plugin | $(BUILD_DIR)
 	mkdir -p $(SURFACE_STATE_TEST_DIR)/qml $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi
 	cp tests/surface-state/shell.qml $(SURFACE_STATE_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/DisplayManager.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(SURFACE_STATE_TEST_DIR)/qml/
+	cp qml/GeometryMotion.qml $(SURFACE_STATE_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(SURFACE_STATE_TEST_DIR)/assets/icons/nagi/
 	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- env QML_IMPORT_PATH='$(abspath $(BUILD_DIR)/qml)' $(QS) -p $(SURFACE_STATE_TEST_DIR) --no-duplicate
 
@@ -735,6 +737,7 @@ test-display-orchestration: check-quickshell platform-plugin | $(BUILD_DIR)
 	mkdir -p $(DISPLAY_TEST_DIR)/qml $(DISPLAY_TEST_DIR)/assets/icons/nagi
 	cp tests/displays/shell.qml $(DISPLAY_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardMedia.qml qml/DashboardClock.qml qml/DashboardQuickControls.qml qml/DashboardStatusProjection.qml qml/DashboardAudio.qml qml/DashboardVolumeControl.qml qml/DashboardNotifications.qml qml/DashboardNavigation.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/WeatherView.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml qml/IslandStateCoordinator.qml qml/TransientCoordinatorBridge.qml qml/DisplayManager.qml qml/DisplaysPage.qml qml/IslandSurfaceHost.qml qml/IslandSurface.qml $(DISPLAY_TEST_DIR)/qml/
+	cp qml/GeometryMotion.qml $(DISPLAY_TEST_DIR)/qml/
 	cp qml/ControlCenterPageHeader.qml qml/ControlCenterSettingRow.qml qml/ControlCenterSectionHeading.qml qml/ControlCenterSectionPanel.qml $(DISPLAY_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(DISPLAY_TEST_DIR)/assets/icons/nagi/
 	@set -eu; \
@@ -817,6 +820,7 @@ test-ui-primitives: check-quickshell | $(BUILD_DIR)
 	mkdir -p $(UI_PRIMITIVES_TEST_DIR)/qml $(UI_PRIMITIVES_TEST_DIR)/assets/icons/nagi
 	cp tests/ui/shell.qml $(UI_PRIMITIVES_TEST_DIR)/shell.qml
 	cp $(THEME_QML_SOURCES) qml/IslandPanel.qml qml/IslandText.qml qml/IdleIsland.qml qml/IdleMediaText.qml qml/WeatherGlyph.qml qml/WeatherView.qml qml/IslandFocusRing.qml qml/IslandButton.qml qml/IslandIconButton.qml qml/IslandProgressBar.qml qml/TransientView.qml qml/DashboardRegion.qml qml/ExpandedDashboard.qml qml/DashboardStatusProjection.qml qml/LauncherView.qml qml/NotificationHistoryView.qml qml/SessionView.qml qml/PolkitView.qml qml/AudioSelectionView.qml qml/IslandStateCoordinator.qml qml/IslandSurface.qml qml/IconResolver.qml qml/IslandIcon.qml qml/SubviewFrame.qml qml/TrayView.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
+	cp qml/GeometryMotion.qml $(UI_PRIMITIVES_TEST_DIR)/qml/
 	cp assets/icons/nagi/*.svg $(UI_PRIMITIVES_TEST_DIR)/assets/icons/nagi/
 	$(KWIN_VIRTUAL_RUNNER) $(KWIN_TEST_ARGS) -- $(QS) -p $(UI_PRIMITIVES_TEST_DIR) --no-duplicate
 

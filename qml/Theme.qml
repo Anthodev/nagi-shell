@@ -632,6 +632,18 @@ Singleton {
         return Math.min(userScale, kdeScale);
     }
 
+    // Island morphs carry their own response scale so a calmer Smooth response never
+    // slows unrelated interface animations. Smooth (the persisted "full" key) rides
+    // at 1.35, Fast at the historical 1, Reduced/Minimal unchanged; a KDE factor
+    // below 1 still clamps it, and disabling animations forces zero.
+    function effectiveMorphScale(userMode, animationFactor) {
+        const userMorphScale = userMode === "minimal" ? 0 : userMode === "reduced" ? 0.5 : userMode
+                                                                                     === "fast" ? 1 :
+                                                                                                  1.35;
+        const kdeScale = animationFactor <= 0 ? 0 : Math.min(1, animationFactor);
+        return kdeScale >= 1 ? userMorphScale : Math.min(userMorphScale, kdeScale);
+    }
+
     function motionMode(scale) {
         return scale <= 0 ? "minimal" : scale < 1 ? "reduced" : "full";
     }
@@ -814,24 +826,16 @@ Singleton {
         readonly property real scale: root.effectiveMotionScale(
                                           UserConfig.snapshot.appearance.motion,
                                           root.systemAppearance.animationFactor)
+        readonly property real morphScale: root.effectiveMorphScale(
+                                               UserConfig.snapshot.appearance.motion,
+                                               root.systemAppearance.animationFactor)
         readonly property string effectiveMode: root.motionMode(scale)
 
         readonly property int durationFast: scale <= 0 ? 0 : Math.max(1, Math.round(70 * scale))
         readonly property int durationNormal: scale <= 0 ? 0 : Math.max(1, Math.round(120 * scale))
         readonly property int durationSlow: scale <= 0 ? 0 : Math.max(1, Math.round(170 * scale))
-        readonly property int durationMorphMinimum: scale <= 0 ? 0 : Math.max(1, Math.round(120
-                                                                                            * scale))
-
-        readonly property int durationMorphMaximum: scale <= 0 ? 0 : Math.max(1, Math.round(200
-                                                                                            * scale))
-
-        readonly property int durationExpansionMinimum: scale <= 0 ? 0 : Math.max(1, Math.round(100
-                                                                                                * scale))
-
-        readonly property int durationExpansionMaximum: scale <= 0 ? 0 : Math.max(1, Math.round(160
-                                                                                                * scale))
-
+        readonly property int morphDurationFast: morphScale <= 0 ? 0 : Math.max(1, Math.round(70
+                                                                                              * morphScale))
         readonly property int easingStandard: Easing.OutCubic
-        readonly property int easingMorph: Easing.InOutCubic
     }
 }

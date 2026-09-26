@@ -66,14 +66,20 @@ PanelWindow {
 
     function refreshSurfaceState() {
         const snapshot = coordinator.surfaceSnapshot(hostSurfaceToken);
+        const leavingSensitiveOwner = contentTransition.initialized
+              && contentTransition.currentKind === coordinator.ownerPolkitModal
+              && snapshot.ownerKind !== coordinator.ownerPolkitModal;
         if (contentTransition.initialized && (snapshot.ownerKind !== contentTransition.currentKind
                                               || snapshot.ownerEpoch
-                                              !== contentTransition.currentEpoch)) {
-            capturePresentationPose();
-            contentTransition.primeRetention();
-        }
+                                              !== contentTransition.currentEpoch))
+            freezeDisplayedFaces();
         surfaceState = snapshot;
-        contentTransition.queueIdentityReconciliation();
+        // Authentication pixels must disappear on ownership loss, not after
+        // the coalesced ordinary-owner reconciliation callback.
+        if (leavingSensitiveOwner)
+            contentTransition.handleIdentityChanged();
+        else
+            contentTransition.queueIdentityReconciliation();
     }
     readonly property int ownerKind: surfaceState.ownerKind
     readonly property real ownerEpoch: surfaceState.ownerEpoch
@@ -104,6 +110,29 @@ PanelWindow {
     readonly property bool interactiveOwner: isInteractiveKind(ownerKind)
 
     property bool focusHandoffPending: false
+    property int layoutRevision: 0
+    // The rail's pointer press is surface-local; these values never size a
+    // destination face or its readiness stamp, only the visible panel target.
+    property bool navigationPointerProtected: false
+    property int navigationPointerKind: coordinator.ownerNone
+    property real navigationPointerEpoch: 0
+    property int navigationPointerGeneration: 0
+    property point navigationPointerPosition: Qt.point(0, 0)
+    // Ignore a stale HoverHandler sample until a new move follows the click.
+    property bool navigationPointerMoved: false
+    readonly property point hoveredPointerPosition: hoverHandler.point.scenePosition
+    onHoveredPointerPositionChanged: {
+        if (navigationPointerProtected && hoverHandler.hovered && (Math.abs(
+                                                                       hoveredPointerPosition.x
+                                                                       - navigationPointerPosition.x)
+                                                                   > 2 || Math.abs(
+                                                                       hoveredPointerPosition.y
+                                                                       - navigationPointerPosition.y)
+                                                                   > 2)) {
+            navigationPointerMoved = true;
+            maybeReleaseNavigationPointer(true);
+        }
+    }
 
     readonly property int windowGutterLeft: Theme.elevation.shadowGutterLeft
     readonly property int windowGutterRight: Theme.elevation.shadowGutterRight
@@ -184,28 +213,11 @@ PanelWindow {
     readonly property string transientDetailText: transientLoader.item === null ? "" :
                                                                                   transientLoader.item.detailText
 
-    readonly property int geometryAnimationDuration: morphState.segmentDuration
-    readonly property bool geometryAnimationRunning: morphState.active
+    readonly property bool geometryAnimationRunning: momentumGeometry.running
     readonly property bool pointerHovered: hoverHandler.hovered
-    readonly property real morphProgress: morphState.progress
-    readonly property real morphNormalizedDistance: morphState.normalizedDistance
-    readonly property bool morphExpansionSegment: morphState.expansionSegment
-    readonly property int morphSequence: morphState.sequence
-    readonly property real morphSegmentFromWidth: morphState.fromWidth
-    readonly property real morphSegmentFromHeight: morphState.fromHeight
-    readonly property real morphSegmentToWidth: morphState.toWidth
-    readonly property real morphSegmentToHeight: morphState.toHeight
-    readonly property bool morphFollowUpPending: morphState.followUpPending
-    readonly property real renderedPanelWidth: morphState.initialized ? morphState.fromWidth + (
-                                                                            morphState.toWidth
-                                                                            - morphState.fromWidth)
-                                                                        * morphState.progress :
-                                                                        morphState.canonicalWidth
-    readonly property real renderedPanelHeight: morphState.initialized ? morphState.fromHeight + (
-                                                                             morphState.toHeight
-                                                                             - morphState.fromHeight)
-                                                                         * morphState.progress :
-                                                                         morphState.canonicalHeight
+    readonly property real morphProgress: contentTransition.fraction()
+    readonly property real renderedPanelWidth: morphState.currentWidth()
+    readonly property real renderedPanelHeight: morphState.currentHeight()
     readonly property point panelMappedTopLeft: Qt.point(surfaceBackground.x, surfaceBackground.y)
     readonly property point panelMappedBottomRight: Qt.point(surfaceBackground.x
                                                              + surfaceBackground.width,
@@ -213,27 +225,19 @@ PanelWindow {
                                                              + surfaceBackground.height)
     readonly property real backgroundRadius: surfaceBackground.radius
     readonly property bool blurRequested: Theme.snapshot.blurEnabled
-    readonly property real renderedShadowOpacity: shadowOutline.visible ? Theme.opacity.shadow
-                                                                          * morphState.elevationFactor :
-                                                                          0
+    readonly property real renderedShadowOpacity: shadowOutline.visible ? Theme.opacity.shadow : 0
     readonly property int shadowLayerCount: shadowOutline.layer.enabled
                                             && shadowOutline.layer.effect !== null ? 1 : 0
     readonly property int requestedKwinBlurRegionCount: surface.BackgroundEffect.blurRegion
                                                         === null ? 0 : 1
-
     readonly property bool contentTransitionRunning: contentTransition.active
     readonly property bool contentTransitionDestinationReady: contentTransition.destinationReady
     readonly property int contentTransitionFromKind: contentTransition.fromKind
     readonly property int contentTransitionToKind: contentTransition.toKind
-    readonly property int contentTransitionDirection: contentTransition.direction
     readonly property var contentOutgoingItem: contentTransition.outgoingItem
     readonly property var contentIncomingItem: contentTransition.incomingItem
     readonly property real contentOutgoingOpacity: contentTransition.outgoingOpacity()
     readonly property real contentIncomingOpacity: contentTransition.incomingOpacity()
-    readonly property real contentOutgoingOffset: contentTransition.offsetForKind(
-                                                      contentTransition.fromKind)
-    readonly property real contentIncomingOffset: contentTransition.offsetForKind(
-                                                      contentTransition.toKind)
     readonly property bool contentOutgoingEnabled: contentOutgoingItem !== null
                                                    && contentOutgoingItem.enabled
     readonly property bool contentOutgoingAccessibleIgnored: contentOutgoingItem === null
@@ -241,41 +245,8 @@ PanelWindow {
     readonly property bool contentOutgoingRendered: contentTransition.retainedRendered()
     readonly property bool contentOutgoingWorkActive: contentTransition.retainedWorkActive()
     readonly property int retainedPresentationCount: contentTransition.retainedKeys.length
+    readonly property int activeVisualKeyCount: contentTransition.displayedKeys.length
     readonly property real contentRenderedOpacityTotal: contentTransition.totalOpacity()
-    readonly property bool clockContinuityActive: idleClockPresentation.matchedActive
-                                                  || expandedClockPresentation.matchedActive
-    readonly property bool mediaContinuityActive: idleMediaPresentation.matchedActive
-                                                  || expandedMediaPresentation.matchedActive
-    readonly property real clockContinuityOpacityTotal: idleClockPresentation.opacity
-                                                        + expandedClockPresentation.opacity
-    readonly property real mediaContinuityOpacityTotal: idleMediaPresentation.opacity
-                                                        + expandedMediaPresentation.opacity
-    readonly property bool clockContinuityGeometryAligned: !clockContinuityActive || (Math.abs(
-                                                                                          idleClockPresentation.x
-                                                                                          - expandedClockPresentation.x)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleClockPresentation.y
-                                                                                          - expandedClockPresentation.y)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleClockPresentation.width
-                                                                                          - expandedClockPresentation.width)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleClockPresentation.height
-                                                                                          - expandedClockPresentation.height)
-                                                                                      <= 0.5)
-    readonly property bool mediaContinuityGeometryAligned: !mediaContinuityActive || (Math.abs(
-                                                                                          idleMediaPresentation.x
-                                                                                          - expandedMediaPresentation.x)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleMediaPresentation.y
-                                                                                          - expandedMediaPresentation.y)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleMediaPresentation.width
-                                                                                          - expandedMediaPresentation.width)
-                                                                                      <= 0.5 && Math.abs(
-                                                                                          idleMediaPresentation.height
-                                                                                          - expandedMediaPresentation.height)
-                                                                                      <= 0.5)
 
     readonly property bool dashboardFocused: expandedContent.activeFocus
     readonly property int loadedDashboardRegionCount: expandedContent.loadedRegionCount
@@ -437,55 +408,16 @@ PanelWindow {
         return loader !== null && loader.item !== null && loader.item.active === true;
     }
 
-    function capturePresentationPose() {
-        idlePresentation.capturePose();
-        expandedPresentation.capturePose();
-        transientPresentationLayer.capturePose();
-        launcherPresentation.capturePose();
-        historyPresentation.capturePose();
-        trayPresentation.capturePose();
-        audioPresentation.capturePose();
-        weatherPresentation.capturePose();
-        polkitPresentation.capturePose();
-        sessionPresentation.capturePose();
-        idleClockPresentation.capturePose();
-        expandedClockPresentation.capturePose();
-        idleMediaPresentation.capturePose();
-        expandedMediaPresentation.capturePose();
+    function freezeDisplayedFaces() {
+        for (let n = 0; n < contentTransition.displayedKeys.length; ++n) {
+            const layer = visualLayerForKind(contentTransition.displayedKeys[n]);
+            if (layer !== null && layer.sourceItem !== null)
+                layer.freezeViewport(!contentTransition.active);
+        }
     }
 
     function contentOpacityForKind(kind) {
         return contentTransition.opacityForKind(kind);
-    }
-
-    function contentOffsetForKind(kind) {
-        return contentTransition.offsetForKind(kind);
-    }
-
-    function contentStartOpacityForKind(kind) {
-        return contentTransition.startOpacityForKind(kind);
-    }
-
-    function contentStartOffsetForKind(kind) {
-        return contentTransition.startOffsetForKind(kind);
-    }
-
-    function transitionDirection(fromKind, toKind) {
-        const fromInteractive = isInteractiveKind(fromKind);
-        const toInteractive = isInteractiveKind(toKind);
-        if (!fromInteractive && !toInteractive) {
-            return 0;
-        }
-        if (!fromInteractive) {
-            return 1;
-        }
-        if (!toInteractive) {
-            return -1;
-        }
-        if (fromKind === toKind) {
-            return 0;
-        }
-        return toKind > fromKind ? 1 : -1;
     }
 
     function sourceForTransient(kind) {
@@ -527,7 +459,7 @@ PanelWindow {
 
     function acknowledgePresentation(generation, epoch, contentRevision) {
         if (generation <= 0 || hostSurfaceGeneration !== generation || ownerEpoch !== epoch
-                || ownerRevision !== contentRevision) {
+                || ownerRevision !== contentRevision || !contentTransition.revealedForCurrent()) {
             return;
         }
 
@@ -592,12 +524,15 @@ PanelWindow {
         const generation = hostSurfaceGeneration;
         const epoch = ownerEpoch;
         const serial = focusRequestSerial;
+        const transactionSerial = contentTransition.requestSerial;
         Qt.callLater(function () {
             if (surface === null) {
                 return;
             }
             if (generation !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch
-                    || serial !== surface.focusRequestSerial) {
+                    || serial !== surface.focusRequestSerial || transactionSerial
+                    !== contentTransition.requestSerial || !contentTransition.revealedForCurrent(
+                        )) {
                 return;
             }
             let target = null;
@@ -641,9 +576,11 @@ PanelWindow {
         const generation = hostSurfaceGeneration;
         const epoch = ownerEpoch;
         const contentRevision = ownerRevision;
+        const transactionSerial = contentTransition.requestSerial;
         Qt.callLater(function () {
             if (surface !== null) {
-                surface.acknowledgePresentation(generation, epoch, contentRevision);
+                if (transactionSerial === contentTransition.requestSerial)
+                    surface.acknowledgePresentation(generation, epoch, contentRevision);
             }
         });
     }
@@ -652,6 +589,8 @@ PanelWindow {
         if (shellMenuOpen && !hovered) {
             return true;
         }
+        if (!hovered)
+            clearNavigationPointer(true);
         const accepted = coordinator.setHover(hostSurfaceToken, hostSurfaceGeneration, hovered);
         refreshSurfaceState();
         return accepted;
@@ -704,8 +643,116 @@ PanelWindow {
         if (!shellWindowWasActive) {
             return false;
         }
+        clearNavigationPointer(false);
         shellWindowWasActive = false;
         return coordinator.resetToIdle(hostSurfaceToken);
+    }
+    function navigationKind(name) {
+        return name === "tray" ? coordinator.ownerTray : name === "history"
+                                 ? coordinator.ownerHistory : name === "launcher"
+                                   ? coordinator.ownerLauncher : coordinator.ownerNone;
+    }
+
+    function roundedPanelContains(point, width, height, inset) {
+        const x = point.x - (windowGutterLeft + envelopePanelWidth / 2 - width / 2);
+        const y = point.y - windowGutterTop;
+        if (x < inset || y < inset || x > width - inset || y > height - inset)
+            return false;
+        const radius = Math.min(Theme.radius.outer, width / 2, height / 2);
+        const dx = Math.max(radius - x, x - (width - radius), 0);
+        const dy = Math.max(radius - y, y - (height - radius), 0);
+        const innerRadius = Math.max(0, radius - inset);
+        return dx * dx + dy * dy <= innerRadius * innerRadius;
+    }
+    function pointerInsideNatural(width, height) {
+        return roundedPanelContains(navigationPointerPosition, width, height, Math.max(2,
+                                                                                       morphState.physicalPixel));
+    }
+
+    // The natural target is still independently prepared and screen-capped.
+    function protectedTargetWidth(width, height) {
+        if (!navigationPointerProtected || navigationPointerKind !== ownerKind
+                || navigationPointerGeneration !== hostSurfaceGeneration || pointerInsideNatural(
+                    width, height))
+            return width;
+        const center = windowGutterLeft + envelopePanelWidth / 2;
+        return Math.min(stablePanelMaximumWidth, Math.max(width, 2 * (Math.abs(
+                                                                          navigationPointerPosition.x
+                                                                          - center)
+                                                                      + Theme.radius.outer
+                                                                      + Math.max(2,
+                                                                                 morphState.physicalPixel))));
+    }
+
+    function protectedTargetHeight(width, height) {
+        if (!navigationPointerProtected || navigationPointerKind !== ownerKind
+                || navigationPointerGeneration !== hostSurfaceGeneration || pointerInsideNatural(
+                    width, height))
+            return height;
+        return Math.min(stablePanelMaximumHeight, Math.max(height, navigationPointerPosition.y
+                                                           - windowGutterTop + Theme.radius.outer
+                                                           + Math.max(2,
+                                                                      morphState.physicalPixel)));
+    }
+
+    function beginNavigationPointer(name, point) {
+        const kind = navigationKind(name);
+        if (kind === coordinator.ownerNone || ownerKind !== coordinator.ownerExpanded
+                || hostSurfaceGeneration <= 0 || screen === null || screen.width <= 0
+                || screen.height <= 0 || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !roundedPanelContains(
+                    point, renderedPanelWidth, renderedPanelHeight, 0))
+            return false;
+        navigationPointerPosition = Qt.point(point.x, point.y);
+        navigationPointerKind = kind;
+        navigationPointerGeneration = hostSurfaceGeneration;
+        navigationPointerEpoch = 0;
+        navigationPointerMoved = false;
+        navigationPointerProtected = true;
+        return true;
+    }
+
+    function finishNavigationPointer(name, accepted) {
+        if (!navigationPointerProtected || navigationPointerKind !== navigationKind(name))
+            return;
+        const snapshot = coordinator.surfaceSnapshot(hostSurfaceToken);
+        if (!accepted || snapshot.generation !== navigationPointerGeneration || snapshot.ownerKind
+                !== navigationPointerKind) {
+            clearNavigationPointer(false);
+            return;
+        }
+        navigationPointerEpoch = snapshot.ownerEpoch;
+    }
+
+    function clearNavigationPointer(reconcile) {
+        if (!navigationPointerProtected)
+            return;
+        navigationPointerProtected = false;
+        navigationPointerKind = coordinator.ownerNone;
+        navigationPointerEpoch = 0;
+        navigationPointerMoved = false;
+        navigationPointerGeneration = 0;
+        if (reconcile && morphState.initialized) {
+            if (Theme.motion.morphScale <= 0 && !contentTransition.active)
+                morphState.settleAt(morphState.canonicalWidth, morphState.canonicalHeight);
+            else if (!contentTransition.preparing && (!contentTransition.active
+                                                      || contentTransition.toKind === ownerKind))
+                morphState.retarget();
+        }
+    }
+
+    function maybeReleaseNavigationPointer(reconcile) {
+        if (!navigationPointerMoved || !navigationPointerProtected || navigationPointerKind
+                !== ownerKind || navigationPointerGeneration !== hostSurfaceGeneration || (
+                    navigationPointerEpoch > 0 && navigationPointerEpoch !== ownerEpoch) || (
+                    contentTransition.active && !contentTransition.destinationReady))
+            return;
+        const width = contentTransition.active ? contentTransition.preparedTargetWidth :
+                                                 morphState.canonicalWidth;
+        const height = contentTransition.active ? contentTransition.preparedTargetHeight :
+                                                  morphState.canonicalHeight;
+        if (roundedPanelContains(hoveredPointerPosition, width, height, Math.max(2,
+                                                                                 morphState.physicalPixel)))
+            clearNavigationPointer(reconcile);
     }
 
     function visiblePanelBound(screenSize, maximumFraction, totalGutter) {
@@ -722,7 +769,6 @@ PanelWindow {
 
     QtObject {
         id: contentTransition
-
         property bool initialized: false
         property bool active: false
         property bool preparing: false
@@ -730,588 +776,569 @@ PanelWindow {
         property bool commitQueued: false
         property bool identityReconcileQueued: false
         property int requestSerial: 0
-
         property int currentSurfaceGeneration: 0
         property int currentKind: surface.coordinator.ownerNone
         property real currentEpoch: 0
         property real currentRevision: 0
-
-        property int fromSurfaceGeneration: 0
         property int fromKind: surface.coordinator.ownerNone
-        property real fromEpoch: 0
-        property real fromRevision: 0
-        property int toSurfaceGeneration: 0
         property int toKind: surface.coordinator.ownerNone
         property real toEpoch: 0
         property real toRevision: 0
-
+        property int toSurfaceGeneration: 0
+        property var displayedKeys: []
+        property var retainedKeys: []
+        property var baseWeights: ({})
+        property var readyStamps: ({})
         property var outgoingItem: null
         property var incomingItem: null
-        property int direction: 0
-        property var retainedKeys: []
-        property var startOpacities: ({})
-        property var startOffsets: ({})
-        property var targetOffsets: ({})
-        property var retainedZOrder: []
+        property real distance: 0
+        property real preparedTargetWidth: 0
+        property real preparedTargetHeight: 0
+        property real fallbackProgress: 0
+        property bool fallbackActive: false
+        property bool sensitiveInvalidated: false
+        property bool handoffArmed: false
+        property real innerBase: 0
+        property real innerHoldProgress: 0
+        property real pendingInnerBase: 0
 
+        function key(kind) {
+            return surface.visualKey(kind);
+        }
         function initialize() {
-            if (initialized) {
+            if (initialized)
                 return;
-            }
             currentSurfaceGeneration = surface.hostSurfaceGeneration;
             currentKind = surface.ownerKind;
             currentEpoch = surface.ownerEpoch;
             currentRevision = surface.ownerRevision;
-            fromSurfaceGeneration = currentSurfaceGeneration;
-            fromKind = currentKind;
-            fromEpoch = currentEpoch;
-            fromRevision = currentRevision;
-            toSurfaceGeneration = currentSurfaceGeneration;
-            toKind = currentKind;
+            fromKind = toKind = currentKind;
             toEpoch = currentEpoch;
             toRevision = currentRevision;
+            toSurfaceGeneration = currentSurfaceGeneration;
+            displayedKeys = [key(currentKind)];
             incomingItem = surface.visualLayerForKind(currentKind);
             destinationReady = surface.visualLayerReady(currentKind);
             initialized = true;
+            markReady(currentKind);
         }
-
+        function revealedForCurrent() {
+            return initialized && !active && !preparing && destinationReady
+                    && currentSurfaceGeneration === surface.hostSurfaceGeneration && currentKind
+                    === surface.ownerKind && currentEpoch === surface.ownerEpoch && currentRevision
+                    === surface.ownerRevision && incomingItem !== null && incomingItem.sourceItem
+                    !== null;
+        }
         function queueIdentityReconciliation() {
-            if (identityReconcileQueued) {
+            if (identityReconcileQueued)
                 return;
-            }
             identityReconcileQueued = true;
             Qt.callLater(function () {
+                if (!contentTransition.identityReconcileQueued)
+                    return;
                 contentTransition.identityReconcileQueued = false;
                 contentTransition.handleIdentityChanged();
             });
         }
-
-        function valueFor(values, kind, fallback) {
-            const key = surface.visualKey(kind);
-            const value = values[key];
-            return typeof value === "number" ? value : fallback;
+        function sameTransientReplacement() {
+            const source = transientLoader.item;
+            return surface.isTransientKind(toKind) && source !== null && source.replacementActive
+                    === true;
         }
-
-        function uniqueVisualKeys(keys) {
-            const result = [];
-            for (let index = 0; index < keys.length; index += 1) {
-                const key = surface.visualKey(keys[index]);
-                if (key !== surface.coordinator.ownerNone && result.indexOf(key) < 0) {
-                    result.push(key);
-                }
-            }
-            return result;
-        }
-
-        function rawOpacityForKind(kind) {
-            const key = surface.visualKey(kind);
-            if (key === surface.coordinator.ownerNone) {
+        function geometryFraction() {
+            if (distance <= morphState.physicalPixel)
                 return 0;
-            }
-            const start = valueFor(startOpacities, key, 0);
-            const target = key === surface.visualKey(toKind) ? 1 : 0;
-            return start + (target - start) * morphState.progress;
+            const remaining = Math.max(Math.abs(morphState.currentWidth()
+                                                - momentumGeometry.widthTarget), Math.abs(
+                                           morphState.currentHeight()
+                                           - momentumGeometry.heightTarget));
+            return Math.max(0, Math.min(1, 1 - remaining / distance));
         }
-
-        function rawOpacityTotal() {
-            const keys = surface.visualKeys();
-            let total = 0;
-            for (let index = 0; index < keys.length; index += 1) {
-                total += rawOpacityForKind(keys[index]);
-            }
-            return total;
-        }
-
-        function opacityForKind(kind) {
-            const key = surface.visualKey(kind);
-            if (key === surface.coordinator.ownerNone) {
-                return 0;
-            }
-            if (!active) {
-                return key === surface.visualKey(currentKind) ? 1 : 0;
-            }
-            const total = rawOpacityTotal();
-            return total > 0.000001 ? rawOpacityForKind(key) / total : key === surface.visualKey(
-                                          toKind) ? 1 : 0;
-        }
-
-        function startOpacityForKind(kind) {
-            return valueFor(startOpacities, kind, opacityForKind(kind));
-        }
-
-        function offsetForKind(kind) {
-            const key = surface.visualKey(kind);
-            if (!active || key === surface.coordinator.ownerNone) {
-                return 0;
-            }
-            const start = valueFor(startOffsets, key, 0);
-            const target = valueFor(targetOffsets, key, 0);
-            return start + (target - start) * morphState.progress;
-        }
-
-        function startOffsetForKind(kind) {
-            return valueFor(startOffsets, kind, offsetForKind(kind));
-        }
-
-        function zForKind(kind) {
-            const key = surface.visualKey(kind);
-            if (!active) {
-                return key === surface.visualKey(currentKind) ? 1 : 0;
-            }
-            const retainedIndex = retainedZOrder.indexOf(key);
-            if (retainedIndex >= 0) {
-                return retainedZOrder.length - retainedIndex + 2;
-            }
-            return key === surface.visualKey(toKind) ? 1 : 0;
-        }
-
-        function visibleVisualKeys() {
-            const candidates = surface.visualKeys();
-            const visible = [];
-            for (let index = 0; index < candidates.length; index += 1) {
-                const key = candidates[index];
-                if (opacityForKind(key) > 0.0001 && surface.visualLayerForKind(key) !== null) {
-                    visible.push(key);
-                }
-            }
-            visible.sort(function (first, second) {
-                return contentTransition.zForKind(second) - contentTransition.zForKind(first);
-            });
-            return visible;
-        }
-
-        function primeRetention() {
-            retainedKeys = uniqueVisualKeys(visibleVisualKeys());
-        }
-
-        function retainsKind(kind) {
-            return retainedKeys.indexOf(surface.visualKey(kind)) >= 0;
-        }
-
-        function layerVisible(kind) {
-            const key = surface.visualKey(kind);
-            return surface.visualKey(surface.ownerKind) === key || retainsKind(key);
-        }
-
-        function outgoingOpacity() {
-            if (!active) {
-                return 0;
-            }
-            const destinationKey = surface.visualKey(toKind);
-            if (surface.visualKey(fromKind) === destinationKey) {
+        function fraction() {
+            if (!active)
                 return 1;
-            }
-            let opacity = 0;
-            for (let index = 0; index < retainedKeys.length; index += 1) {
-                if (retainedKeys[index] !== destinationKey) {
-                    opacity += opacityForKind(retainedKeys[index]);
-                }
-            }
-            return Math.min(1, opacity);
+            const source = transientLoader.item;
+            if (preparing || !handoffArmed)
+                return source !== null && source.replacementActive ? innerHoldProgress : 0;
+            if (source !== null && source.replacementActive && !surface.isTransientKind(toKind))
+                return innerHoldProgress;
+            if (fallbackActive)
+                return sameTransientReplacement() ? innerBase + (1 - innerBase) * fallbackProgress :
+                                                    fallbackProgress;
+            const u = geometryFraction();
+            return sameTransientReplacement() ? innerBase + (1 - innerBase) * u : u;
         }
-
+        function opacityForKind(kind) {
+            const visual = key(kind);
+            if (!initialized)
+                return visual === key(surface.ownerKind) ? 1 : 0;
+            if (!active)
+                return visual === key(currentKind) ? 1 : 0;
+            const u = handoffArmed && destinationReady && !preparing ? fallbackActive
+                                                                       ? fallbackProgress :
+                                                                         geometryFraction() : 0;
+            let sum = 0;
+            let value = 0;
+            for (let n = 0; n < displayedKeys.length; ++n) {
+                const k = displayedKeys[n];
+                const amount = (baseWeights[k] || 0) * (1 - u) + (k === key(toKind) ? u : 0);
+                sum += amount;
+                if (k === visual)
+                    value = amount;
+            }
+            return sum > 0.000001 ? value / sum : visual === key(toKind) ? 1 : 0;
+        }
+        function zForKind(kind) {
+            if (!active)
+                return key(kind) === key(currentKind) ? 1 : 0;
+            const index = displayedKeys.indexOf(key(kind));
+            return index < 0 ? 0 : displayedKeys.length - index + 1;
+        }
+        function retainsKind(kind) {
+            return displayedKeys.indexOf(key(kind)) >= 0;
+        }
+        function layerVisible(kind) {
+            if (key(kind) === surface.coordinator.ownerPolkitModal)
+                return surface.polkit && !sensitiveInvalidated;
+            return key(surface.ownerKind) === key(kind) || retainsKind(kind);
+        }
+        function outgoingOpacity() {
+            return active && fromKind !== toKind ? opacityForKind(fromKind) : 0;
+        }
         function incomingOpacity() {
             return active ? destinationReady ? opacityForKind(toKind) : 0 : incomingItem === null
                                                ? 0 : 1;
         }
-
         function totalOpacity() {
-            if (!active) {
-                return incomingItem === null ? 0 : 1;
-            }
-            const keys = uniqueVisualKeys(retainedKeys.concat([surface.visualKey(toKind)]));
-            let opacity = 0;
-            for (let index = 0; index < keys.length; index += 1) {
-                opacity += opacityForKind(keys[index]);
-            }
-            return Math.min(1, opacity);
+            let sum = 0;
+            for (let n = 0; n < displayedKeys.length; ++n)
+                sum += opacityForKind(displayedKeys[n]);
+            return Math.min(1, sum);
         }
-
         function retainedRendered() {
-            if (!active || retainedKeys.length === 0) {
+            if (!active || retainedKeys.length === 0)
                 return false;
-            }
-            for (let index = 0; index < retainedKeys.length; index += 1) {
-                const layer = surface.visualLayerForKind(retainedKeys[index]);
-                if (layer === null || layer.sourceItem === null || !layer.visible || opacityForKind(
-                            retainedKeys[index]) <= 0) {
+            for (let n = 0; n < retainedKeys.length; ++n) {
+                const k = retainedKeys[n];
+                const layer = surface.visualLayerForKind(k);
+                if (opacityForKind(k) > 0.0001 && (layer === null || layer.sourceItem === null ||
+                                                   !layer.visible))
                     return false;
-                }
             }
             return true;
         }
         function retainedWorkActive() {
-            const destinationKey = surface.visualKey(toKind);
-            for (let index = 0; index < retainedKeys.length; index += 1) {
-                if (retainedKeys[index] !== destinationKey && surface.presentationWorkActive(
-                            retainedKeys[index])) {
+            for (let n = 0; n < retainedKeys.length; ++n)
+                if (retainedKeys[n] !== key(surface.ownerKind) && surface.presentationWorkActive(
+                            retainedKeys[n]))
                     return true;
-                }
-            }
             return false;
         }
-
-        function matchedPairActive(firstKind, secondKind) {
-            if (!active || !destinationReady) {
-                return false;
-            }
-            const fromKey = surface.visualKey(fromKind);
-            const toKey = surface.visualKey(toKind);
-            const firstKey = surface.visualKey(firstKind);
-            const secondKey = surface.visualKey(secondKind);
-            return (fromKey === firstKey && toKey === secondKey) || (fromKey === secondKey && toKey
-                                                                     === firstKey);
+        function stampFor(kind) {
+            const layer = surface.visualLayerForKind(kind);
+            if (layer === null || layer.sourceItem === null)
+                return null;
+            const transient = surface.isTransientKind(kind);
+            return {
+                source: layer.sourceItem,
+                generation: surface.hostSurfaceGeneration,
+                width: layer.width,
+                height: layer.height,
+                naturalWidth: layer.naturalWidth,
+                naturalHeight: layer.naturalHeight,
+                layout: surface.layoutRevision,
+                kind: transient ? surface.surfaceState.ownerName : "",
+                epoch: transient ? surface.ownerEpoch : 0,
+                revision: transient ? surface.ownerRevision : 0,
+                token: transient ? surface.surfaceState.ownerSourceToken : null,
+                sourceGeneration: transient ? surface.surfaceState.ownerSourceGeneration : 0,
+                sourceRevision: transient ? surface.surfaceState.ownerSourceRevision : 0
+            };
         }
-
-        function finishPriorDestination() {
-            const item = surface.visualLayerForKind(currentKind);
-            const source = item === null ? null : item.sourceItem;
-            if (surface.isTransientKind(currentKind) && source !== null
-                    && typeof source.finishTransition === "function") {
-                source.finishTransition(currentSurfaceGeneration, currentEpoch, currentRevision);
-            }
+        function isReady(kind) {
+            const stamp = readyStamps[key(kind)];
+            const now = stampFor(kind);
+            return stamp !== undefined && now !== null && stamp.source === now.source
+                    && stamp.generation === now.generation && stamp.width === now.width
+                    && stamp.height === now.height && Math.abs(stamp.naturalWidth
+                                                               - now.naturalWidth)
+                    <= morphState.physicalPixel && Math.abs(stamp.naturalHeight
+                                                            - now.naturalHeight)
+                    <= morphState.physicalPixel && stamp.layout === now.layout && stamp.kind
+                    === now.kind && stamp.epoch === now.epoch && stamp.revision === now.revision
+                    && stamp.token === now.token && stamp.sourceGeneration === now.sourceGeneration
+                    && stamp.sourceRevision === now.sourceRevision;
         }
-
-        function captureBlend(destinationKind) {
-            const visible = uniqueVisualKeys(visibleVisualKeys());
-            const destinationKey = surface.visualKey(destinationKind);
-            const nextStartOpacities = {};
-            const nextStartOffsets = {};
-            const nextTargetOffsets = {};
-            const nextRetained = [];
-            const nextDirection = surface.transitionDirection(currentKind, destinationKind);
-            for (let index = 0; index < visible.length; index += 1) {
-                const key = visible[index];
-                nextStartOpacities[key] = opacityForKind(key);
-                nextStartOffsets[key] = offsetForKind(key);
-                nextTargetOffsets[key] = key === destinationKey ? 0 : -nextDirection
-                                                                  * Theme.spacing.xl;
-                if (key !== destinationKey && nextStartOpacities[key] > 0.0001) {
-                    nextRetained.push(key);
-                }
-            }
-            const priorKey = surface.visualKey(currentKind);
-            if (priorKey !== surface.coordinator.ownerNone && priorKey !== destinationKey
-                    && surface.visualLayerForKind(priorKey) !== null && nextRetained.indexOf(
-                        priorKey) < 0) {
-                nextStartOpacities[priorKey] = active ? Math.max(0.0001, opacityForKind(priorKey)) :
-                                                        1;
-                nextStartOffsets[priorKey] = offsetForKind(priorKey);
-                nextTargetOffsets[priorKey] = -nextDirection * Theme.spacing.xl;
-                nextRetained.push(priorKey);
-            }
-            if (typeof nextStartOpacities[destinationKey] !== "number") {
-                nextStartOpacities[destinationKey] = 0;
-                nextStartOffsets[destinationKey] = nextDirection * Theme.spacing.xl;
-                nextTargetOffsets[destinationKey] = 0;
-            }
-            startOpacities = nextStartOpacities;
-            startOffsets = nextStartOffsets;
-            targetOffsets = nextTargetOffsets;
-            retainedKeys = nextRetained;
-            retainedZOrder = nextRetained.slice();
-            direction = nextDirection;
+        function markReady(kind) {
+            const stamp = stampFor(kind);
+            if (stamp === null)
+                return;
+            const next = Object.assign({}, readyStamps);
+            next[key(kind)] = stamp;
+            readyStamps = next;
         }
-
-        function rebaseBlend() {
-            const visible = uniqueVisualKeys(visibleVisualKeys());
-            const destinationKey = surface.visualKey(toKind);
-            const nextStartOpacities = {};
-            const nextStartOffsets = {};
-            const nextTargetOffsets = {};
-            const nextRetained = [];
-            for (let index = 0; index < visible.length; index += 1) {
-                const key = visible[index];
-                nextStartOpacities[key] = opacityForKind(key);
-                nextStartOffsets[key] = offsetForKind(key);
-                nextTargetOffsets[key] = valueFor(targetOffsets, key, 0);
-                if (key !== destinationKey && nextStartOpacities[key] > 0.0001) {
-                    nextRetained.push(key);
-                }
-            }
-            for (let index = 0; index < retainedKeys.length; index += 1) {
-                const key = retainedKeys[index];
-                if (key !== destinationKey && nextRetained.indexOf(key) < 0) {
-                    nextRetained.push(key);
-                }
-            }
-            if (typeof nextStartOpacities[destinationKey] !== "number") {
-                nextStartOpacities[destinationKey] = opacityForKind(destinationKey);
-                nextStartOffsets[destinationKey] = offsetForKind(destinationKey);
-                nextTargetOffsets[destinationKey] = 0;
-            }
-            startOpacities = nextStartOpacities;
-            startOffsets = nextStartOffsets;
-            targetOffsets = nextTargetOffsets;
-            retainedKeys = nextRetained;
-            retainedZOrder = nextRetained.slice();
+        function forgetReady(kind) {
+            if (readyStamps[key(kind)] === undefined)
+                return;
+            const next = Object.assign({}, readyStamps);
+            delete next[key(kind)];
+            readyStamps = next;
         }
-
+        function captureBlend() {
+            const next = {};
+            for (let n = 0; n < displayedKeys.length; ++n)
+                next[displayedKeys[n]] = opacityForKind(displayedKeys[n]);
+            baseWeights = next;
+        }
+        function cancelPendingCommit() {
+            destinationFramePrime.stop();
+            destinationCommit.stop();
+            commitQueued = false;
+        }
         function request(generation, kind, epoch, revision) {
-            if (!initialized) {
+            if (!initialized)
                 initialize();
-            }
             if (generation === currentSurfaceGeneration && kind === currentKind && epoch
                     === currentEpoch) {
                 currentRevision = revision;
                 toRevision = revision;
-                morphState.handleIdentityChanged();
+                if (!active)
+                    surface.queuePresentationAcknowledgement();
                 return;
             }
-
-            const priorGeneration = currentSurfaceGeneration;
-            const priorKind = currentKind;
-            const priorEpoch = currentEpoch;
-            const priorRevision = currentRevision;
-            const priorItem = surface.visualLayerForKind(priorKind);
-            if (active) {
-                finishPriorDestination();
+            const oldDestination = toKind;
+            const transientView = transientLoader.item;
+            const priorInnerPair = transientView !== null && transientView.replacementActive;
+            innerHoldProgress = priorInnerPair ? transientView.boundedTransitionProgress : 0;
+            pendingInnerBase = priorInnerPair && transientView.displayedOutgoingKind
+                    === surface.surfaceState.ownerName && transientView.displayedOutgoingEpoch
+                    === epoch ? 1 - innerHoldProgress : 0;
+            // The captured outer transient key can still contain both inner
+            // layers. Do not clear its old payload merely because ownership
+            // changed: live sampling must not erase its remaining contribution.
+            if (currentKind === surface.coordinator.ownerPolkitModal && kind !== currentKind) {
+                displayedKeys = [];
+                retainedKeys = [];
+                baseWeights = ({});
+                readyStamps = ({});
             }
-
-            captureBlend(kind);
-            morphState.holdCurrentPose();
+            captureBlend();
             cancelPendingCommit();
             requestSerial += 1;
-            fromSurfaceGeneration = priorGeneration;
-            fromKind = priorKind;
-            fromEpoch = priorEpoch;
-            fromRevision = priorRevision;
-            toSurfaceGeneration = generation;
+            if (kind === surface.coordinator.ownerPolkitModal)
+                sensitiveInvalidated = false;
+            const destination = key(kind);
+            const kept = displayedKeys.filter(k => (baseWeights[k] || 0) > 0);
+            if (kept.indexOf(destination) < 0)
+                kept.push(destination);
+            // Only keys from the fixed registry are ever mounted. A physical
+            // overshoot may return after opacity hits zero, so keep every
+            // contributor with a nonzero captured base until the next request
+            // or final settlement, not until its instantaneous opacity is zero.
+            displayedKeys = kept;
+            retainedKeys = kept.filter(k => k !== destination && (baseWeights[k] || 0) > 0);
+            const stamps = {};
+            for (let n = 0; n < kept.length; ++n)
+                if (readyStamps[kept[n]] !== undefined)
+                    stamps[kept[n]] = readyStamps[kept[n]];
+            readyStamps = stamps;
+            fromKind = retainedKeys.indexOf(key(oldDestination)) >= 0 ? oldDestination :
+                                                                        retainedKeys.length > 0
+                                                                        ? retainedKeys[0] : kind;
             toKind = kind;
-            toEpoch = epoch;
-            toRevision = revision;
-            currentSurfaceGeneration = generation;
+            currentSurfaceGeneration = toSurfaceGeneration = generation;
             currentKind = kind;
-            currentEpoch = epoch;
-            currentRevision = revision;
-            outgoingItem = priorItem;
+            currentEpoch = toEpoch = epoch;
+            currentRevision = toRevision = revision;
+            outgoingItem = retainedKeys.length > 0 ? surface.visualLayerForKind(fromKind) : null;
             incomingItem = null;
             destinationReady = false;
-            preparing = true;
-            active = true;
+            preparing = active = true;
+            fallbackFade.stop();
+            fallbackActive = handoffArmed = false;
+            fallbackProgress = 0;
             tryCommitDestination();
         }
-
         function tryCommitDestination() {
-            if (!active || !preparing || commitQueued || !surface.visualLayerReady(toKind)) {
+            if (!active || !preparing || commitQueued || !surface.visualLayerReady(toKind))
                 return;
-            }
-
-            if (surface.reducedMotion) {
+            const layer = surface.visualLayerForKind(toKind);
+            if (layer === null || layer.sourceItem === null || layer.naturalWidth <= 0
+                    || layer.naturalHeight <= 0)
+                return;
+            if (surface.reducedMotion || isReady(toKind)) {
                 commitQueued = true;
                 commitDestination(requestSerial);
                 return;
             }
-
-            const layer = surface.visualLayerForKind(toKind);
-            if (layer === null || layer.sourceItem === null) {
-                return;
-            }
-
             commitQueued = true;
             layer.scheduleUpdate();
             destinationFramePrime.serial = requestSerial;
             destinationFramePrime.frameCount = 0;
             destinationFramePrime.restart();
         }
-
         function beginDestinationCommit(serial) {
-            if (!active || !preparing || serial !== requestSerial) {
+            if (!active || !preparing || serial !== requestSerial)
+                return;
+            const layer = surface.visualLayerForKind(toKind);
+            if (layer === null || layer.sourceItem === null) {
+                commitQueued = false;
                 return;
             }
             destinationCommit.serial = serial;
-            destinationCommit.expectedWidth = morphState.canonicalWidth;
-            destinationCommit.expectedHeight = morphState.canonicalHeight;
+            destinationCommit.expectedWidth = layer.naturalWidth;
+            destinationCommit.expectedHeight = layer.naturalHeight;
             destinationCommit.stabilityAttempts = 0;
             destinationCommit.stableTicks = 0;
             destinationCommit.restart();
         }
-
-        function cancelPendingCommit() {
-            destinationFramePrime.stop();
-            destinationCommit.stop();
-            commitQueued = false;
-        }
-
         function commitDestination(serial, expectedWidth, expectedHeight) {
-            if (!active || !preparing || serial !== requestSerial) {
+            if (!active || !preparing || serial !== requestSerial)
                 return;
-            }
             commitQueued = false;
             if (toSurfaceGeneration !== surface.hostSurfaceGeneration || toKind
                     !== surface.ownerKind || toEpoch !== surface.ownerEpoch ||
-                    !surface.visualLayerReady(toKind)) {
+                    !surface.visualLayerReady(toKind))
                 return;
-            }
+            const item = surface.visualLayerForKind(toKind);
+            if (item === null || item.sourceItem === null || item.naturalWidth <= 0 || item.naturalHeight
+                    <= 0)
+                return;
             if (!surface.reducedMotion && typeof expectedWidth === "number"
                     && destinationCommit.stabilityAttempts < 12) {
-                const targetChanged = morphState.targetsDiffer(expectedWidth, expectedHeight,
-                                                               morphState.canonicalWidth,
-                                                               morphState.canonicalHeight);
-                if (targetChanged || destinationCommit.stableTicks < 1) {
+                const changed = morphState.targetsDiffer(expectedWidth, expectedHeight,
+                                                         item.naturalWidth, item.naturalHeight);
+                if (changed || destinationCommit.stableTicks < 1) {
                     commitQueued = true;
-                    if (targetChanged) {
-                        destinationCommit.expectedWidth = morphState.canonicalWidth;
-                        destinationCommit.expectedHeight = morphState.canonicalHeight;
+                    if (changed) {
+                        destinationCommit.expectedWidth = item.naturalWidth;
+                        destinationCommit.expectedHeight = item.naturalHeight;
                         destinationCommit.stableTicks = 0;
-                    } else {
+                    } else
                         destinationCommit.stableTicks += 1;
-                    }
                     destinationCommit.stabilityAttempts += 1;
                     destinationCommit.restart();
                     return;
                 }
             }
-
-            toRevision = surface.ownerRevision;
-            currentRevision = surface.ownerRevision;
-            const item = surface.visualLayerForKind(toKind);
-            const source = item === null ? null : item.sourceItem;
-            incomingItem = item;
-            if (surface.isTransientKind(toKind) && source !== null
-                    && typeof source.prepareTransition === "function" && !source.prepareTransition(
-                        toSurfaceGeneration, toEpoch, toRevision)) {
-                incomingItem = null;
+            const source = item.sourceItem;
+            toRevision = currentRevision = surface.ownerRevision;
+            const reusable = isReady(toKind);
+            if (surface.isTransientKind(toKind) && typeof source.prepareTransition === "function"
+                    && !source.prepareTransition(toSurfaceGeneration, toEpoch, toRevision))
                 return;
-            }
-
+            innerBase = pendingInnerBase;
+            item.freezeViewport(!reusable);
+            preparedTargetWidth = surface.safeLogicalSize(item.width, surface.screen === null ? 0 :
+                                                                                                surface.screen.width,
+                                                          surface.largeContent
+                                                          ? UserConfig.snapshot.island.expandedWidthPercent :
+                                                            1, surface.windowGutterLeft
+                                                          + surface.windowGutterRight);
+            preparedTargetHeight = surface.safeLogicalSize(item.height, surface.screen === null ? 0 :
+                                                                                                  surface.screen.height,
+                                                           surface.largeContent
+                                                           ? UserConfig.snapshot.island.expandedHeightPercent :
+                                                             1, surface.windowGutterTop
+                                                           + surface.windowGutterBottom);
+            incomingItem = item;
             destinationReady = true;
             preparing = false;
-            surface.queuePresentationAcknowledgement();
-            surface.queueOwnerFocus();
+            surface.maybeReleaseNavigationPointer(false);
+            markReady(toKind);
             if (surface.reducedMotion) {
                 settleSynchronously();
-            } else {
-                morphState.beginPreparedSegment(morphState.currentWidth(), morphState.currentHeight(
-                                                    ), morphState.canonicalWidth,
-                                                morphState.canonicalHeight, true);
+                return;
             }
+            morphState.retarget();
         }
-
-        function finish(identity) {
-            if (!active || !destinationReady || identity === null || identity.surfaceGeneration !== toSurfaceGeneration
-                    || identity.ownerKind !== toKind || identity.ownerEpoch !== toEpoch
-                    || identity.ownerRevision !== toRevision || identity.sequence
-                    !== morphState.sequence || surface.hostSurfaceGeneration
-                    !== toSurfaceGeneration || surface.ownerKind !== toKind || surface.ownerEpoch
-                    !== toEpoch || surface.ownerRevision !== toRevision) {
-                return false;
+        function beginGeometryHandoff(nextWidth, nextHeight) {
+            const inner = sameTransientReplacement() ? fraction() : 0;
+            captureBlend();
+            fallbackFade.stop();
+            const startWidth = morphState.currentWidth();
+            const startHeight = morphState.currentHeight();
+            distance = Math.max(Math.abs(nextWidth - startWidth), Math.abs(nextHeight
+                                                                           - startHeight));
+            innerBase = inner;
+            fallbackProgress = 0;
+            fallbackActive = false;
+            handoffArmed = true;
+        }
+        function onGeometrySettled() {
+            if (!active || preparing)
+                return;
+            if (surface.reducedMotion) {
+                finish();
+                return;
             }
-
+            if (distance <= morphState.physicalPixel) {
+                startFallback();
+                return;
+            }
+            finish();
+        }
+        function startFallback() {
+            if (!active || preparing || fallbackActive)
+                return;
+            const remainder = sameTransientReplacement() ? 1 - fraction() : 1 - opacityForKind(
+                                                               toKind);
+            if (remainder <= 0.0001) {
+                fallbackActive = true;
+                fallbackProgress = 1;
+                onFallbackFinished();
+                return;
+            }
+            captureBlend();
+            fallbackProgress = 0;
+            fallbackActive = true;
+            fallbackFade.from = fallbackProgress;
+            fallbackFade.duration = Math.max(1, Math.round(Theme.motion.morphDurationFast
+                                                           * remainder));
+            fallbackFade.restart();
+        }
+        function onFallbackFinished() {
+            if (!active || !fallbackActive || momentumGeometry.running)
+                return;
+            fallbackProgress = 1;
+            finish();
+        }
+        function finish() {
+            if (!active || preparing || momentumGeometry.running || toKind !== surface.ownerKind
+                    || toEpoch !== surface.ownerEpoch || toRevision !== surface.ownerRevision
+                    || toSurfaceGeneration !== surface.hostSurfaceGeneration)
+                return;
+            fallbackFade.stop();
             const item = surface.visualLayerForKind(toKind);
             const source = item === null ? null : item.sourceItem;
             if (surface.isTransientKind(toKind) && source !== null
-                    && typeof source.finishTransition === "function") {
+                    && typeof source.finishTransition === "function")
                 source.finishTransition(toSurfaceGeneration, toEpoch, toRevision);
-            }
             active = false;
             preparing = false;
-            destinationReady = true;
-            commitQueued = false;
+            fallbackActive = false;
+            handoffArmed = false;
+            displayedKeys = [key(toKind)];
+            retainedKeys = [];
+            baseWeights = ({});
+            readyStamps = ({});
             outgoingItem = null;
             incomingItem = item;
-            retainedKeys = [];
-            retainedZOrder = [];
-            startOpacities = {};
-            startOffsets = {};
-            targetOffsets = {};
-            fromSurfaceGeneration = toSurfaceGeneration;
+            if (item !== null)
+                item.releaseViewport();
             fromKind = toKind;
-            fromEpoch = toEpoch;
-            fromRevision = toRevision;
-            direction = 0;
+            // Layout can change while a prepared face is revealed. Once its
+            // retained viewport is released, converge to the latest bounded
+            // natural size instead of leaving the prepared target in place.
+            const naturalWidth = morphState.canonicalWidth;
+            const naturalHeight = morphState.canonicalHeight;
+            if (morphState.targetsDiffer(momentumGeometry.widthTarget, momentumGeometry.heightTarget,
+                                         surface.protectedTargetWidth(naturalWidth, naturalHeight),
+                                         surface.protectedTargetHeight(naturalWidth,
+                                                                       naturalHeight)))
+                morphState.queueCanonicalReconcile();
             surface.queuePresentationAcknowledgement();
             surface.queueOwnerFocus();
-            return true;
         }
-
         function settleSynchronously() {
-            if (!active) {
+            if (!active)
                 return;
-            }
-            if (!destinationReady) {
-                cancelPendingCommit();
-                if (surface.visualLayerReady(toKind)) {
-                    commitQueued = true;
-                    commitDestination(requestSerial);
-                } else {
-                    tryCommitDestination();
-                }
-                return;
-            }
-            if (surface.reducedMotion) {
-                morphState.settleAt(morphState.canonicalWidth, morphState.canonicalHeight, false);
-                finish({
-                           "surfaceGeneration": toSurfaceGeneration,
-                           "ownerKind": toKind,
-                           "ownerEpoch": toEpoch,
-                           "ownerRevision": toRevision,
-                           "sequence": morphState.sequence
-                       });
-                return;
-            }
-            morphState.settleSynchronously();
-        }
-
-        function cancelStale() {
-            requestSerial += 1;
             cancelPendingCommit();
-            const item = surface.visualLayerForKind(currentKind);
-            const source = item === null ? null : item.sourceItem;
-            if (active && surface.isTransientKind(currentKind) && source !== null
-                    && typeof source.cancelStaleTransition === "function") {
-                source.cancelStaleTransition();
-            }
-            active = false;
-            preparing = false;
-            destinationReady = surface.visualLayerReady(currentKind);
-            outgoingItem = null;
-            incomingItem = item;
-            retainedKeys = [];
-            retainedZOrder = [];
-            startOpacities = {};
-            startOffsets = {};
-            targetOffsets = {};
-            fromSurfaceGeneration = currentSurfaceGeneration;
-            fromKind = currentKind;
-            fromEpoch = currentEpoch;
-            fromRevision = currentRevision;
+            fallbackFade.stop();
             toKind = currentKind;
             toEpoch = currentEpoch;
             toRevision = currentRevision;
-            direction = 0;
-        }
-
-        function handleIdentityChanged() {
-            if (!initialized) {
+            if (!surface.visualLayerReady(toKind)) {
+                preparing = true;
+                tryCommitDestination();
                 return;
             }
+            if (preparing) {
+                commitQueued = true;
+                commitDestination(requestSerial);
+            }
+            if (!destinationReady)
+                return;
+            morphState.settleAt(surface.protectedTargetWidth(preparedTargetWidth,
+                                                             preparedTargetHeight),
+                                surface.protectedTargetHeight(preparedTargetWidth,
+                                                              preparedTargetHeight));
+            finish();
+        }
+        function cancelStale() {
+            requestSerial += 1;
+            cancelPendingCommit();
+            fallbackFade.stop();
+            sensitiveFramePrime.stop();
+            readyStamps = ({});
+            active = preparing = false;
+            displayedKeys = [key(surface.ownerKind)];
+            handoffArmed = false;
+            retainedKeys = [];
+            currentKind = toKind = surface.ownerKind;
+            currentEpoch = toEpoch = surface.ownerEpoch;
+            currentRevision = toRevision = surface.ownerRevision;
+            currentSurfaceGeneration = toSurfaceGeneration = surface.hostSurfaceGeneration;
+            outgoingItem = null;
+            incomingItem = surface.visualLayerForKind(currentKind);
+            destinationReady = surface.visualLayerReady(currentKind);
+            sensitiveInvalidated = false;
+        }
+        function invalidateSensitive(force) {
+            if (!initialized || currentKind !== surface.coordinator.ownerPolkitModal || (force
+                                                                                         !== true
+                                                                                         && polkitPresentation.sourceItem
+                                                                                         === null))
+                return;
+            forgetReady(surface.coordinator.ownerPolkitModal);
+            sensitiveInvalidated = true;
+            sensitiveFramePrime.stop();
+            const serial = requestSerial;
+            const generation = surface.hostSurfaceGeneration;
+            const epoch = surface.ownerEpoch;
+            const revision = surface.ownerRevision;
+            if (surface.reducedMotion) {
+                sensitiveInvalidated = false;
+                if (surface.polkit && polkitPresentation.sourceItem !== null) {
+                    polkitPresentation.scheduleUpdate();
+                    markReady(surface.coordinator.ownerPolkitModal);
+                    surface.queuePresentationAcknowledgement();
+                    surface.queueOwnerFocus();
+                }
+                return;
+            }
+            Qt.callLater(function () {
+                if (serial !== contentTransition.requestSerial || generation
+                        !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch
+                        || revision !== surface.ownerRevision)
+                    return;
+                contentTransition.sensitiveInvalidated = false;
+                if (!surface.polkit || polkitPresentation.sourceItem === null)
+                    return;
+                polkitPresentation.scheduleUpdate();
+                if (surface.reducedMotion) {
+                    contentTransition.markReady(surface.coordinator.ownerPolkitModal);
+                    surface.queuePresentationAcknowledgement();
+                    surface.queueOwnerFocus();
+                    return;
+                }
+                if (!contentTransition.active) {
+                    sensitiveFramePrime.serial = serial;
+                    sensitiveFramePrime.generation = generation;
+                    sensitiveFramePrime.epoch = epoch;
+                    sensitiveFramePrime.revision = revision;
+                    sensitiveFramePrime.frameCount = 0;
+                    sensitiveFramePrime.waitingFrames = 0;
+                    sensitiveFramePrime.restart();
+                }
+            });
+        }
+        function handleIdentityChanged() {
+            if (!initialized)
+                return;
             if (surface.hostSurfaceGeneration !== currentSurfaceGeneration) {
                 cancelStale();
-                currentSurfaceGeneration = surface.hostSurfaceGeneration;
-                currentKind = surface.ownerKind;
-                currentEpoch = surface.ownerEpoch;
-                currentRevision = surface.ownerRevision;
-                fromSurfaceGeneration = currentSurfaceGeneration;
-                fromKind = currentKind;
-                fromEpoch = currentEpoch;
-                fromRevision = currentRevision;
-                toSurfaceGeneration = currentSurfaceGeneration;
-                toKind = currentKind;
-                toEpoch = currentEpoch;
-                toRevision = currentRevision;
-                incomingItem = surface.visualLayerForKind(currentKind);
-                destinationReady = surface.visualLayerReady(currentKind);
-                morphState.handleIdentityChanged();
-                return;
-            }
-            if (active && surface.ownerKind === toKind && surface.hostSurfaceGeneration
-                    === toSurfaceGeneration) {
-                currentEpoch = surface.ownerEpoch;
-                currentRevision = surface.ownerRevision;
-                toEpoch = surface.ownerEpoch;
-                toRevision = surface.ownerRevision;
-                morphState.handleIdentityChanged();
+                morphState.forceScreenBoundInterrupt();
                 return;
             }
             if (surface.ownerKind !== currentKind || surface.ownerEpoch !== currentEpoch) {
@@ -1319,16 +1346,26 @@ PanelWindow {
                         surface.ownerRevision);
                 return;
             }
-            currentRevision = surface.ownerRevision;
-            toRevision = surface.ownerRevision;
-            morphState.handleIdentityChanged();
+            if (surface.ownerRevision !== currentRevision) {
+                currentRevision = toRevision = surface.ownerRevision;
+                if (currentKind === surface.coordinator.ownerPolkitModal)
+                    invalidateSensitive(true);
+                else if (!active)
+                    surface.queuePresentationAcknowledgement();
+            }
+        }
+    }
+    GeometryMotion {
+        id: momentumGeometry
+        onSettled: contentTransition.onGeometrySettled()
+        onTargetWillChange: (nextWidth, nextHeight) => {
+            if (contentTransition.active && !contentTransition.preparing)
+                contentTransition.beginGeometryHandoff(nextWidth, nextHeight);
         }
     }
 
     QtObject {
         id: morphState
-
-        readonly property real tolerance: 1
         readonly property real canonicalWidth: surface.safeLogicalSize(surface.preferredWidth,
                                                                        surface.screen === null ? 0 :
                                                                                                  surface.screen.width,
@@ -1343,345 +1380,186 @@ PanelWindow {
                                                                         ? UserConfig.snapshot.island.expandedHeightPercent :
                                                                           1, surface.windowGutterTop
                                                                         + surface.windowGutterBottom)
-        readonly property string currentOwnerKey: surface.hostSurfaceGeneration + ":"
-                                                  + surface.surfaceState.ownerKind + ":"
-                                                  + surface.surfaceState.ownerEpoch + ":"
-                                                  + surface.surfaceState.revision
+        readonly property real physicalPixel: surface.contentItem === null ? 1 : 1 / Math.max(1,
+                                                                                              surface.contentItem.Screen.devicePixelRatio)
         readonly property size currentScreenBounds: Qt.size(surface.screen === null ? 0 :
                                                                                       surface.screen.width,
                                                             surface.screen === null ? 0 :
                                                                                       surface.screen.height)
-
+        readonly property real morphScale: Theme.motion.morphScale
         property bool initialized: false
-        property bool active: false
-        property real progress: 1
-        property real elevationFromFactor: 1
-        readonly property real elevationFactor: Math.max(0, Math.min(1, elevationFromFactor + (1
-                                                                                               - elevationFromFactor)
-                                                                     * progress - 0.18 * 4
-                                                                     * progress * (1 - progress)))
-        property int sequence: 0
-        property bool followUpPending: false
-        property bool expansionSegment: false
         property bool reconcileQueued: false
-        property real normalizedDistance: 0
-        property int segmentDuration: 0
-
-        property int segmentSurfaceGeneration: 0
-        property int segmentOwnerKind: surface.coordinator.ownerNone
-        property real segmentOwnerEpoch: 0
-        property real segmentOwnerRevision: 0
-        property var segmentScreen: null
-        property real segmentScreenWidth: 0
-        property real segmentScreenHeight: 0
-        property real fromWidth: 0
-        property real fromHeight: 0
-        property real toWidth: 0
-        property real toHeight: 0
-
-        function targetsDiffer(firstWidth, firstHeight, secondWidth, secondHeight) {
-            return Math.abs(firstWidth - secondWidth) > tolerance || Math.abs(firstHeight
-                                                                              - secondHeight)
-                    > tolerance;
-        }
 
         function currentWidth() {
-            return fromWidth + (toWidth - fromWidth) * progress;
+            return momentumGeometry.initialized ? momentumGeometry.renderedWidth : canonicalWidth;
         }
-
         function currentHeight() {
-            return fromHeight + (toHeight - fromHeight) * progress;
+            return momentumGeometry.initialized ? momentumGeometry.renderedHeight : canonicalHeight;
         }
-
-        function distanceFor(startWidth, startHeight, endWidth, endHeight) {
-            const widthDistance = Math.abs(endWidth - startWidth) / Math.max(1, startWidth,
-                                                                             endWidth);
-            const heightDistance = Math.abs(endHeight - startHeight) / Math.max(1, startHeight,
-                                                                                endHeight);
-            return Math.min(1, Math.max(0, widthDistance, heightDistance));
+        function maxWidth() {
+            return surface.screen === null || surface.screen.width <= 0 ? Math.max(1, currentWidth(),
+                                                                                   canonicalWidth) :
+                                                                          surface.visiblePanelBound(
+                                                                              surface.screen.width,
+                                                                              1, surface.windowGutterLeft
+                                                                              + surface.windowGutterRight);
         }
-
-        function durationFor(distance, expansion) {
-            if (Theme.motion.scale <= 0) {
-                return 0;
-            }
-            const minimum = expansion ? Theme.motion.durationExpansionMinimum :
-                                        Theme.motion.durationMorphMinimum;
-            const maximum = expansion ? Theme.motion.durationExpansionMaximum :
-                                        Theme.motion.durationMorphMaximum;
-            return Math.max(1, Math.round(minimum + (maximum - minimum) * distance));
+        function maxHeight() {
+            return surface.screen === null || surface.screen.height <= 0 ? Math.max(1, currentHeight(),
+                                                                                    canonicalHeight) :
+                                                                           surface.visiblePanelBound(
+                                                                               surface.screen.height,
+                                                                               1, surface.windowGutterTop
+                                                                               + surface.windowGutterBottom);
         }
-
-        function isIdleExpandedTransition() {
-            return (contentTransition.fromKind === surface.coordinator.ownerIdle
-                    && contentTransition.toKind === surface.coordinator.ownerExpanded) || (
-                        contentTransition.fromKind === surface.coordinator.ownerExpanded
-                        && contentTransition.toKind === surface.coordinator.ownerIdle);
+        function targetsDiffer(w1, h1, w2, h2) {
+            return Math.abs(w1 - w2) > physicalPixel || Math.abs(h1 - h2) > physicalPixel;
         }
-
-        function recordIdentity() {
-            segmentSurfaceGeneration = surface.hostSurfaceGeneration;
-            segmentOwnerKind = surface.surfaceState.ownerKind;
-            segmentOwnerEpoch = surface.surfaceState.ownerEpoch;
-            segmentOwnerRevision = surface.surfaceState.revision;
-            segmentScreen = surface.screen;
-            segmentScreenWidth = currentScreenBounds.width;
-            segmentScreenHeight = currentScreenBounds.height;
-        }
-
-        function identitySnapshot() {
-            return {
-                "ownerEpoch": segmentOwnerEpoch,
-                "ownerKind": segmentOwnerKind,
-                "ownerRevision": segmentOwnerRevision,
-                "screen": segmentScreen,
-                "screenHeight": segmentScreenHeight,
-                "screenWidth": segmentScreenWidth,
-                "sequence": sequence,
-                "surfaceGeneration": segmentSurfaceGeneration
-            };
-        }
-
-        function identityBaseMatches() {
-            return segmentSurfaceGeneration === surface.hostSurfaceGeneration && segmentOwnerKind
-                    === surface.surfaceState.ownerKind && segmentOwnerEpoch
-                    === surface.surfaceState.ownerEpoch && segmentScreen === surface.screen
-                    && segmentScreenWidth === currentScreenBounds.width && segmentScreenHeight
-                    === currentScreenBounds.height;
-        }
-
-        function identityMatches() {
-            return identityBaseMatches() && segmentOwnerRevision === surface.surfaceState.revision;
-        }
-
-        function settleAt(width, height, notifyCompletion) {
-            morphProgressAnimation.stop();
-            reconcileQueued = false;
-            fromWidth = width;
-            fromHeight = height;
-            toWidth = width;
-            toHeight = height;
-            progress = 1;
-            elevationFromFactor = 1;
-            followUpPending = false;
-            recordIdentity();
-            active = false;
-            if (notifyCompletion) {
-                contentTransition.finish(identitySnapshot());
-            }
-        }
-
-        function settleSynchronously() {
-            if (!initialized || contentTransition.preparing) {
-                return;
-            }
-            settleAt(canonicalWidth, canonicalHeight, true);
-        }
-
-        function holdCurrentPose() {
-            if (!initialized) {
-                return;
-            }
-            const width = currentWidth();
-            const height = currentHeight();
-            const elevation = elevationFactor;
-            morphProgressAnimation.stop();
-            reconcileQueued = false;
-            fromWidth = width;
-            fromHeight = height;
-            toWidth = width;
-            toHeight = height;
-            elevationFromFactor = elevation;
-            progress = 0;
-            normalizedDistance = 0;
-            segmentDuration = 0;
-            followUpPending = false;
-            active = false;
-        }
-
         function initialize() {
-            if (initialized) {
+            if (initialized)
                 return;
-            }
-            const width = canonicalWidth;
-            const height = canonicalHeight;
-            fromWidth = width;
-            fromHeight = height;
-            toWidth = width;
-            toHeight = height;
-            progress = 1;
-            elevationFromFactor = 1;
-            normalizedDistance = 0;
-            segmentDuration = 0;
-            followUpPending = false;
-            recordIdentity();
+            momentumGeometry.initialize(canonicalWidth, canonicalHeight, maxWidth(), maxHeight(),
+                                        physicalPixel);
+            momentumGeometry.setMotionScale(morphScale);
             initialized = true;
         }
-
-        function beginPreparedSegment(startWidth, startHeight, endWidth, endHeight, forceVisual) {
-            const visualChange = forceVisual === true;
-            const geometryChange = targetsDiffer(startWidth, startHeight, endWidth, endHeight);
-            normalizedDistance = distanceFor(startWidth, startHeight, endWidth, endHeight);
-            expansionSegment = isIdleExpandedTransition();
-            segmentDuration = durationFor(normalizedDistance, expansionSegment);
-            if (!visualChange && !geometryChange) {
-                settleAt(endWidth, endHeight, true);
+        function retarget() {
+            if (!initialized || contentTransition.preparing)
                 return;
+            momentumGeometry.setBounds(maxWidth(), maxHeight(), physicalPixel);
+            const naturalWidth = contentTransition.active ? contentTransition.preparedTargetWidth :
+                                                            canonicalWidth;
+            const naturalHeight = contentTransition.active ? contentTransition.preparedTargetHeight :
+                                                             canonicalHeight;
+            const width = surface.protectedTargetWidth(naturalWidth, naturalHeight);
+            const height = surface.protectedTargetHeight(naturalWidth, naturalHeight);
+            const different = targetsDiffer(momentumGeometry.widthTarget,
+                                            momentumGeometry.heightTarget, width, height);
+            momentumGeometry.requestTarget(width, height);
+            if (!different && contentTransition.active) {
+                contentTransition.beginGeometryHandoff(width, height);
+                if (!momentumGeometry.running)
+                    contentTransition.onGeometrySettled();
             }
-
-            if (active && contentTransition.active) {
-                contentTransition.rebaseBlend();
-            }
-            const elevation = elevationFactor;
-            morphProgressAnimation.stop();
-            reconcileQueued = false;
-            fromWidth = startWidth;
-            fromHeight = startHeight;
-            toWidth = endWidth;
-            toHeight = endHeight;
-            elevationFromFactor = elevation;
-            progress = 0;
-            followUpPending = false;
-            sequence += 1;
-            recordIdentity();
-            if (surface.reducedMotion || segmentDuration <= 0) {
-                settleAt(endWidth, endHeight, true);
-                return;
-            }
-            active = true;
-            morphProgressAnimation.runSequence = sequence;
-            morphProgressAnimation.restart();
         }
-
-        function interruptSemantic(force) {
-            if (!initialized || (!force && identityMatches())) {
+        function settleAt(width, height) {
+            if (!initialized)
                 return;
-            }
-
-            const startWidth = currentWidth();
-            const startHeight = currentHeight();
-            reconcileQueued = false;
-            beginPreparedSegment(startWidth, startHeight, canonicalWidth, canonicalHeight, false);
+            momentumGeometry.setBounds(maxWidth(), maxHeight(), physicalPixel);
+            momentumGeometry.snap(width, height);
         }
-
-        function handleIdentityChanged() {
-            if (!initialized || identityMatches()) {
-                return;
-            }
-            if (surface.reducedMotion) {
-                settleSynchronously();
-                return;
-            }
-            if (active && !identityBaseMatches()) {
-                interruptSemantic(false);
-                return;
-            }
-            queueCanonicalReconcile();
+        function settleSynchronously() {
+            settleAt(surface.protectedTargetWidth(canonicalWidth, canonicalHeight),
+                     surface.protectedTargetHeight(canonicalWidth, canonicalHeight));
+            contentTransition.settleSynchronously();
         }
-
         function forceScreenBoundInterrupt() {
-            contentTransition.cancelStale();
-            interruptSemantic(true);
+            if (!initialized)
+                return;
+            if (surface.screen === null || surface.screen.width <= 0 || surface.screen.height <= 0)
+                surface.clearNavigationPointer(false);
+            surface.layoutRevision += 1;
+            contentTransition.cancelPendingCommit();
+            momentumGeometry.setBounds(maxWidth(), maxHeight(), physicalPixel);
+            if (surface.reducedMotion)
+                contentTransition.settleSynchronously();
+            else if (contentTransition.active && contentTransition.preparing)
+                contentTransition.tryCommitDestination();
+            else if (contentTransition.active) {
+                const item = surface.visualLayerForKind(contentTransition.toKind);
+                if (item !== null && item.sourceItem !== null) {
+                    item.releaseViewport();
+                    item.freezeViewport(true);
+                    contentTransition.preparedTargetWidth = surface.safeLogicalSize(item.width,
+                                                                                    surface.screen
+                                                                                    === null ? 0 :
+                                                                                               surface.screen.width,
+                                                                                    surface.largeContent
+                                                                                    ? UserConfig.snapshot.island.expandedWidthPercent :
+                                                                                      1, surface.windowGutterLeft
+                                                                                    + surface.windowGutterRight);
+                    contentTransition.preparedTargetHeight = surface.safeLogicalSize(item.height,
+                                                                                     surface.screen
+                                                                                     === null ? 0 :
+                                                                                                surface.screen.height,
+                                                                                     surface.largeContent
+                                                                                     ? UserConfig.snapshot.island.expandedHeightPercent :
+                                                                                       1, surface.windowGutterTop
+                                                                                     + surface.windowGutterBottom);
+                    retarget();
+                }
+            }
         }
-
-        function reconcileCanonicalTarget() {
-            if (!initialized || contentTransition.preparing) {
-                return;
-            }
-            if (surface.reducedMotion) {
-                settleSynchronously();
-                return;
-            }
-            if (!identityMatches()) {
-                interruptSemantic(false);
-                return;
-            }
-            if (active) {
-                followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
-                return;
-            }
-
-            beginPreparedSegment(currentWidth(), currentHeight(), canonicalWidth, canonicalHeight,
-                                 false);
-        }
-
         function queueCanonicalReconcile() {
-            if (reconcileQueued) {
+            if (reconcileQueued)
                 return;
-            }
             reconcileQueued = true;
             Qt.callLater(function () {
-                if (!morphState.reconcileQueued) {
+                if (!morphState.reconcileQueued)
                     return;
-                }
                 morphState.reconcileQueued = false;
-                morphState.reconcileCanonicalTarget();
+                if (surface.reducedMotion)
+                    settleAt(surface.protectedTargetWidth(canonicalWidth, canonicalHeight),
+                             surface.protectedTargetHeight(canonicalWidth, canonicalHeight));
+                else if (!contentTransition.preparing && !contentTransition.active)
+                    retarget();
             });
         }
-
-        function handleCanonicalTargetChanged() {
-            if (!initialized || contentTransition.preparing) {
-                return;
-            }
-            if (surface.reducedMotion) {
-                settleSynchronously();
-                return;
-            }
-            if (!identityMatches()) {
-                contentTransition.queueIdentityReconciliation();
-                return;
-            }
-            if (active) {
-                followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
-                return;
-            }
-            queueCanonicalReconcile();
+        onCanonicalWidthChanged: {
+            if (initialized && !contentTransition.preparing && !contentTransition.active)
+                queueCanonicalReconcile();
         }
-
-        function finishSegment(expectedSequence) {
-            if (!active || expectedSequence !== sequence) {
-                return;
-            }
-
-            progress = 1;
-            if (surface.reducedMotion) {
-                settleSynchronously();
-                return;
-            }
-            if (!identityMatches()) {
-                if (identityBaseMatches()) {
-                    queueCanonicalReconcile();
-                } else {
-                    beginPreparedSegment(toWidth, toHeight, canonicalWidth, canonicalHeight, false);
-                }
-                return;
-            }
-
-            followUpPending = targetsDiffer(toWidth, toHeight, canonicalWidth, canonicalHeight);
-            if (followUpPending) {
-                const startWidth = currentWidth();
-                const startHeight = currentHeight();
-                beginPreparedSegment(startWidth, startHeight, canonicalWidth, canonicalHeight,
-                                     false);
-                return;
-            }
-
-            toWidth = canonicalWidth;
-            toHeight = canonicalHeight;
-            followUpPending = false;
-            recordIdentity();
-            active = false;
-            contentTransition.finish(identitySnapshot());
+        onCanonicalHeightChanged: {
+            if (initialized && !contentTransition.preparing && !contentTransition.active)
+                queueCanonicalReconcile();
         }
-
-        onCanonicalWidthChanged: handleCanonicalTargetChanged()
-        onCanonicalHeightChanged: handleCanonicalTargetChanged()
-        onCurrentOwnerKeyChanged: contentTransition.handleIdentityChanged()
         onCurrentScreenBoundsChanged: forceScreenBoundInterrupt()
+        onMorphScaleChanged: {
+            momentumGeometry.setMotionScale(morphScale);
+            if (initialized && morphScale <= 0)
+                settleSynchronously();
+        }
+        onPhysicalPixelChanged: {
+            if (initialized)
+                momentumGeometry.setBounds(maxWidth(), maxHeight(), physicalPixel);
+        }
     }
 
     function interruptMorphForScreenBounds() {
         morphState.forceScreenBoundInterrupt();
+    }
+
+    FrameAnimation {
+        id: sensitiveFramePrime
+        running: false
+        property int serial: -1
+        property int generation: 0
+        property real epoch: 0
+        property real revision: 0
+        property int frameCount: 0
+        property int waitingFrames: 0
+        onTriggered: {
+            if (serial !== contentTransition.requestSerial || !surface.polkit || generation
+                    !== surface.hostSurfaceGeneration || epoch !== surface.ownerEpoch || revision
+                    !== surface.ownerRevision) {
+                stop();
+                return;
+            }
+            if (polkitPresentation.sourceItem === null) {
+                frameCount = 0;
+                waitingFrames += 1;
+                if (waitingFrames >= 12)
+                    stop();
+                return;
+            }
+            frameCount += 1;
+            if (frameCount < 2)
+                return;
+            stop();
+            contentTransition.markReady(surface.coordinator.ownerPolkitModal);
+            surface.queuePresentationAcknowledgement();
+            surface.queueOwnerFocus();
+        }
     }
 
     FrameAnimation {
@@ -1730,28 +1608,37 @@ PanelWindow {
     }
 
     NumberAnimation {
-        id: morphProgressAnimation
-
-        property int runSequence: 0
-
-        target: morphState
-        property: "progress"
+        id: fallbackFade
+        target: contentTransition
+        property: "fallbackProgress"
         from: 0
         to: 1
-        duration: surface.geometryAnimationDuration
-        easing.type: Theme.motion.easingMorph
-        onFinished: morphState.finishSegment(runSequence)
+        easing.type: Easing.Linear
+        onFinished: contentTransition.onFallbackFinished()
     }
 
-    onScreenChanged: morphState.forceScreenBoundInterrupt()
+    onScreenChanged: {
+        clearNavigationPointer(false);
+        morphState.forceScreenBoundInterrupt();
+    }
     onBackingWindowChanged: {
         shellWindowWasActive = false;
+        if (backingWindow === null)
+            clearNavigationPointer(false);
         if (backingWindow !== null) {
             handleWindowActivation(backingWindow.active);
         }
     }
     onReducedMotionChanged: {
         if (reducedMotion) {
+            sensitiveFramePrime.stop();
+            if (contentTransition.sensitiveInvalidated)
+                contentTransition.invalidateSensitive(true);
+            else if (polkit && polkitPresentation.sourceItem !== null) {
+                contentTransition.markReady(coordinator.ownerPolkitModal);
+                queuePresentationAcknowledgement();
+                queueOwnerFocus();
+            }
             contentTransition.settleSynchronously();
             if (!contentTransition.active) {
                 morphState.settleSynchronously();
@@ -1769,17 +1656,26 @@ PanelWindow {
         }
     }
     onOwnerKindChanged: {
+        if (navigationPointerProtected && (ownerKind !== navigationPointerKind && (ownerKind
+                                                                                   !== coordinator.ownerExpanded
+                                                                                   || navigationPointerEpoch
+                                                                                   > 0)))
+            clearNavigationPointer(false);
         focusHandoffPending = focusTarget !== coordinator.focusNone;
         contentTransition.queueIdentityReconciliation();
     }
     onHostSurfaceGenerationChanged: {
+        clearNavigationPointer(false);
         contentTransition.handleIdentityChanged();
         queuePresentationAcknowledgement();
         if (hoverInputEnabled && hostSurfaceGeneration > 0 && hoverHandler.hovered) {
             reportHover(true);
         }
     }
-    onHostSurfaceTokenChanged: refreshSurfaceState()
+    onHostSurfaceTokenChanged: {
+        clearNavigationPointer(false);
+        refreshSurfaceState();
+    }
 
     Connections {
         target: surface.backingWindow
@@ -1799,8 +1695,17 @@ PanelWindow {
     }
 
     onFocusTargetChanged: focusHandoffPending = focusTarget !== coordinator.focusNone
-    onFocusRequestSerialChanged: queueOwnerFocus()
+    onFocusRequestSerialChanged: {
+        // The coordinator can publish a newer focus serial in an unrelated
+        // snapshot. Keep the window's keyboard claim until that exact serial
+        // reaches the already mounted destination.
+        focusHandoffPending = focusTarget !== coordinator.focusNone;
+        queueOwnerFocus();
+    }
     onOwnerEpochChanged: {
+        if (navigationPointerProtected && navigationPointerEpoch > 0 && ownerEpoch
+                !== navigationPointerEpoch)
+            clearNavigationPointer(false);
         focusedOwnerEpoch = 0;
         focusHandoffPending = focusTarget !== coordinator.focusNone;
         contentTransition.queueIdentityReconciliation();
@@ -1812,6 +1717,25 @@ PanelWindow {
         contentTransition.queueIdentityReconciliation();
         if (!transientOwner) {
             queuePresentationAcknowledgement();
+        }
+    }
+
+    Connections {
+        target: surface.polkitController
+        ignoreUnknownSignals: true
+        function onFlowGenerationChanged() {
+            contentTransition.invalidateSensitive();
+        }
+        function onPromptGenerationChanged() {
+            contentTransition.invalidateSensitive();
+        }
+        function onResponseRequiredChanged() {
+            if (!surface.polkitController.responseRequired)
+                contentTransition.invalidateSensitive();
+        }
+        function onTerminalChanged() {
+            if (surface.polkitController.terminal)
+                contentTransition.invalidateSensitive();
         }
     }
 
@@ -1854,6 +1778,17 @@ PanelWindow {
     }
 
     // Leave screen unassigned at creation so Qt selects the startup primary/default output.
+    // The host owns one output-bounded envelope; only its masked child morphs.
+    readonly property real envelopePanelWidth: screen === null || screen.width <= 0
+                                               ? renderedPanelWidth : visiblePanelBound(screen.width,
+                                                                                        1, windowGutterLeft
+                                                                                        + windowGutterRight)
+    readonly property real envelopePanelHeight: screen === null || screen.height <= 0
+                                                ? renderedPanelHeight : visiblePanelBound(
+                                                      screen.height, 1, windowGutterTop
+                                                      + windowGutterBottom)
+    readonly property real panelOriginX: windowGutterLeft + (envelopePanelWidth
+                                                             - renderedPanelWidth) / 2
     // The window buffer includes fixed visual-only shadow gutters; visible panel
     // geometry remains the canonical morph coordinate space.
     anchors.top: true
@@ -1888,18 +1823,18 @@ PanelWindow {
                                                                                                || (polkit
                                                                                                    && focusTarget
                                                                                                    === coordinator.focusPolkitModal)))
-    implicitHeight: windowGutterTop + renderedPanelHeight + windowGutterBottom
-    implicitWidth: windowGutterLeft + renderedPanelWidth + windowGutterRight
+    implicitHeight: windowGutterTop + envelopePanelHeight + windowGutterBottom
+    implicitWidth: windowGutterLeft + envelopePanelWidth + windowGutterRight
 
     margins.top: edgeInset - windowGutterTop
     margins.left: screen === null ? edgeInset - windowGutterLeft : Math.round((screen.width
-                                                                               - renderedPanelWidth)
+                                                                               - envelopePanelWidth)
                                                                               / 2) - windowGutterLeft
 
     Rectangle {
         id: shadowOutline
 
-        x: surface.windowGutterLeft
+        x: surface.panelOriginX
         y: surface.windowGutterTop
         width: surface.renderedPanelWidth
         height: surface.renderedPanelHeight
@@ -1945,7 +1880,7 @@ PanelWindow {
         id: surfaceBackground
 
         objectName: "surfaceBackground"
-        x: surface.windowGutterLeft
+        x: surface.panelOriginX
         y: surface.windowGutterTop
         width: surface.renderedPanelWidth
         height: surface.renderedPanelHeight
@@ -1960,97 +1895,89 @@ PanelWindow {
 
     component RetainedPresentation: ShaderEffectSource {
         id: retainedPresentation
-
         required property var transition
         required property int layerKind
         required property bool workActive
         property Item presentationSource: null
-        property bool sourceAvailable: presentationSource !== null
-        property real liveX: 0
-        property real liveY: 0
-        property real liveWidth: presentationSource === null ? 0 : presentationSource.width
-        property real liveHeight: presentationSource === null ? 0 : presentationSource.height
-        property bool matchEnabled: false
-        property int peerLayerKind: -1
-        property var peerPresentation: null
-        property real progress: 1
-        property real capturedX: 0
-        property real capturedY: 0
-        property real capturedWidth: 0
-        property real capturedHeight: 0
+        property real naturalWidth: presentationSource === null ? 0 : presentationSource.width
+        property real naturalHeight: presentationSource === null ? 0 : presentationSource.height
+        property real viewportWidth: 0
+        property real viewportHeight: 0
+        property bool viewportHeld: false
+        readonly property bool fixedViewport: viewportHeld && transition.displayedKeys.indexOf(
+                                                  layerKind) >= 0 && viewportWidth > 0
+                                              && viewportHeight > 0
+        sourceRect: Qt.rect(0, 0, fixedViewport ? viewportWidth : naturalWidth, fixedViewport
+                            ? viewportHeight : naturalHeight)
         property bool releasingTexture: false
-
-        readonly property var pairedPeer: peerPresentation === null ? retainedPresentation :
-                                                                      peerPresentation
-        readonly property bool matchedActive: matchEnabled && peerPresentation !== null
-                                              && sourceItem !== null && peerPresentation.sourceItem
-                                              !== null && transition.matchedPairActive(layerKind,
-                                                                                       peerLayerKind)
-        readonly property bool destinationIsThis: transition.toKind === layerKind
-        readonly property real ownX: workActive ? liveX : capturedX
-        readonly property real ownY: workActive ? liveY : capturedY
-        readonly property real ownWidth: workActive ? liveWidth : capturedWidth
-        readonly property real ownHeight: workActive ? liveHeight : capturedHeight
-        readonly property real pairedStartX: destinationIsThis ? pairedPeer.capturedX : capturedX
-        readonly property real pairedStartY: destinationIsThis ? pairedPeer.capturedY : capturedY
-        readonly property real pairedStartWidth: destinationIsThis ? pairedPeer.capturedWidth :
-                                                                     capturedWidth
-        readonly property real pairedStartHeight: destinationIsThis ? pairedPeer.capturedHeight :
-                                                                      capturedHeight
-        readonly property real pairedEndX: destinationIsThis ? liveX : pairedPeer.liveX
-        readonly property real pairedEndY: destinationIsThis ? liveY : pairedPeer.liveY
-        readonly property real pairedEndWidth: destinationIsThis ? liveWidth : pairedPeer.liveWidth
-        readonly property real pairedEndHeight: destinationIsThis ? liveHeight :
-                                                                    pairedPeer.liveHeight
-
-        sourceItem: transition.layerVisible(layerKind) && sourceAvailable ? presentationSource :
-                                                                            null
+        readonly property bool held: transition.layerVisible(layerKind)
+        sourceItem: held && presentationSource !== null ? presentationSource : null
         live: sourceItem === null ? releasingTexture : workActive
         hideSource: sourceItem !== null
         recursive: false
         mipmap: false
-        visible: transition.layerVisible(layerKind) && sourceItem !== null
+        visible: held && sourceItem !== null
         enabled: false
         Accessible.ignored: true
+        opacity: transition.opacityForKind(layerKind)
+        z: transition.zForKind(layerKind)
+        // Both faces stay at their own fixed screen-capped natural viewport.
+        // The current panel is merely their clipping aperture; no face scales
+        // or tracks the panel's height during the morph.
+        x: (surface.renderedPanelWidth - width) / 2
+        y: 0
+        width: sourceItem === null ? 0 : fixedViewport ? viewportWidth : naturalWidth
+        height: sourceItem === null ? 0 : fixedViewport ? viewportHeight : naturalHeight
         onSourceItemChanged: {
             if (sourceItem === null) {
+                transition.forgetReady(layerKind);
+                viewportWidth = 0;
+                viewportHeight = 0;
+                viewportHeld = false;
                 releasingTexture = true;
                 releaseTextureTimer.restart();
             } else {
                 releasingTexture = false;
                 releaseTextureTimer.stop();
+                if (transition.initialized && !transition.active && layerKind
+                        === transition.currentKind) {
+                    if (layerKind !== surface.coordinator.ownerPolkitModal)
+                        transition.markReady(layerKind);
+                    else if (surface.reducedMotion) {
+                        scheduleUpdate();
+                        transition.markReady(layerKind);
+                        surface.queuePresentationAcknowledgement();
+                        surface.queueOwnerFocus();
+                    } else if (sensitiveFramePrime.serial === transition.requestSerial
+                               && sensitiveFramePrime.revision === surface.ownerRevision &&
+                               !sensitiveFramePrime.running) {
+                        sensitiveFramePrime.frameCount = 0;
+                        sensitiveFramePrime.waitingFrames = 0;
+                        sensitiveFramePrime.restart();
+                    }
+                }
                 transition.tryCommitDestination();
             }
         }
-        opacity: transition.opacityForKind(layerKind)
-        z: transition.zForKind(layerKind)
-        x: matchedActive ? pairedStartX + (pairedEndX - pairedStartX) * progress : ownX
-        y: matchedActive ? pairedStartY + (pairedEndY - pairedStartY) * progress : ownY
-        width: sourceItem === null ? 0 : matchedActive ? pairedStartWidth + (pairedEndWidth
-                                                                             - pairedStartWidth)
-                                                         * progress : ownWidth
-        height: sourceItem === null ? 0 : matchedActive ? pairedStartHeight + (pairedEndHeight
-                                                                               - pairedStartHeight)
-                                                          * progress : ownHeight
-        transform: Translate {
-            x: retainedPresentation.matchedActive ? 0 :
-                                                    retainedPresentation.transition.offsetForKind(
-                                                        retainedPresentation.layerKind)
-        }
-
+        onNaturalWidthChanged: transition.tryCommitDestination()
+        onNaturalHeightChanged: transition.tryCommitDestination()
         Timer {
             id: releaseTextureTimer
-
             interval: 0
             repeat: false
             onTriggered: retainedPresentation.releasingTexture = false
         }
-
-        function capturePose() {
-            capturedX = x;
-            capturedY = y;
-            capturedWidth = width;
-            capturedHeight = height;
+        function freezeViewport(rebase) {
+            if (naturalWidth <= 0 || naturalHeight <= 0)
+                return;
+            if (rebase === true || viewportWidth <= 0 || viewportHeight <= 0) {
+                viewportWidth = naturalWidth;
+                viewportHeight = naturalHeight;
+            }
+            viewportHeld = true;
+        }
+        function releaseViewport() {
+            viewportHeld = false;
         }
     }
 
@@ -2064,21 +1991,20 @@ PanelWindow {
         active: ((surface.transientOwner && surface.transientPresentation !== null)
                  || contentTransition.retainsKind(surface.coordinator.ownerWorkspace))
         visible: active
-        enabled: surface.transientOwner
+        enabled: surface.transientOwner && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
             TransientView {
-                active: surface.transientOwner
+                active: surface.transientOwner || contentTransition.retainsKind(
+                            surface.coordinator.ownerWorkspace)
                 kind: surface.transientOwner ? surface.surfaceState.ownerName : ""
                 ownerEpoch: surface.ownerEpoch
                 ownerRevision: surface.ownerRevision
                 presentation: surface.transientPresentation ?? ({})
                 surfaceGeneration: surface.hostSurfaceGeneration
-                transitionManaged: contentTransition.active && (surface.isTransientKind(
-                                                                    contentTransition.fromKind)
-                                                                || surface.isTransientKind(
-                                                                    contentTransition.toKind))
+                transitionManaged: contentTransition.active && contentTransition.retainsKind(
+                                       surface.coordinator.ownerWorkspace)
                 transitionProgress: surface.morphProgress
                 onVisiblyCommitted: (generation, epoch, contentRevision)
                                     => surface.acknowledgePresentation(generation, epoch,
@@ -2096,9 +2022,6 @@ PanelWindow {
         layerKind: surface.coordinator.ownerWorkspace
         workActive: surface.transientOwner
         presentationSource: transientLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     IdleIsland {
@@ -2110,10 +2033,10 @@ PanelWindow {
         height: implicitHeight
         visible: contentTransition.layerVisible(surface.coordinator.ownerIdle)
         enabled: surface.ownerKind === surface.coordinator.ownerIdle
+                 && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
-        workActive: enabled
-        externalClockPresentation: true
-        externalMediaPresentation: true
+        workActive: surface.ownerKind === surface.coordinator.ownerIdle
+        retainPresentation: contentTransition.retainsKind(surface.coordinator.ownerIdle)
         virtualDesktops: surface.workspaceProjection
         clock: surface.clock
         gamingPerformance: surface.gamingPerformance
@@ -2134,11 +2057,6 @@ PanelWindow {
         layerKind: surface.coordinator.ownerIdle
         workActive: idleContent.workActive
         presentationSource: idleContent
-        liveX: idleContent.x
-        liveY: idleContent.y
-        liveWidth: idleContent.width
-        liveHeight: idleContent.height
-        progress: surface.morphProgress
     }
 
     ExpandedDashboard {
@@ -2150,14 +2068,12 @@ PanelWindow {
         width: boundedWidth
         height: boundedHeight
         visible: contentTransition.layerVisible(surface.coordinator.ownerExpanded)
-        enabled: surface.expanded
+        enabled: surface.expanded && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
         active: surface.expanded
         gamingPerformance: surface.gamingPerformance
         gamingIndicatorEnabled: UserConfig.snapshot.island.gamingIndicator
-        retainMatchedPresentation: contentTransition.retainsKind(surface.coordinator.ownerExpanded)
-        externalClockPresentation: true
-        externalMediaPresentation: true
+        retainPresentation: contentTransition.retainsKind(surface.coordinator.ownerExpanded)
         maximumViewportWidth: surface.stablePanelMaximumWidth
         maximumViewportHeight: surface.stablePanelMaximumHeight
         mediaContent: surface.dashboardMediaContent
@@ -2168,6 +2084,7 @@ PanelWindow {
         notificationsContent: surface.dashboardNotificationsContent
         navigationContent: surface.dashboardNavigationContent
         onReadyChanged: contentTransition.tryCommitDestination()
+        onLoadedRegionCountChanged: surface.layoutRevision += 1
         onCloseRequested: surface.cancelDashboard()
     }
 
@@ -2179,132 +2096,19 @@ PanelWindow {
         layerKind: surface.coordinator.ownerExpanded
         workActive: expandedContent.active
         presentationSource: expandedContent
-        liveX: expandedContent.x
-        liveY: expandedContent.y
-        liveWidth: expandedContent.width
-        liveHeight: expandedContent.height
-        progress: surface.morphProgress
-    }
-
-    RetainedPresentation {
-        id: idleClockPresentation
-        parent: surfaceBackground
-        transition: contentTransition
-        layerKind: surface.coordinator.ownerIdle
-        workActive: idleContent.workActive
-        presentationSource: idleContent.clockPresentationItem
-        sourceAvailable: idleContent.clockPresentationItem !== null
-        liveX: {
-            const layoutDependency = idleContent.x + idleContent.clockPresentationItem.x
-                  + surface.renderedPanelWidth;
-            return idleContent.clockPresentationItem.mapToItem(surfaceBackground, 0, 0).x;
-        }
-        liveY: {
-            const layoutDependency = idleContent.y + idleContent.clockPresentationItem.y
-                  + surface.renderedPanelHeight;
-            return idleContent.clockPresentationItem.mapToItem(surfaceBackground, 0, 0).y;
-        }
-        liveWidth: idleContent.clockPresentationItem.width
-        liveHeight: idleContent.clockPresentationItem.height
-        matchEnabled: true
-        peerLayerKind: surface.coordinator.ownerExpanded
-        peerPresentation: expandedClockPresentation
-        progress: surface.morphProgress
-    }
-
-    RetainedPresentation {
-        id: expandedClockPresentation
-
-        parent: surfaceBackground
-        transition: contentTransition
-        layerKind: surface.coordinator.ownerExpanded
-        workActive: expandedContent.active
-        presentationSource: expandedContent.clockPresentationItem
-        sourceAvailable: expandedContent.clockPresentationItem !== null
-        liveX: {
-            const layoutDependency = expandedContent.x + expandedContent.viewportItem.contentX
-                  + surface.renderedPanelWidth;
-            return presentationSource === null ? 0 : presentationSource.mapToItem(surfaceBackground,
-                                                                                  0, 0).x;
-        }
-        liveY: {
-            const layoutDependency = expandedContent.y + expandedContent.viewportItem.contentY
-                  + surface.renderedPanelHeight;
-            return presentationSource === null ? 0 : presentationSource.mapToItem(surfaceBackground,
-                                                                                  0, 0).y;
-        }
-        liveWidth: presentationSource === null ? 0 : presentationSource.width
-        liveHeight: presentationSource === null ? 0 : presentationSource.height
-        matchEnabled: true
-        peerLayerKind: surface.coordinator.ownerIdle
-        peerPresentation: idleClockPresentation
-        progress: surface.morphProgress
-    }
-
-    RetainedPresentation {
-        id: idleMediaPresentation
-        parent: surfaceBackground
-        transition: contentTransition
-        layerKind: surface.coordinator.ownerIdle
-        workActive: idleContent.workActive
-        presentationSource: idleContent.mediaPresentationItem
-        sourceAvailable: idleContent.mediaPresentationItem !== null
-        liveX: {
-            const layoutDependency = idleContent.x + idleContent.mediaPresentationItem.x
-                  + surface.renderedPanelWidth;
-            return idleContent.mediaPresentationItem.mapToItem(surfaceBackground, 0, 0).x;
-        }
-        liveY: {
-            const layoutDependency = idleContent.y + idleContent.mediaPresentationItem.y
-                  + surface.renderedPanelHeight;
-            return idleContent.mediaPresentationItem.mapToItem(surfaceBackground, 0, 0).y;
-        }
-        liveWidth: idleContent.mediaPresentationItem.width
-        liveHeight: idleContent.mediaPresentationItem.height
-        matchEnabled: true
-        peerLayerKind: surface.coordinator.ownerExpanded
-        peerPresentation: expandedMediaPresentation
-        progress: surface.morphProgress
-    }
-
-    RetainedPresentation {
-        id: expandedMediaPresentation
-
-        parent: surfaceBackground
-        transition: contentTransition
-        layerKind: surface.coordinator.ownerExpanded
-        workActive: expandedContent.active
-        presentationSource: expandedContent.mediaPresentationItem
-        sourceAvailable: expandedContent.mediaPresentationItem !== null
-        liveX: {
-            const layoutDependency = expandedContent.x + expandedContent.viewportItem.contentX
-                  + surface.renderedPanelWidth;
-            return presentationSource === null ? 0 : presentationSource.mapToItem(surfaceBackground,
-                                                                                  0, 0).x;
-        }
-        liveY: {
-            const layoutDependency = expandedContent.y + expandedContent.viewportItem.contentY
-                  + surface.renderedPanelHeight;
-            return presentationSource === null ? 0 : presentationSource.mapToItem(surfaceBackground,
-                                                                                  0, 0).y;
-        }
-        liveWidth: presentationSource === null ? 0 : presentationSource.width
-        liveHeight: presentationSource === null ? 0 : presentationSource.height
-        matchEnabled: true
-        peerLayerKind: surface.coordinator.ownerIdle
-        peerPresentation: idleMediaPresentation
-        progress: surface.morphProgress
     }
 
     Loader {
         id: launcherLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.launcher || contentTransition.retainsKind(
                      surface.coordinator.ownerLauncher)) && surface.applicationModel !== null
         visible: active
-        enabled: surface.launcher
+        enabled: surface.launcher && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2334,20 +2138,19 @@ PanelWindow {
         layerKind: surface.coordinator.ownerLauncher
         workActive: surface.launcher
         presentationSource: launcherLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: historyLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.history || contentTransition.retainsKind(
                      surface.coordinator.ownerHistory)) && surface.notificationService !== null
         visible: active
-        enabled: surface.history
+        enabled: surface.history && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2375,20 +2178,19 @@ PanelWindow {
         layerKind: surface.coordinator.ownerHistory
         workActive: surface.history
         presentationSource: historyLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: trayLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.tray || contentTransition.retainsKind(surface.coordinator.ownerTray))
                 && surface.trayAdapter !== null
         visible: active
-        enabled: surface.tray
+        enabled: surface.tray && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2420,20 +2222,18 @@ PanelWindow {
         layerKind: surface.coordinator.ownerTray
         workActive: surface.tray
         presentationSource: trayLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: audioLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.audio || contentTransition.retainsKind(surface.coordinator.ownerAudio))
                 && surface.audioAdapter !== null
         visible: active
-        enabled: surface.audio
+        enabled: surface.audio && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2463,20 +2263,18 @@ PanelWindow {
         layerKind: surface.coordinator.ownerAudio
         workActive: surface.audio
         presentationSource: audioLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: weatherLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.weatherDetails || contentTransition.retainsKind(
                      surface.coordinator.ownerWeather)) && surface.weather !== null
         visible: active
-        enabled: surface.weatherDetails
+        enabled: surface.weatherDetails && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2504,20 +2302,18 @@ PanelWindow {
         layerKind: surface.coordinator.ownerWeather
         workActive: surface.weatherDetails
         presentationSource: weatherLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: polkitLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: surface.polkit || (surface.polkitControllerReady && contentTransition.retainsKind(
                                        surface.coordinator.ownerPolkitModal))
         visible: active
-        enabled: surface.polkit
+        enabled: surface.polkit && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2544,20 +2340,18 @@ PanelWindow {
         layerKind: surface.coordinator.ownerPolkitModal
         workActive: surface.polkit
         presentationSource: polkitLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     Loader {
         id: sessionLoader
 
         parent: surfaceBackground
-        anchors.fill: parent
+        width: item === null ? 0 : item.implicitWidth
+        height: item === null ? 0 : item.implicitHeight
         active: (surface.session || contentTransition.retainsKind(
                      surface.coordinator.ownerSession)) && surface.sessionService !== null
         visible: active
-        enabled: surface.session
+        enabled: surface.session && contentTransition.revealedForCurrent()
         Accessible.ignored: !enabled
 
         sourceComponent: Component {
@@ -2587,9 +2381,6 @@ PanelWindow {
         layerKind: surface.coordinator.ownerSession
         workActive: surface.session
         presentationSource: sessionLoader.item
-        liveWidth: surfaceBackground.width
-        liveHeight: surfaceBackground.height
-        progress: surface.morphProgress
     }
 
     HoverHandler {

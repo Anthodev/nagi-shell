@@ -359,12 +359,16 @@ Flickable {
                 separatorVisible: true
                 label: qsTr("Motion")
                 description: qsTr(
-                                 "KDE accessibility preferences can only make this choice more restrictive.")
+                                 "Smooth keeps island morphs calm without slowing other animations; KDE accessibility preferences can only make this choice more restrictive.")
                 value: root.settingsModel.snapshot.appearance.motion
                 choices: [
                     {
-                        "label": qsTr("Full"),
+                        "label": qsTr("Smooth"),
                         "value": "full"
+                    },
+                    {
+                        "label": qsTr("Fast"),
+                        "value": "fast"
                     },
                     {
                         "label": qsTr("Reduced"),

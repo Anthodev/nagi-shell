@@ -178,9 +178,6 @@ ShellRoot {
                 && islandFull.clockGroupBlock.x < islandFull.clockBoundary.x
                 && islandFull.clockBoundary.x < islandFull.mediaBlock.x,
                 "idle content keeps workspace, weather, time, media order with visible boundaries");
-        require(islandFull.clockPresentationItem === islandFull.clockGroupBlock
-                && islandFull.mediaPresentationItem === islandFull.mediaBlock,
-                "Idle reorder preserves the matched clock and media presentation aliases");
         require(islandGaming.workspaceBlock.x < islandGaming.workspaceBoundary.x
                 && islandGaming.workspaceBoundary.x < islandGaming.gamingPerformanceBlock.x
                 && islandGaming.gamingPerformanceBlock.x

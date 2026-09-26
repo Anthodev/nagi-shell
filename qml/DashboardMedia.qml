@@ -16,6 +16,8 @@ FocusScope {
     id: root
 
     required property var media
+    property bool active: true
+    property string displayedArtworkSource: ""
 
     readonly property bool controlsPending: media !== null && media.pendingAction !== "none"
     readonly property bool timingReliable: media !== null && (typeof media.timingReliable
@@ -261,8 +263,13 @@ FocusScope {
                 cache: true
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: root.media === null ? 0 : root.media.artworkMaximumWidth
-                source: root.visible && root.media !== null && root.media.artworkStatus === "ready"
-                        && root.media.artworkSource !== "" ? root.media.artworkSource : ""
+                source: root.active ? root.visible && root.media !== null && root.media.artworkStatus
+                                      === "ready" && root.media.artworkSource !== ""
+                                      ? root.media.artworkSource : "" : root.displayedArtworkSource
+                onSourceChanged: {
+                    if (root.active)
+                        root.displayedArtworkSource = source.toString();
+                }
             }
         }
     }

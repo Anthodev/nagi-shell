@@ -21,16 +21,14 @@ FocusScope {
     property var gamingPerformance: null
     property bool gamingIndicatorEnabled: true
     property bool active: true
-    property bool retainMatchedPresentation: false
-    property bool externalClockPresentation: false
-    property bool externalMediaPresentation: false
+    property bool retainPresentation: false
     property real maximumViewportWidth: Number.POSITIVE_INFINITY
     property real maximumViewportHeight: Number.POSITIVE_INFINITY
 
     readonly property bool mediaReady: mediaRegion.ready
-    readonly property bool gamingContentAvailable: active && gamingIndicatorEnabled
-                                                   && gamingPerformance !== null
-                                                   && gamingPerformance.active === true
+    readonly property bool gamingContentAvailable: (active || retainPresentation)
+                                                   && gamingIndicatorEnabled && gamingPerformance
+                                                   !== null && gamingPerformance.active === true
     readonly property bool gamingReady: gamingContentAvailable && gamingRegion.ready
     readonly property string glanceMode: mediaReady ? "media" : "clock"
     readonly property int semanticStageCount: 3
@@ -102,14 +100,6 @@ FocusScope {
     readonly property bool horizontalOverflow: naturalWidth > width + 0.5
     readonly property bool verticalOverflow: naturalHeight > height + 0.5
     readonly property Item viewportItem: contentViewport
-    readonly property Item clockPresentationItem: {
-        if (!clockRegion.ready || clockRegion.item === null) {
-            return null;
-        }
-        const bounds = clockRegion.item.clockBoundsItem;
-        return bounds === undefined ? null : bounds;
-    }
-    readonly property Item mediaPresentationItem: mediaRegion.item
 
     implicitWidth: naturalWidth
     implicitHeight: naturalHeight
@@ -283,8 +273,7 @@ FocusScope {
 
                         objectName: "dashboardMediaRegion"
                         content: dashboard.mediaContent
-                        active: dashboard.active || dashboard.retainMatchedPresentation
-                        presentationExcluded: dashboard.externalMediaPresentation
+                        active: dashboard.active || dashboard.retainPresentation
                         x: glanceStage.mediaX
                         y: Math.round((glanceStage.height - height) / 2)
                         width: glanceStage.mediaWidth
@@ -308,8 +297,7 @@ FocusScope {
 
                             objectName: "dashboardClockRegion"
                             content: dashboard.clockContent
-                            active: dashboard.active || dashboard.retainMatchedPresentation
-                            presentationExcluded: dashboard.externalClockPresentation
+                            active: dashboard.active || dashboard.retainPresentation
                             width: glanceSpine.width
                             height: implicitHeight
                         }
@@ -319,7 +307,7 @@ FocusScope {
 
                             objectName: "dashboardStatusRegion"
                             content: dashboard.statusContent
-                            active: dashboard.active
+                            active: dashboard.active || dashboard.retainPresentation
                             y: clockRegion.height + (clockRegion.implicitHeight > 0
                                                      && implicitHeight > 0 ? Theme.spacing.md : 0)
                             width: glanceSpine.width
@@ -332,7 +320,7 @@ FocusScope {
 
                         objectName: "dashboardGamingRegion"
                         content: dashboard.gamingContentAvailable ? gamingBadgeContent : null
-                        active: dashboard.active
+                        active: dashboard.active || dashboard.retainPresentation
                         x: glanceStage.gamingX
                         y: dashboard.mediaReady ? Math.round((glanceStage.height - height) / 2) :
                                                   Math.round(((clockRegion.ready
@@ -360,7 +348,7 @@ FocusScope {
 
                         objectName: "dashboardQuickControlsRegion"
                         content: dashboard.quickControlsContent
-                        active: dashboard.active
+                        active: dashboard.active || dashboard.retainPresentation
                         x: dashboard.mediaReady ? 0 : Math.max(0, (commandsStage.width - width) / 2)
                         width: dashboard.mediaReady ? commandsStage.width : Math.min(implicitWidth,
                                                                                      commandsStage.width)
@@ -389,7 +377,7 @@ FocusScope {
 
                         objectName: "dashboardAudioRegion"
                         content: dashboard.audioContent
-                        active: dashboard.active
+                        active: dashboard.active || dashboard.retainPresentation
                         width: instrumentsFeedStage.width
                         height: implicitHeight
                     }
@@ -399,7 +387,7 @@ FocusScope {
 
                         objectName: "dashboardNotificationsRegion"
                         content: dashboard.notificationsContent
-                        active: dashboard.active
+                        active: dashboard.active || dashboard.retainPresentation
                         y: audioRegion.height + instrumentsFeedStage.regionGap
                         width: instrumentsFeedStage.width
                         height: implicitHeight
@@ -412,7 +400,7 @@ FocusScope {
 
                 objectName: "dashboardNavigationRegion"
                 content: dashboard.navigationContent
-                active: dashboard.active
+                active: dashboard.active || dashboard.retainPresentation
                 x: stageColumn.x + stageColumn.width + Theme.spacing.lg
                 y: stageColumn.y + glanceStage.y
                 width: implicitWidth
