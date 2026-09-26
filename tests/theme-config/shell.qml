@@ -237,6 +237,132 @@ ShellRoot {
         require(future !== null && future.futureVersion === 4,
                 "future schema detection ignores unknown future fields safely");
     }
+    function requireTextFillContrast(snapshot, label) {
+        require(snapshot !== null, label + " publishes a theme snapshot");
+        const statePairs = [
+                  ["surface hover", snapshot.surfaceHoverForeground, snapshot.surfaceHover],
+                  ["surface active", snapshot.surfaceActiveForeground, snapshot.surfaceActive],
+                  ["control fill", snapshot.controlFillForeground, snapshot.controlFill],
+                  ["control fill hover", snapshot.controlFillHoverForeground,
+                   snapshot.controlFillHover],
+                  ["control fill pressed", snapshot.controlFillPressedForeground,
+                   snapshot.controlFillPressed],
+                  ["rail", snapshot.controlCenterRailForeground,
+                   snapshot.controlCenterRailSurface],
+                  ["selected rail", snapshot.controlCenterRailSelectedForeground,
+                   snapshot.controlCenterRailSelectedSurface]
+              ];
+        for (let index = 0; index < statePairs.length; index += 1) {
+            const pair = statePairs[index];
+            const ratio = Theme.contrast(pair[1], pair[2]);
+            require(Theme.canonicalHex(pair[1]) !== null && ratio >= 4.5,
+                    label + " keeps " + pair[0] + " foreground at 4.5:1 ("
+                    + ratio.toFixed(3) + ")");
+            if (Theme.contrast(snapshot.textPrimary, pair[2]) >= 4.5) {
+                require(pair[1] === snapshot.textPrimary,
+                        label + " preserves primary text for safe " + pair[0]);
+            }
+        }
+
+        const accentPairs = [
+                  ["surface hover", snapshot.surfaceHoverAccent, snapshot.surfaceHover],
+                  ["surface active", snapshot.surfaceActiveAccent, snapshot.surfaceActive],
+                  ["rail", snapshot.controlCenterRailAccent, snapshot.controlCenterRailSurface],
+                  ["selected rail", snapshot.controlCenterRailSelectedAccent,
+                   snapshot.controlCenterRailSelectedSurface]
+              ];
+        for (let index = 0; index < accentPairs.length; index += 1) {
+            const pair = accentPairs[index];
+            const ratio = Theme.contrast(pair[1], pair[2]);
+            require(Theme.canonicalHex(pair[1]) !== null && ratio >= 3,
+                    label + " keeps " + pair[0] + " accent at 3:1 ("
+                    + ratio.toFixed(3) + ")");
+            if (Theme.contrast(snapshot.accent, pair[2]) >= 3) {
+                require(pair[1] === snapshot.accent,
+                        label + " preserves the accent for safe " + pair[0]);
+            }
+        }
+
+        const controlFillAccentRatio = Theme.contrast(snapshot.controlFillAccent,
+                                                      snapshot.controlFill);
+        require(Theme.canonicalHex(snapshot.controlFillAccent) !== null
+                && controlFillAccentRatio >= 4.5,
+                label + " keeps accent status text on control fill at 4.5:1 ("
+                + controlFillAccentRatio.toFixed(3) + ")");
+        if (Theme.contrast(snapshot.accent, snapshot.controlFill) >= 4.5) {
+            require(snapshot.controlFillAccent === snapshot.accent,
+                    label + " preserves the accent for safe control-fill status text");
+        }
+        const surfaceActiveAccentTextRatio = Theme.contrast(snapshot.surfaceActiveAccentText,
+                                                            snapshot.surfaceActive);
+        require(Theme.canonicalHex(snapshot.surfaceActiveAccentText) !== null
+                && surfaceActiveAccentTextRatio >= 4.5,
+                label + " keeps accent text on surface active at 4.5:1 ("
+                + surfaceActiveAccentTextRatio.toFixed(3) + ")");
+        if (Theme.contrast(snapshot.accent, snapshot.surfaceActive) >= 4.5) {
+            require(snapshot.surfaceActiveAccentText === snapshot.accent,
+                    label + " preserves accent text when it is safe on surface active");
+        }
+        const surfaceHoverWarningRatio = Theme.contrast(snapshot.surfaceHoverWarning,
+                                                        snapshot.surfaceHover);
+        require(Theme.canonicalHex(snapshot.surfaceHoverWarning) !== null
+                && surfaceHoverWarningRatio >= 3,
+                label + " keeps warning graphics on surface hover at 3:1 ("
+                + surfaceHoverWarningRatio.toFixed(3) + ")");
+        if (Theme.contrast(snapshot.warning, snapshot.surfaceHover) >= 3) {
+            require(snapshot.surfaceHoverWarning === snapshot.warning,
+                    label + " preserves warning color when it is safe on surface hover");
+        }
+        const surfaceActiveWarningRatio = Theme.contrast(snapshot.surfaceActiveWarning,
+                                                         snapshot.surfaceActive);
+        require(Theme.canonicalHex(snapshot.surfaceActiveWarning) !== null
+                && surfaceActiveWarningRatio >= 3,
+                label + " keeps warning graphics on surface active at 3:1 ("
+                + surfaceActiveWarningRatio.toFixed(3) + ")");
+        if (Theme.contrast(snapshot.warning, snapshot.surfaceActive) >= 3) {
+            require(snapshot.surfaceActiveWarning === snapshot.warning,
+                    label + " preserves warning color when it is safe on surface active");
+        }
+
+        const pairs = [
+                  ["accent foreground on accent", snapshot.accentForeground, snapshot.accent],
+                  ["accent foreground on accent hover", snapshot.accentForeground,
+                   snapshot.accentHover],
+                  ["accent foreground on accent pressed", snapshot.accentForeground,
+                   snapshot.accentPressed],
+                  ["primary text on surface", snapshot.textPrimary, snapshot.surface],
+                  ["primary text on danger fill", snapshot.textPrimary, snapshot.dangerFill],
+                  ["secondary text on surface", snapshot.textSecondary, snapshot.surface],
+                  ["secondary text on control fill", snapshot.textSecondary,
+                   snapshot.controlFill],
+                  ["secondary text on danger fill", snapshot.textSecondary, snapshot.dangerFill],
+                  ["muted text on surface", snapshot.textMuted, snapshot.surface],
+                  ["muted text on control fill", snapshot.textMuted, snapshot.controlFill],
+                  ["danger text on surface", snapshot.danger, snapshot.surface],
+                  ["danger text on control fill", snapshot.danger, snapshot.controlFill],
+                  ["danger text on danger fill", snapshot.danger, snapshot.dangerFill],
+                  ["danger text on danger hover fill", snapshot.danger, snapshot.dangerFillHover],
+                  ["danger text on danger pressed fill", snapshot.danger,
+                   snapshot.dangerFillPressed],
+                  ["warning text on surface", snapshot.warning, snapshot.surface],
+                  ["warning text on control fill", snapshot.warning, snapshot.controlFill],
+                  ["success text on surface", snapshot.success, snapshot.surface],
+                  ["success text on control fill", snapshot.success, snapshot.controlFill]
+              ];
+        for (let index = 0; index < pairs.length; index += 1) {
+            const ratio = Theme.contrast(pairs[index][1], pairs[index][2]);
+            require(ratio >= 4.5, label + " keeps " + pairs[index][0] + " at 4.5:1 ("
+                    + ratio.toFixed(3) + ")");
+        }
+
+        require(snapshot.contrast.surfaceHoverOnBase >= 1.08
+                && snapshot.contrast.surfaceActiveOnBase >= 1.16
+                && snapshot.contrast.controlCenterRailOnSurface >= 1.08
+                && snapshot.contrast.controlCenterRailOnSurface < 2
+                && snapshot.contrast.controlCenterRailSelectedOnRail >= 1.16,
+                label + " retains every tonal state-distinction floor");
+    }
+
     function validateAppearanceContract() {
         const defaults = UserConfig.defaultSnapshot(0).appearance;
         const schemes = ["nagi-dark", "nagi-oled", "nagi-light", "system", "custom"];
@@ -266,6 +392,27 @@ ShellRoot {
                     >= 4.5 && snapshot.contrast.focusRingOnSurface >= 3, "maintained scheme "
                     + schemes[index] + " publishes a complete safe palette: " + JSON.stringify(
                         snapshot));
+            requireTextFillContrast(snapshot, "maintained scheme " + schemes[index]);
+            const railSurface = snapshot.controlCenterRailSurface;
+            require(Theme.canonicalHex(railSurface) !== null, "maintained scheme "
+                    + schemes[index] + " publishes a canonical Control Center rail surface");
+            const railContrast = Theme.contrast(railSurface, snapshot.surface);
+            require(railContrast >= 1.08 && railContrast < 2, "maintained scheme "
+                    + schemes[index] + " keeps the rail surface distinct and low-contrast ("
+                    + railContrast.toFixed(3) + ")");
+            require(snapshot.contrast.surfaceHoverOnBase >= 1.08
+                    && snapshot.contrast.surfaceActiveOnBase >= 1.16
+                    && snapshot.contrast.controlCenterRailSelectedOnRail >= 1.16,
+                    "maintained scheme " + schemes[index]
+                    + " retains differentiated hover, active, and selected-rail fills");
+        }
+        const typographyScopes = ["idle", "expanded", "controlCenter"];
+        for (let scopeIndex = 0; scopeIndex < typographyScopes.length; scopeIndex += 1) {
+            const scope = typographyScopes[scopeIndex];
+            const pageTitleSize = Theme.type.sizeFor(scope, "pageTitle");
+            require(pageTitleSize > Theme.type.sizeFor(scope, "title")
+                    && pageTitleSize < Theme.type.sizeFor(scope, "display"), scope
+                    + " typography resolves a pageTitle role between section-title and display scale");
         }
 
         const accentModes = ["nagi", "system", "wallpaper", "custom"];
@@ -281,28 +428,104 @@ ShellRoot {
             require(snapshot !== null && snapshot.mode === accentModes[index]
                     && snapshot.contrast.accentForeground >= 4.5, "accent mode "
                     + accentModes[index] + " derives readable state roles");
+            requireTextFillContrast(snapshot, "accent mode " + accentModes[index]);
         }
         Theme.wallpaperPalette = null;
 
-        const unsafeText = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
-        unsafeText.appearance.scheme = "custom";
-        unsafeText.appearance.customSurface = "#101010";
-        unsafeText.appearance.customText = "#202020";
-        require(UserConfig.validateCandidate(unsafeText) === null,
-                "unreadable custom text is rejected before settings publication");
-        const unsafeAccent = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
-        unsafeAccent.appearance.scheme = "custom";
-        unsafeAccent.appearance.accentMode = "custom";
-        unsafeAccent.appearance.customSurface = "#101010";
-        unsafeAccent.appearance.customText = "#F0F0F0";
-        unsafeAccent.appearance.customAccent = "#202020";
-        const normalizedAccent = UserConfig.validateCandidate(unsafeAccent);
-        require(normalizedAccent !== null, "syntactically valid custom accent is normalized");
-        const derivedAccent = Theme.buildSnapshot(Theme.visualConfiguration(
-                                                      normalizedAccent.appearance));
-        require(derivedAccent !== null && derivedAccent.contrast.accentOnSurface >= 3
-                && derivedAccent.contrast.accentForeground >= 4.5,
-                "low-contrast custom accent derives safe non-text and foreground roles");
+        const legacyPalette = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        legacyPalette.appearance.scheme = "custom";
+        legacyPalette.appearance.accentMode = "custom";
+        legacyPalette.appearance.customSurface = "#000000";
+        legacyPalette.appearance.customText = "#7A7A7A";
+        legacyPalette.appearance.customAccent = "#FFFFFF";
+        const normalizedLegacyPalette = UserConfig.validateCandidate(legacyPalette);
+        require(UserConfig.appearanceValidationError(legacyPalette.appearance) === ""
+                && normalizedLegacyPalette !== null,
+                "the established 4.5:1 custom-palette boundary remains parser-valid");
+
+        const version3Content = UserConfig.serializeConfiguration(normalizedLegacyPalette);
+        const scopedTypography = "idle_font_family=Inter\nidle_base_font_size=13\n"
+                + "expanded_font_family=Inter\nexpanded_base_font_size=13\n"
+                + "control_center_font_family=Inter\ncontrol_center_base_font_size=13\n";
+        const version2Content = version3Content.replace("schema_version=3", "schema_version=2").replace(
+                    scopedTypography, "font_family=Inter\n");
+        const versionedPalettes = [{
+                                         "label": "V2",
+                                         "content": version2Content
+                                     }, {
+                                         "label": "V3",
+                                         "content": version3Content
+                                     }];
+        for (let index = 0; index < versionedPalettes.length; index += 1) {
+            const fixture = versionedPalettes[index];
+            const parsed = UserConfig.parseConfiguration(fixture.content, UserConfig.utf8Length(
+                                                               fixture.content));
+            require(parsed !== null && parsed.schemaVersion === 3 && parsed.appearance.scheme
+                    === "custom" && parsed.appearance.customSurface === "#000000"
+                    && parsed.appearance.customText === "#7A7A7A",
+                    fixture.label + " keeps a previously valid custom palette loadable");
+            const derived = Theme.buildSnapshot(Theme.visualConfiguration(parsed.appearance));
+            require(derived !== null && derived.source === "custom",
+                    fixture.label + " derives its configured extreme accent without fallback");
+            requireTextFillContrast(derived, fixture.label + " legacy custom palette");
+        }
+
+        const previousSettings = UserConfig.snapshot;
+        const previousThemeKey = Theme.snapshotKey(Theme.snapshot);
+        const previousThemeGeneration = Theme.snapshot.generation;
+        require(UserConfig.publish(normalizedLegacyPalette) && Theme.snapshot.generation
+                > previousThemeGeneration && Theme.snapshot.surface === "#000000"
+                && Theme.snapshot.textPrimary === "#7A7A7A" && Theme.snapshot.source === "custom",
+                "legacy custom settings publish immediately instead of retaining a stale theme");
+        requireTextFillContrast(Theme.snapshot, "published legacy custom palette");
+        require(UserConfig.publish(previousSettings)
+                && Theme.snapshotKey(Theme.snapshot) === previousThemeKey,
+                "theme contract probe restores the prior settings snapshot");
+
+        const extremeAccents = ["#000000", "#FFFFFF"];
+        for (let index = 0; index < extremeAccents.length; index += 1) {
+            const extremePalette = UserConfig.mutableSnapshot(normalizedLegacyPalette);
+            extremePalette.appearance.customAccent = extremeAccents[index];
+            const normalizedExtreme = UserConfig.validateCandidate(extremePalette);
+            const derivedExtreme = normalizedExtreme === null ? null : Theme.buildSnapshot(
+                                                                        Theme.visualConfiguration(
+                                                                            normalizedExtreme.appearance));
+            require(normalizedExtreme !== null && derivedExtreme !== null
+                    && derivedExtreme.source === "custom",
+                    extremeAccents[index] + " extreme accent derives a total custom palette");
+            require(derivedExtreme.contrast.textOnSurfaceActive >= 4.5
+                    && derivedExtreme.contrast.textOnControlFillHover >= 4.5
+                    && derivedExtreme.contrast.textOnControlFillPressed >= 4.5,
+                    extremeAccents[index]
+                    + " extreme accent keeps selected, hover, and pressed text readable");
+            requireTextFillContrast(derivedExtreme, extremeAccents[index] + " extreme accent");
+        }
+        const midtonePalette = UserConfig.mutableSnapshot(UserConfig.defaultSnapshot(0));
+        midtonePalette.appearance.scheme = "custom";
+        midtonePalette.appearance.accentMode = "custom";
+        midtonePalette.appearance.customSurface = "#777777";
+        midtonePalette.appearance.customText = "#000000";
+        midtonePalette.appearance.customAccent = "#000000";
+        const normalizedMidtone = UserConfig.validateCandidate(midtonePalette);
+        const derivedMidtone = normalizedMidtone === null ? null : Theme.buildSnapshot(
+                                                                    Theme.visualConfiguration(
+                                                                        normalizedMidtone.appearance));
+        require(normalizedMidtone !== null && derivedMidtone !== null
+                && derivedMidtone.source === "custom"
+                && derivedMidtone.surfaceActiveForeground !== derivedMidtone.textPrimary
+                && derivedMidtone.contrast.surfaceActiveOnBase >= 1.16
+                && derivedMidtone.contrast.accentOnSurfaceActive >= 3,
+                "midtone boundary derives distinct active fill with dedicated safe foregrounds");
+        requireTextFillContrast(derivedMidtone, "midtone boundary");
+        const midtoneThemeGeneration = Theme.snapshot.generation;
+        require(UserConfig.publish(normalizedMidtone) && Theme.snapshot.generation
+                > midtoneThemeGeneration && Theme.snapshot.surface === "#777777"
+                && Theme.snapshot.textPrimary === "#000000" && Theme.snapshot.source === "custom",
+                "midtone parser-valid settings publish without retaining a stale theme");
+        requireTextFillContrast(Theme.snapshot, "published midtone boundary");
+        require(UserConfig.publish(previousSettings)
+                && Theme.snapshotKey(Theme.snapshot) === previousThemeKey,
+                "midtone theme probe restores the prior settings snapshot");
         require(Theme.effectiveMotionScale("full", 1) === 1 && Theme.motionMode(
                     Theme.effectiveMotionScale("full", 1)) === "full" && Theme.effectiveMotionScale(
                     "reduced", 1) === 0.5 && Theme.motionMode(Theme.effectiveMotionScale("reduced",

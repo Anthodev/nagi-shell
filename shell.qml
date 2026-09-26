@@ -164,7 +164,7 @@ ShellRoot {
             "weatherHourlyRows": stabilityArrayCount(weather.hourly),
             "weatherDailyRows": stabilityArrayCount(weather.daily),
             "brightnessDisplays": stabilityArrayCount(brightness.displays),
-            "virtualDesktops": stabilityArrayCount(virtualDesktops.desktops)
+            "virtualDesktops": virtualDesktops.desktopCount
         };
     }
 
@@ -599,6 +599,7 @@ ShellRoot {
 
     TransientCoordinatorBridge {
         coordinator: islandState
+        surfaceHost: islandHost
         workspaceSource: virtualDesktops
         brightnessSource: brightness
         audioSource: audioAdapter

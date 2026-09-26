@@ -4,6 +4,8 @@ import QtQuick.Controls
 ControlCenterSettingRow {
     id: root
 
+    controlPlacement: ControlCenterSettingRow.Inline
+
     required property bool value
     property bool writable: true
 
@@ -19,8 +21,8 @@ ControlCenterSettingRow {
     AbstractButton {
         id: toggle
 
-        width: Theme.spacing.xxl + Theme.spacing.md
-        height: Theme.size.controlHeightMd
+        implicitWidth: Theme.spacing.xxl + Theme.spacing.md
+        implicitHeight: Theme.size.controlHeightMd
         enabled: root.writable
         focusPolicy: Qt.StrongFocus
         hoverEnabled: true
@@ -50,7 +52,10 @@ ControlCenterSettingRow {
                 width: Theme.spacing.lg
                 height: width
                 radius: width / 2
-                color: root.value ? Theme.snapshot.accentForeground : Theme.color.textPrimary
+                color: root.value ? Theme.snapshot.accentForeground : toggle.pressed
+                                    ? Theme.snapshot.controlFillPressedForeground : toggle.hovered
+                                      ? Theme.snapshot.controlFillHoverForeground :
+                                        Theme.snapshot.controlFillForeground
             }
         }
 

@@ -49,13 +49,14 @@ Flickable {
         id: content
 
         width: Math.min(root.width, Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.lg
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("About")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "aboutPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "controlCenterAbout"
+            title: qsTr("About")
+            description: qsTr("A context-aware desktop island and Control Center for KDE Plasma.")
         }
 
         IslandText {
@@ -65,32 +66,16 @@ Flickable {
             font.weight: Theme.type.weightSemibold
         }
 
-        IslandText {
+        ControlCenterSectionPanel {
+            objectName: "aboutProjectSection"
             Layout.fillWidth: true
-            text: qsTr("A context-aware desktop island and Control Center for KDE Plasma.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
-        }
-
-        IslandPanel {
-            Layout.fillWidth: true
-            implicitHeight: linksLayout.implicitHeight + Theme.spacing.md * 2
+            text: qsTr("Project")
 
             ColumnLayout {
-                id: linksLayout
-
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.md
+                Layout.fillWidth: true
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
                 spacing: Theme.spacing.sm
-
-                IslandText {
-                    text: qsTr("Links and licenses")
-                    size: "body"
-                    font.weight: Theme.type.weightSemibold
-                    Accessible.role: Accessible.Heading
-                    Accessible.name: text
-                }
 
                 RowLayout {
                     spacing: Theme.spacing.sm
@@ -121,37 +106,25 @@ Flickable {
             }
         }
 
-        IslandPanel {
+        ControlCenterSectionPanel {
+            objectName: "aboutDiagnosticSection"
             Layout.fillWidth: true
-            implicitHeight: diagnosticLayout.implicitHeight + Theme.spacing.md * 2
+            text: qsTr("Safe diagnostic")
 
             ColumnLayout {
-                id: diagnosticLayout
-
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.md
+                Layout.fillWidth: true
+                Layout.topMargin: Theme.spacing.md
+                Layout.bottomMargin: Theme.spacing.md
                 spacing: Theme.spacing.sm
 
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    IslandText {
-                        Layout.fillWidth: true
-                        text: qsTr("Safe diagnostic")
-                        size: "body"
-                        font.weight: Theme.type.weightSemibold
-                        Accessible.role: Accessible.Heading
-                        Accessible.name: text
-                    }
-
-                    IslandButton {
-                        label: qsTr("Copy diagnostic")
-                        reducedMotion: root.reducedMotion
-                        Accessible.description: qsTr("Copy the allowlisted capability diagnostic")
-                        onClicked: {
-                            diagnostic.selectAll();
-                            diagnostic.copy();
-                        }
+                IslandButton {
+                    Layout.alignment: Qt.AlignRight
+                    label: qsTr("Copy diagnostic")
+                    reducedMotion: root.reducedMotion
+                    Accessible.description: qsTr("Copy the allowlisted capability diagnostic")
+                    onClicked: {
+                        diagnostic.selectAll();
+                        diagnostic.copy();
                     }
                 }
 
@@ -172,7 +145,7 @@ Flickable {
                     readOnly: true
                     selectByMouse: true
                     text: root.diagnosticText
-                    color: Theme.color.textPrimary
+                    color: Theme.snapshot.controlFillForeground
                     selectionColor: Theme.snapshot.accent
                     selectedTextColor: Theme.snapshot.accentForeground
                     font.family: Theme.type.familyForItem(this)

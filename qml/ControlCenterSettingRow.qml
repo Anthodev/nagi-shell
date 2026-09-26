@@ -4,14 +4,28 @@ import QtQuick.Layouts
 Item {
     id: root
 
+    enum ControlPlacement {
+        Auto,
+        Inline,
+        Below
+    }
+
     property string label: ""
     property string description: ""
     property string errorText: ""
+    property int controlPlacement: ControlCenterSettingRow.Auto
+    required property bool separatorVisible
     default property alias controlData: controlSlot.data
-    readonly property bool stacked: width > 0 && width < Theme.size.controlCenterRowStackBreakpoint
+    readonly property bool stacked: controlPlacement === ControlCenterSettingRow.Below || (
+                                        controlPlacement === ControlCenterSettingRow.Auto && width
+                                        > 0 && width
+                                        < Theme.size.controlCenterInlineLabelMinimumWidth
+                                        + Theme.spacing.lg + controlSlot.implicitWidth)
 
+    Layout.minimumHeight: Theme.size.controlCenterSettingRowMinimumHeight
     implicitWidth: contentLayout.implicitWidth
-    implicitHeight: contentLayout.implicitHeight + Theme.spacing.sm * 2
+    implicitHeight: Math.max(Theme.size.controlCenterSettingRowMinimumHeight,
+                             contentLayout.implicitHeight + Theme.spacing.md * 2)
     Accessible.role: Accessible.Grouping
     Accessible.name: label
     Accessible.description: errorText !== "" ? description === "" ? qsTr("Error: %1").arg(
@@ -25,8 +39,7 @@ Item {
 
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.topMargin: Theme.spacing.sm
+        anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.sm
 
         GridLayout {
@@ -39,6 +52,8 @@ Item {
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.minimumWidth: root.stacked ? 0 :
+                                                    Theme.size.controlCenterInlineLabelMinimumWidth
                 spacing: Theme.spacing.xs
 
                 IslandText {
@@ -46,6 +61,7 @@ Item {
                     text: root.label
                     size: "body"
                     font.weight: Theme.type.weightSemibold
+                    color: Theme.snapshot.controlFillForeground
                     wrapMode: Text.Wrap
                 }
 
@@ -59,13 +75,12 @@ Item {
                 }
             }
 
-            Item {
+            RowLayout {
                 id: controlSlot
 
                 Layout.fillWidth: root.stacked
                 Layout.alignment: root.stacked ? Qt.AlignLeft : Qt.AlignRight | Qt.AlignVCenter
-                implicitWidth: childrenRect.width
-                implicitHeight: childrenRect.height
+                spacing: 0
             }
         }
 
@@ -82,9 +97,12 @@ Item {
     }
 
     Rectangle {
+        objectName: "controlCenterSettingRowSeparator"
+
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
+        visible: root.separatorVisible
         height: Theme.size.hairlineWidth
         color: Theme.color.surfaceBorder
         opacity: 0.72

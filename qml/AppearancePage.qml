@@ -46,7 +46,7 @@ Flickable {
         validationText = "";
         return true;
     }
-    component TypographyScopeControls: ColumnLayout {
+    component TypographyScopeControls: ControlCenterSectionPanel {
         id: scopeControl
 
         required property string scopeLabel
@@ -54,25 +54,21 @@ Flickable {
         required property string sizeKey
         required property string selectorObjectName
         required property string sizeObjectName
-        property bool separated: true
 
         Layout.fillWidth: true
-        spacing: Theme.spacing.sm
+        objectName: scopeControl.selectorObjectName + "Section"
+        text: scopeControl.scopeLabel
+        separated: scopeControl.separated
 
         readonly property string configuredFamily: root.settingsModel.snapshot.appearance[familyKey]
         readonly property int selectedFamilyIndex: root.installedFontFamilies.indexOf(
                                                        configuredFamily)
         readonly property bool configuredFamilyInstalled: selectedFamilyIndex >= 0
 
-        ControlCenterSectionHeading {
-            objectName: scopeControl.selectorObjectName + "Section"
-            text: scopeControl.scopeLabel
-            separated: scopeControl.separated
-        }
-
         ControlCenterSettingRow {
             id: fontFamilyRow
             Layout.fillWidth: true
+            separatorVisible: true
             label: qsTr("Font family")
             description: scopeControl.configuredFamilyInstalled ? qsTr(
                                                                       "Choose from the font families installed on this system.") :
@@ -82,7 +78,7 @@ Flickable {
                 id: fontFamilySelector
 
                 objectName: scopeControl.selectorObjectName
-                width: 280
+                implicitWidth: 280
                 implicitHeight: Theme.size.controlHeightLg
                 model: root.installedFontFamilies
                 currentIndex: scopeControl.selectedFamilyIndex
@@ -95,7 +91,7 @@ Flickable {
                 font.family: currentIndex >= 0 ? currentText : Theme.type.familyFor("controlCenter")
                 font.pixelSize: Theme.type.sizeFor("controlCenter", "body")
                 palette.button: Theme.color.controlFill
-                palette.buttonText: Theme.color.textPrimary
+                palette.buttonText: Theme.snapshot.controlFillForeground
                 palette.base: Theme.color.surfaceOpaque
                 palette.text: Theme.color.textPrimary
                 palette.window: Theme.color.surfaceOpaque
@@ -129,6 +125,7 @@ Flickable {
 
         SettingSliderRow {
             Layout.fillWidth: true
+            separatorVisible: false
             objectName: scopeControl.sizeObjectName
             label: qsTr("%1 default size").arg(scopeControl.scopeLabel)
             description: qsTr(
@@ -152,23 +149,14 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Appearance")
-            objectName: "appearancePageTitle"
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "appearancePageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Set an installed family and default body size independently for each Nagi surface. Semantic text roles preserve their hierarchy.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterAppearance"
+            title: qsTr("Appearance")
+            description: qsTr("Choose Nagi's colors, typography, shape, and motion.")
         }
 
         TypographyScopeControls {
@@ -196,214 +184,240 @@ Flickable {
             sizeObjectName: "appearanceControlCenterBaseFontSize"
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "appearanceColorSection"
             text: qsTr("Color")
+
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Scheme")
+                description: qsTr("Select the maintained surface and text foundation.")
+                value: root.settingsModel.snapshot.appearance.scheme
+                choices: [
+                    {
+                        "label": qsTr("Nagi Dark"),
+                        "value": "nagi-dark"
+                    },
+                    {
+                        "label": qsTr("Nagi OLED"),
+                        "value": "nagi-oled"
+                    },
+                    {
+                        "label": qsTr("Nagi Light"),
+                        "value": "nagi-light"
+                    },
+                    {
+                        "label": qsTr("System"),
+                        "value": "system"
+                    },
+                    {
+                        "label": qsTr("Custom"),
+                        "value": "custom"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request({
+                                                            "scheme": value
+                                                        }, false)
+            }
+
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: root.settingsModel.snapshot.appearance.scheme === "custom"
+                                  || root.settingsModel.snapshot.appearance.accentMode === "custom"
+                label: qsTr("Accent")
+                description: qsTr(
+                                 "Use Nagi, KDE, the current wallpaper, or a validated custom accent.")
+                value: root.settingsModel.snapshot.appearance.accentMode
+                choices: [
+                    {
+                        "label": qsTr("Nagi"),
+                        "value": "nagi"
+                    },
+                    {
+                        "label": qsTr("System"),
+                        "value": "system"
+                    },
+                    {
+                        "label": qsTr("Wallpaper"),
+                        "value": "wallpaper"
+                    },
+                    {
+                        "label": qsTr("Custom"),
+                        "value": "custom"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request({
+                                                            "accentMode": value
+                                                        }, false)
+            }
+
+            SettingColorRow {
+                id: customSurfaceRow
+                Layout.fillWidth: true
+                visible: root.settingsModel.snapshot.appearance.scheme === "custom"
+                separatorVisible: root.settingsModel.snapshot.appearance.scheme === "custom"
+                label: qsTr("Primary surface")
+                description: qsTr("Custom base used to derive shallow surfaces and controls.")
+                value: root.settingsModel.snapshot.appearance.customSurface
+                writable: root.settingsModel.writable
+                validationText: root.validationText
+                onValueRequested: value => root.request({
+                                                            "customSurface": value
+                                                        }, false)
+            }
+
+            SettingColorRow {
+                id: customTextRow
+                Layout.fillWidth: true
+                visible: root.settingsModel.snapshot.appearance.scheme === "custom"
+                separatorVisible: root.settingsModel.snapshot.appearance.accentMode === "custom"
+                label: qsTr("Primary text")
+                description: qsTr("Must retain readable contrast against the custom surface.")
+                value: root.settingsModel.snapshot.appearance.customText
+                writable: root.settingsModel.writable
+                validationText: root.validationText
+                onValueRequested: value => root.request({
+                                                            "customText": value
+                                                        }, false)
+            }
+
+            SettingColorRow {
+                id: customAccentRow
+                Layout.fillWidth: true
+                visible: root.settingsModel.snapshot.appearance.accentMode === "custom"
+                separatorVisible: false
+                label: qsTr("Custom accent")
+                description: qsTr(
+                                 "State roles and readable foregrounds are derived from this input.")
+                value: root.settingsModel.snapshot.appearance.customAccent
+                allowAlpha: true
+                writable: root.settingsModel.writable
+                validationText: root.validationText
+                onValueRequested: value => root.request({
+                                                            "customAccent": value
+                                                        }, false)
+            }
         }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Scheme")
-            description: qsTr("Select the maintained surface and text foundation.")
-            value: root.settingsModel.snapshot.appearance.scheme
-            choices: [
-                {
-                    "label": qsTr("Nagi Dark"),
-                    "value": "nagi-dark"
-                },
-                {
-                    "label": qsTr("Nagi OLED"),
-                    "value": "nagi-oled"
-                },
-                {
-                    "label": qsTr("Nagi Light"),
-                    "value": "nagi-light"
-                },
-                {
-                    "label": qsTr("System"),
-                    "value": "system"
-                },
-                {
-                    "label": qsTr("Custom"),
-                    "value": "custom"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "scheme": value
-                                                    }, false)
-        }
-
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Accent")
-            description: qsTr("Use Nagi, KDE, the current wallpaper, or a validated custom accent.")
-            value: root.settingsModel.snapshot.appearance.accentMode
-            choices: [
-                {
-                    "label": qsTr("Nagi"),
-                    "value": "nagi"
-                },
-                {
-                    "label": qsTr("System"),
-                    "value": "system"
-                },
-                {
-                    "label": qsTr("Wallpaper"),
-                    "value": "wallpaper"
-                },
-                {
-                    "label": qsTr("Custom"),
-                    "value": "custom"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "accentMode": value
-                                                    }, false)
-        }
-
-        SettingColorRow {
-            Layout.fillWidth: true
-            visible: root.settingsModel.snapshot.appearance.scheme === "custom"
-            label: qsTr("Primary surface")
-            description: qsTr("Custom base used to derive shallow surfaces and controls.")
-            value: root.settingsModel.snapshot.appearance.customSurface
-            writable: root.settingsModel.writable
-            validationText: root.validationText
-            onValueRequested: value => root.request({
-                                                        "customSurface": value
-                                                    }, false)
-        }
-
-        SettingColorRow {
-            Layout.fillWidth: true
-            visible: root.settingsModel.snapshot.appearance.scheme === "custom"
-            label: qsTr("Primary text")
-            description: qsTr("Must retain readable contrast against the custom surface.")
-            value: root.settingsModel.snapshot.appearance.customText
-            writable: root.settingsModel.writable
-            validationText: root.validationText
-            onValueRequested: value => root.request({
-                                                        "customText": value
-                                                    }, false)
-        }
-
-        SettingColorRow {
-            Layout.fillWidth: true
-            visible: root.settingsModel.snapshot.appearance.accentMode === "custom"
-            label: qsTr("Custom accent")
-            description: qsTr("State roles and readable foregrounds are derived from this input.")
-            value: root.settingsModel.snapshot.appearance.customAccent
-            allowAlpha: true
-            writable: root.settingsModel.writable
-            validationText: root.validationText
-            onValueRequested: value => root.request({
-                                                        "customAccent": value
-                                                    }, false)
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "appearanceSurfaceMotionSection"
             text: qsTr("Surface & motion")
-        }
 
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Surface opacity")
-            description: qsTr("Readable outer-surface opacity from 85 to 100 percent.")
-            value: root.settingsModel.snapshot.appearance.surfaceOpacity
-            from: 0.85
-            to: 1
-            stepSize: 0.01
-            valueText: qsTr("%1%").arg(Math.round(value * 100))
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "surfaceOpacity": value
-                                                                  }, continuous)
-        }
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Surface opacity")
+                description: qsTr("Readable outer-surface opacity from 85 to 100 percent.")
+                value: root.settingsModel.snapshot.appearance.surfaceOpacity
+                from: 0.85
+                to: 1
+                stepSize: 0.01
+                valueText: qsTr("%1%").arg(Math.round(value * 100))
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "surfaceOpacity": value
+                                                                      }, continuous)
+            }
 
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Border intensity")
-            description: qsTr("Adds bounded outer separation without changing component hierarchy.")
-            value: root.settingsModel.snapshot.appearance.borderIntensity
-            from: 0
-            to: 1
-            stepSize: 0.1
-            valueText: qsTr("%1%").arg(Math.round(value * 100))
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "borderIntensity": value
-                                                                  }, continuous)
-        }
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Border intensity")
+                description: qsTr(
+                                 "Adds bounded outer separation without changing component hierarchy.")
+                value: root.settingsModel.snapshot.appearance.borderIntensity
+                from: 0
+                to: 1
+                stepSize: 0.1
+                valueText: qsTr("%1%").arg(Math.round(value * 100))
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "borderIntensity": value
+                                                                      }, continuous)
+            }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Background blur")
-            description: qsTr(
-                             "Ask KWin for blur when its Wayland effect is available; otherwise keep the cheaper translucent surface.")
-            value: root.settingsModel.snapshot.appearance.blurEnabled
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "blurEnabled": value
-                                                    }, false)
-        }
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Background blur")
+                description: qsTr(
+                                 "Ask KWin for blur when its Wayland effect is available; otherwise keep the cheaper translucent surface.")
+                value: root.settingsModel.snapshot.appearance.blurEnabled
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "blurEnabled": value
+                                                        }, false)
+            }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Motion")
-            description: qsTr(
-                             "KDE accessibility preferences can only make this choice more restrictive.")
-            value: root.settingsModel.snapshot.appearance.motion
-            choices: [
-                {
-                    "label": qsTr("Full"),
-                    "value": "full"
-                },
-                {
-                    "label": qsTr("Reduced"),
-                    "value": "reduced"
-                },
-                {
-                    "label": qsTr("Minimal"),
-                    "value": "minimal"
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Motion")
+                description: qsTr(
+                                 "KDE accessibility preferences can only make this choice more restrictive.")
+                value: root.settingsModel.snapshot.appearance.motion
+                choices: [
+                    {
+                        "label": qsTr("Full"),
+                        "value": "full"
+                    },
+                    {
+                        "label": qsTr("Reduced"),
+                        "value": "reduced"
+                    },
+                    {
+                        "label": qsTr("Minimal"),
+                        "value": "minimal"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request({
+                                                            "motion": value
+                                                        }, false)
+            }
+
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: appearanceValidationEntry.visible
+                label: qsTr("Outer radius")
+                description: qsTr(
+                                 "Keep the island softly rectangular across compact and expanded states.")
+                value: root.settingsModel.snapshot.appearance.outerRadius
+                from: 8
+                to: 32
+                stepSize: 2
+                valueText: qsTr("%1 px").arg(Math.round(value))
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "outerRadius": value
+                                                                      }, continuous)
+            }
+
+            Item {
+                id: appearanceValidationEntry
+                Layout.fillWidth: true
+                visible: root.validationText !== ""
+                implicitHeight: appearanceValidationText.implicitHeight + Theme.spacing.md * 2
+
+                IslandText {
+                    id: appearanceValidationText
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.validationText
+                    size: "caption"
+                    color: Theme.color.danger
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
                 }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "motion": value
-                                                    }, false)
-        }
-
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Outer radius")
-            description: qsTr(
-                             "Keep the island softly rectangular across compact and expanded states.")
-            value: root.settingsModel.snapshot.appearance.outerRadius
-            from: 8
-            to: 32
-            stepSize: 2
-            valueText: qsTr("%1 px").arg(Math.round(value))
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "outerRadius": value
-                                                                  }, continuous)
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.validationText !== ""
-            text: root.validationText
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
+            }
         }
 
         SettingsResetActions {

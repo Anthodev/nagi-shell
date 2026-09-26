@@ -11,6 +11,7 @@ AbstractButton {
     property string variant: "standard"
     property string label: ""
     property bool reducedMotion: false
+    property bool showActiveFocusRing: false
 
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
@@ -50,7 +51,7 @@ AbstractButton {
 
     function contentColor() {
         if (!enabled) {
-            return Theme.color.textPrimary;
+            return Theme.color.textMuted;
         }
         if (variant === "accent") {
             return Theme.snapshot.accentForeground;
@@ -58,7 +59,9 @@ AbstractButton {
         if (variant === "danger") {
             return Theme.color.danger;
         }
-        return Theme.color.textPrimary;
+        return pressed ? Theme.snapshot.controlFillPressedForeground : hovered
+                         ? Theme.snapshot.controlFillHoverForeground :
+                           Theme.snapshot.controlFillForeground;
     }
 
     function outlineColor() {
@@ -84,7 +87,7 @@ AbstractButton {
     }
 
     IslandFocusRing {
-        visible: control.visualFocus
+        visible: control.visualFocus || (control.showActiveFocusRing && control.activeFocus)
     }
 
     MouseArea {

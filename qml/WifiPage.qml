@@ -23,6 +23,7 @@ Flickable {
 
     readonly property bool operationPending: wifi !== null && wifi.wifiBusy
     readonly property bool formVisible: mode === "password" || mode === "hidden"
+    readonly property int networkCount: wifi === null ? 0 : wifi.wifiNetworks.length
 
     clip: true
     contentWidth: width
@@ -204,13 +205,14 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Wi-Fi")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+        ControlCenterPageHeader {
+            objectName: "wifiPageHeader"
+            Layout.fillWidth: true
+            iconMeaning: "wifi"
+            title: qsTr("Wi-Fi")
+            description: qsTr("Connect to nearby networks and manage saved connections.")
         }
 
         IslandPanel {
@@ -230,6 +232,7 @@ Flickable {
                     Layout.fillWidth: true
                     text: qsTr("Wi-Fi management unavailable")
                     size: "title"
+                    color: Theme.snapshot.controlFillForeground
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
                 }
@@ -247,93 +250,145 @@ Flickable {
             }
         }
 
-        SettingToggleRow {
+        ControlCenterSectionPanel {
+            objectName: "wifiRadioSection"
             Layout.fillWidth: true
             visible: !root.backendUnavailable
-            label: qsTr("Wi-Fi radio")
-            description: root.wifi.wifiHardwareEnabled ? qsTr(
-                                                             "Backend-confirmed NetworkManager state.") :
-                                                         qsTr("The hardware radio is disabled.")
-            value: root.wifi.wifiEnabled
-            writable: root.wifi.wifiHardwareEnabled && !root.operationPending
-            onValueRequested: value => root.wifi.requestWifiEnabled(value)
+            text: qsTr("Radio")
+            separated: false
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Wi-Fi radio")
+                description: root.wifi.wifiHardwareEnabled ? qsTr(
+                                                                 "Backend-confirmed NetworkManager state.") :
+                                                             qsTr("The hardware radio is disabled.")
+                value: root.wifi.wifiEnabled
+                writable: root.wifi.wifiHardwareEnabled && !root.operationPending
+                onValueRequested: value => root.wifi.requestWifiEnabled(value)
+            }
         }
 
-        RowLayout {
+        ControlCenterSectionPanel {
+            objectName: "wifiNetworksSection"
             Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.wifi.wifiEnabled && root.mode === "list"
-            spacing: Theme.spacing.sm
+            visible: !root.backendUnavailable && root.mode === "list" && (root.wifi.wifiEnabled
+                                                                          || root.operationMessage(
+                                                                              ) !== "")
+            text: qsTr("Networks")
 
-            IslandButton {
-                objectName: "wifiRefreshButton"
-                label: root.wifi.wifiScanning ? qsTr("Scanning…") : qsTr("Refresh")
-                reducedMotion: root.reducedMotion
-                enabled: !root.operationPending
-                Accessible.description: qsTr("Request one NetworkManager Wi-Fi scan")
-                onClicked: root.wifi.refreshWifi()
-            }
+            Item {
+                id: networkActionsEntry
 
-            IslandButton {
-                objectName: "wifiHiddenButton"
-                label: qsTr("Hidden network")
-                reducedMotion: root.reducedMotion
-                enabled: !root.operationPending
-                Accessible.description: qsTr("Connect to an explicit hidden SSID")
-                onClicked: {
-                    root.clearPrivateState();
-                    root.mode = "hidden";
-                    Qt.callLater(hiddenSsid.forceActiveFocus);
+                Layout.fillWidth: true
+                implicitHeight: Math.max(Theme.size.controlCenterSettingRowMinimumHeight,
+                                         networkActionsColumn.implicitHeight + Theme.spacing.md * 2)
+
+                ColumnLayout {
+                    id: networkActionsColumn
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.spacing.sm
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: root.wifi !== null && root.wifi.wifiEnabled
+                        spacing: Theme.spacing.sm
+
+                        IslandButton {
+                            objectName: "wifiRefreshButton"
+                            label: root.wifi !== null && root.wifi.wifiScanning ? qsTr("Scanning…") : qsTr(
+                                                                                      "Refresh")
+                            reducedMotion: root.reducedMotion
+                            enabled: !root.operationPending
+                            Accessible.description: qsTr("Request one NetworkManager Wi-Fi scan")
+                            onClicked: root.wifi.refreshWifi()
+                        }
+
+                        IslandButton {
+                            objectName: "wifiHiddenButton"
+                            label: qsTr("Hidden network")
+                            reducedMotion: root.reducedMotion
+                            enabled: !root.operationPending
+                            Accessible.description: qsTr("Connect to an explicit hidden SSID")
+                            onClicked: {
+                                root.clearPrivateState();
+                                root.mode = "hidden";
+                                Qt.callLater(hiddenSsid.forceActiveFocus);
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        text: root.operationMessage()
+                        textFormat: Text.PlainText
+                        size: "caption"
+                        color: root.wifi !== null && root.wifi.wifiOperationFailure === "none"
+                               ? Theme.color.textSecondary : Theme.color.dangerText
+                        wrapMode: Text.Wrap
+                        Accessible.name: text
+                    }
+
+                    IslandText {
+                        Layout.fillWidth: true
+                        visible: root.wifi !== null && root.wifi.wifiEnabled && !root.wifi.wifiScanning
+                                 && root.networkCount === 0
+                        text: qsTr(
+                                  "No networks are currently available. Refresh to request one bounded scan.")
+                        size: "body"
+                        color: Theme.color.textSecondary
+                        wrapMode: Text.Wrap
+                        Accessible.name: text
+                    }
+                }
+
+                Rectangle {
+                    objectName: "wifiNetworkActionsSeparator"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: Theme.size.hairlineWidth
+                    color: Theme.color.surfaceBorder
+                    opacity: 0.72
+                    visible: root.wifi !== null && root.wifi.wifiEnabled && root.networkCount > 0
+                    Accessible.ignored: true
                 }
             }
 
-            Item {
+            ColumnLayout {
+                objectName: "wifiNetworkList"
                 Layout.fillWidth: true
-            }
-        }
+                visible: root.wifi !== null && root.wifi.wifiEnabled && root.networkCount > 0
+                spacing: 0
+                Accessible.role: Accessible.List
+                Accessible.name: qsTr("Connected and available Wi-Fi networks")
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.mode === "list" && root.operationMessage()
-                     !== ""
-            text: root.operationMessage()
-            textFormat: Text.PlainText
-            size: "caption"
-            color: root.wifi.wifiOperationFailure === "none" ? Theme.color.textSecondary :
-                                                               Theme.color.dangerText
-            wrapMode: Text.Wrap
-            Accessible.name: text
-        }
+                Repeater {
+                    id: networkRepeater
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.wifi.wifiEnabled && root.mode === "list" &&
-                     !root.wifi.wifiScanning && root.wifi.wifiNetworks.length === 0
-            text: qsTr("No networks are currently available. Refresh to request one bounded scan.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
-            Accessible.name: text
-        }
+                    model: root.wifi === null ? [] : root.wifi.wifiNetworks
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            visible: !root.backendUnavailable && root.wifi.wifiEnabled && root.mode === "list"
-            spacing: Theme.spacing.sm
-            Accessible.role: Accessible.List
-            Accessible.name: qsTr("Connected and available Wi-Fi networks")
+                    delegate: WifiNetworkRow {
+                        required property var modelData
+                        required property int index
 
-            Repeater {
-                model: root.wifi === null ? [] : root.wifi.wifiNetworks
-
-                delegate: WifiNetworkRow {
-                    required property var modelData
-
-                    network: modelData
-                    busy: root.operationPending
-                    reducedMotion: root.reducedMotion
-                    onConnectRequested: (token, secretRequired) => root.openNetwork(modelData)
-                    onDisconnectRequested: root.wifi.disconnectWifi()
-                    onForgetRequested: token => root.requestForget(modelData)
+                        network: modelData
+                        separatorVisible: index < networkRepeater.count - 1
+                        busy: root.operationPending
+                        reducedMotion: root.reducedMotion
+                        onConnectRequested: (token, secretRequired) => root.openNetwork(modelData)
+                        onDisconnectRequested: root.wifi.disconnectWifi()
+                        onForgetRequested: token => root.requestForget(modelData)
+                    }
                 }
             }
         }
@@ -356,6 +411,7 @@ Flickable {
                     text: qsTr("Connect to %1").arg(root.selectedLabel)
                     textFormat: Text.PlainText
                     size: "title"
+                    color: Theme.snapshot.controlFillForeground
                     elide: Text.ElideRight
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
@@ -370,6 +426,7 @@ Flickable {
 
                 SettingToggleRow {
                     Layout.fillWidth: true
+                    separatorVisible: false
                     label: qsTr("Remember")
                     description: qsTr("Delegate user-scoped credential storage to NetworkManager.")
                     value: root.rememberConnection
@@ -416,6 +473,7 @@ Flickable {
                 IslandText {
                     text: qsTr("Hidden network")
                     size: "title"
+                    color: Theme.snapshot.controlFillForeground
                     Accessible.role: Accessible.Heading
                     Accessible.name: text
                 }
@@ -451,7 +509,7 @@ Flickable {
                         leftPadding: Theme.spacing.md
                         rightPadding: Theme.spacing.md
                         enabled: !root.operationPending
-                        color: Theme.color.textPrimary
+                        color: Theme.snapshot.controlFillForeground
                         selectionColor: Theme.snapshot.accent
                         selectedTextColor: Theme.snapshot.accentForeground
                         font.pixelSize: Theme.type.sizeForItem(this, "body")
@@ -467,6 +525,7 @@ Flickable {
 
                 SettingChoiceRow {
                     Layout.fillWidth: true
+                    separatorVisible: true
                     label: qsTr("Security")
                     description: qsTr("Choose Open or WPA Personal.")
                     value: root.hiddenSecurity
@@ -500,6 +559,7 @@ Flickable {
 
                 SettingToggleRow {
                     Layout.fillWidth: true
+                    separatorVisible: false
                     label: qsTr("Remember")
                     description: qsTr("Delegate user-scoped credential storage to NetworkManager.")
                     value: root.rememberConnection

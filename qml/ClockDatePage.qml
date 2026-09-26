@@ -35,22 +35,14 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Clock & Date")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "clockPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "One shared clock updates Idle, Expanded, and this preview. Timezone, network time, and the system clock remain managed by KDE.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterClock"
+            title: qsTr("Clock & Date")
+            description: qsTr("Choose how Nagi displays the time and date.")
         }
 
         IslandPanel {
@@ -69,6 +61,7 @@ Flickable {
                     Layout.fillWidth: true
                     text: root.clock.text
                     size: "display"
+                    color: Theme.snapshot.controlFillForeground
                     horizontalAlignment: Text.AlignHCenter
                     Accessible.name: qsTr("Clock preview: %1").arg(text)
                 }
@@ -84,103 +77,116 @@ Flickable {
             }
         }
 
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "clockPresentationSection"
             text: qsTr("Presentation")
-        }
 
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Time format")
-            description: qsTr("Follow the current locale or force a 12-hour or 24-hour clock.")
-            value: root.settingsModel.snapshot.clock.format
-            choices: [
-                {
-                    "label": qsTr("Auto"),
-                    "value": "auto"
-                },
-                {
-                    "label": "12-hour",
-                    "value": "12h"
-                },
-                {
-                    "label": "24-hour",
-                    "value": "24h"
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Time format")
+                description: qsTr("Follow the current locale or force a 12-hour or 24-hour clock.")
+                value: root.settingsModel.snapshot.clock.format
+                choices: [
+                    {
+                        "label": qsTr("Auto"),
+                        "value": "auto"
+                    },
+                    {
+                        "label": "12-hour",
+                        "value": "12h"
+                    },
+                    {
+                        "label": "24-hour",
+                        "value": "24h"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request({
+                                                            "format": value
+                                                        })
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Show seconds")
+                description: qsTr(
+                                 "Use the single shared second-level schedule while a Nagi surface is visible.")
+                value: root.settingsModel.snapshot.clock.showSeconds
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "showSeconds": value
+                                                        })
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Date in compact clock")
+                description: qsTr("Show the configured date beside the mandatory compact clock.")
+                value: root.settingsModel.snapshot.clock.showIdleDate
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "showIdleDate": value
+                                                        })
+            }
+
+            SettingChoiceRow {
+                Layout.fillWidth: true
+                separatorVisible: clockFailureEntry.visible
+                label: qsTr("Date format")
+                description: qsTr("Choose one validated, locale-safe presentation pattern.")
+                value: root.settingsModel.snapshot.clock.dateFormat
+                choices: [
+                    {
+                        "label": qsTr("Full"),
+                        "value": "dddd, d MMMM"
+                    },
+                    {
+                        "label": qsTr("Compact"),
+                        "value": "ddd, d MMM"
+                    },
+                    {
+                        "label": "ISO",
+                        "value": "yyyy-MM-dd"
+                    },
+                    {
+                        "label": qsTr("Month first"),
+                        "value": "MM/dd/yyyy"
+                    },
+                    {
+                        "label": qsTr("Day first"),
+                        "value": "dd/MM/yyyy"
+                    }
+                ]
+                writable: root.settingsModel.writable
+                reducedMotion: root.reducedMotion
+                onValueRequested: value => root.request({
+                                                            "dateFormat": value
+                                                        })
+            }
+
+            Item {
+                id: clockFailureEntry
+                Layout.fillWidth: true
+                visible: root.failureText !== ""
+                implicitHeight: clockFailureText.implicitHeight + Theme.spacing.md * 2
+
+                IslandText {
+                    id: clockFailureText
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.failureText
+                    size: "caption"
+                    color: Theme.color.danger
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
                 }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "format": value
-                                                    })
-        }
-
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Show seconds")
-            description: qsTr(
-                             "Use the single shared second-level schedule while a Nagi surface is visible.")
-            value: root.settingsModel.snapshot.clock.showSeconds
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "showSeconds": value
-                                                    })
-        }
-
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Date in compact clock")
-            description: qsTr("Show the configured date beside the mandatory compact clock.")
-            value: root.settingsModel.snapshot.clock.showIdleDate
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "showIdleDate": value
-                                                    })
-        }
-
-        SettingChoiceRow {
-            Layout.fillWidth: true
-            label: qsTr("Date format")
-            description: qsTr("Choose one validated, locale-safe presentation pattern.")
-            value: root.settingsModel.snapshot.clock.dateFormat
-            choices: [
-                {
-                    "label": qsTr("Full"),
-                    "value": "dddd, d MMMM"
-                },
-                {
-                    "label": qsTr("Compact"),
-                    "value": "ddd, d MMM"
-                },
-                {
-                    "label": "ISO",
-                    "value": "yyyy-MM-dd"
-                },
-                {
-                    "label": qsTr("Month first"),
-                    "value": "MM/dd/yyyy"
-                },
-                {
-                    "label": qsTr("Day first"),
-                    "value": "dd/MM/yyyy"
-                }
-            ]
-            writable: root.settingsModel.writable
-            reducedMotion: root.reducedMotion
-            onValueRequested: value => root.request({
-                                                        "dateFormat": value
-                                                    })
-        }
-
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.failureText !== ""
-            text: root.failureText
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
+            }
         }
 
         SettingsResetActions {

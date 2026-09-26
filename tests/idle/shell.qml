@@ -125,7 +125,7 @@ ShellRoot {
                 "inactive gaming state removes its badge and one separator exactly");
         require(islandFull.workspaceBlock.visible, "workspace renders when available");
         require(islandFull.workspaceText === "02" && islandFull.workspaceLabelItem.text === "02"
-                && islandFull.workspaceLabelItem.text !== fullDesktops.currentName,
+                && islandFull.workspaceLabelItem.text !== fullWorkspaceProjection.currentName,
                 "workspace renders a two-digit position indicator, never the desktop name");
         require(islandFull.workspaceBlock.width === islandFull.workspaceIndicatorWidth
                 && islandFull.workspaceBlock.height === islandFull.workspaceIndicatorHeight,
@@ -133,13 +133,21 @@ ShellRoot {
         require(!islandNoWorkspace.workspaceBlock.visible
                 && !islandNoWorkspace.workspaceBoundary.visible
                 && islandNoWorkspace.workspaceText === "",
-                "globally unavailable workspace state collapses its Idle group and separator");
+                "output-local unavailable projection collapses its Idle group and separator");
         require(islandFull.implicitWidth - islandNoWorkspace.implicitWidth
                 === islandFull.workspaceBlock.width + islandFull.boundaryWidth,
                 "workspace unavailability frees its complete Idle geometry");
         require(islandNoWorkspace.weatherBlock.x === 0
                 && islandNoWorkspace.weatherBoundary.visible,
                 "Weather becomes the leading Idle group without workspace residue");
+        require(!islandWorkspaceDisabled.workspaceBlock.visible
+                && !islandWorkspaceDisabled.workspaceBoundary.visible
+                && islandWorkspaceDisabled.workspaceText === ""
+                && islandWorkspaceDisabled.implicitWidth === islandNoWorkspace.implicitWidth,
+                "disabled workspace setting collapses the same text, badge, separator, and width as an unavailable projection");
+        require(islandWorkspaceDisabled.weatherBlock.x === 0
+                && islandWorkspaceDisabled.weatherBoundary.visible,
+                "disabling only workspace promotes Weather without collapsing later Idle groups");
         require(islandFull.clockBlock.text === "13:45", "clock renders normalized time text");
         require(!islandFull.clockDateBlock.visible && islandFull.clockGroupBlock.width
                 === islandFull.clockBlock.width,
@@ -173,6 +181,12 @@ ShellRoot {
         require(islandFull.clockPresentationItem === islandFull.clockGroupBlock
                 && islandFull.mediaPresentationItem === islandFull.mediaBlock,
                 "Idle reorder preserves the matched clock and media presentation aliases");
+        require(islandGaming.workspaceBlock.x < islandGaming.workspaceBoundary.x
+                && islandGaming.workspaceBoundary.x < islandGaming.gamingPerformanceBlock.x
+                && islandGaming.gamingPerformanceBlock.x
+                < islandGaming.gamingPerformanceBoundary.x
+                && islandGaming.gamingPerformanceBoundary.x < islandGaming.clockGroupBlock.x,
+                "workspace remains the first optional Idle group before Gaming Performance and Clock");
         require(islandFull.workspaceBoundary.visible && islandFull.clockBoundary.visible
                 && islandFull.weatherBoundary.visible,
                 "each visible group transition renders one restrained separator");
@@ -400,10 +414,20 @@ ShellRoot {
         property bool showIdleDate: false
     }
 
-    component FakeDesktops: QtObject {
+    component FakeWorkspaceProjection: QtObject {
         property bool available: true
+        property string currentId: "second"
         property string currentName: "Desktop 2"
         property int currentPosition: 1
+        property var desktops: [{
+                "id": "first",
+                "name": "Desktop 1",
+                "position": 0
+            }, {
+                "id": "second",
+                "name": "Desktop 2",
+                "position": 1
+            }]
     }
 
     component FakeWeather: QtObject {
@@ -444,14 +468,18 @@ ShellRoot {
         }
     }
 
-    FakeDesktops {
-        id: fullDesktops
+    FakeWorkspaceProjection {
+        id: fullWorkspaceProjection
     }
 
-    FakeDesktops {
-        id: unavailableDesktops
+    FakeWorkspaceProjection {
+        id: unavailableWorkspaceProjection
 
         available: false
+        currentId: ""
+        currentName: ""
+        currentPosition: -1
+        desktops: []
     }
 
     FakeWeather {
@@ -472,7 +500,7 @@ ShellRoot {
     IdleIsland {
         id: islandFull
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: islandFullWeather
         media: FakeMedia {}
@@ -482,16 +510,26 @@ ShellRoot {
     IdleIsland {
         id: islandNoWorkspace
 
-        virtualDesktops: unavailableDesktops
+        virtualDesktops: unavailableWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: FakeMedia {}
     }
 
     IdleIsland {
+        id: islandWorkspaceDisabled
+
+        virtualDesktops: fullWorkspaceProjection
+        clock: FakeClock {}
+        weather: FakeWeather {}
+        media: FakeMedia {}
+        showWorkspace: false
+    }
+
+    IdleIsland {
         id: islandGaming
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         gamingPerformance: FakeGamingPerformance {}
         clock: FakeClock {}
     }
@@ -499,7 +537,7 @@ ShellRoot {
     IdleIsland {
         id: islandNoGaming
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         gamingPerformance: FakeGamingPerformance {
             active: false
         }
@@ -509,7 +547,7 @@ ShellRoot {
     IdleIsland {
         id: islandNoWeather
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {
             available: false
@@ -520,7 +558,7 @@ ShellRoot {
     IdleIsland {
         id: islandNoMedia
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: FakeMedia {
@@ -531,7 +569,7 @@ ShellRoot {
     IdleIsland {
         id: islandNoWeatherNoMedia
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {
             available: false
@@ -544,7 +582,7 @@ ShellRoot {
     IdleIsland {
         id: islandHiddenOptional
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: FakeMedia {}
@@ -555,7 +593,7 @@ ShellRoot {
     IdleIsland {
         id: islandWithDate
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {
             showIdleDate: true
         }
@@ -570,7 +608,7 @@ ShellRoot {
     IdleIsland {
         id: islandMediaLifecycle
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: lifecycleMedia
@@ -579,7 +617,7 @@ ShellRoot {
     IdleIsland {
         id: islandOverflow
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: overflowMedia
@@ -588,7 +626,7 @@ ShellRoot {
     IdleIsland {
         id: islandStatic
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: overflowMedia
@@ -605,7 +643,7 @@ ShellRoot {
     IdleIsland {
         id: islandWatched
 
-        virtualDesktops: fullDesktops
+        virtualDesktops: fullWorkspaceProjection
         clock: FakeClock {}
         weather: FakeWeather {}
         media: overflowMedia

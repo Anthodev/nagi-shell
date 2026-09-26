@@ -35,158 +35,186 @@ Flickable {
 
         width: Math.min(root.width - (root.contentHeight > root.height ? Theme.spacing.md : 0),
                         Theme.size.controlCenterContentMaximumWidth)
-        spacing: Theme.spacing.md
+        spacing: Theme.spacing.sm
 
-        IslandText {
-            text: qsTr("Island")
-            size: "title"
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
-        }
-
-        IslandText {
+        ControlCenterPageHeader {
+            objectName: "islandPageHeader"
             Layout.fillWidth: true
-            text: qsTr(
-                      "Tune the shared compact metrics and adaptive expanded bounds. Content order and the screen-safe layout remain fixed.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
+            iconMeaning: "controlCenterIsland"
+            title: qsTr("Island")
+            description: qsTr("Adjust the island's size, visible information, and system feedback.")
         }
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "islandGeometrySection"
             text: qsTr("Geometry")
             separated: false
+
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Compact height")
+                description: qsTr("Metrics-aware target between 44 and 48 logical pixels.")
+                value: root.settingsModel.snapshot.island.compactHeight
+                from: 44
+                to: 48
+                stepSize: 1
+                valueText: Math.round(value) + " px"
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "compactHeight": value
+                                                                      }, continuous)
+            }
+
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Compact padding")
+                description: qsTr("Side padding and group rhythm from 16 to 32 logical pixels.")
+                value: root.settingsModel.snapshot.island.compactPadding
+                from: 16
+                to: 32
+                stepSize: 4
+                valueText: Math.round(value) + " px"
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "compactPadding": value
+                                                                      }, continuous)
+            }
+
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Expanded width limit")
+                description: qsTr(
+                                 "Maximum fraction of the current screen; natural content may remain smaller.")
+                value: root.settingsModel.snapshot.island.expandedWidthPercent
+                from: 0.6
+                to: 1
+                stepSize: 0.05
+                valueText: Math.round(value * 100) + "%"
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "expandedWidthPercent":
+                                                                          value
+                                                                      }, continuous)
+            }
+
+            SettingSliderRow {
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Expanded height limit")
+                description: qsTr(
+                                 "Maximum fraction of the current screen with existing content bounds preserved.")
+                value: root.settingsModel.snapshot.island.expandedHeightPercent
+                from: 0.6
+                to: 1
+                stepSize: 0.05
+                valueText: Math.round(value * 100) + "%"
+                writable: root.settingsModel.writable
+                onValueRequested: (value, continuous) => root.request({
+                                                                          "expandedHeightPercent":
+                                                                          value
+                                                                      }, continuous)
+            }
         }
 
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Compact height")
-            description: qsTr("Metrics-aware target between 44 and 48 logical pixels.")
-            value: root.settingsModel.snapshot.island.compactHeight
-            from: 44
-            to: 48
-            stepSize: 1
-            valueText: Math.round(value) + " px"
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "compactHeight": value
-                                                                  }, continuous)
-        }
-
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Compact padding")
-            description: qsTr("Side padding and group rhythm from 16 to 32 logical pixels.")
-            value: root.settingsModel.snapshot.island.compactPadding
-            from: 16
-            to: 32
-            stepSize: 4
-            valueText: Math.round(value) + " px"
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "compactPadding": value
-                                                                  }, continuous)
-        }
-
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Expanded width limit")
-            description: qsTr(
-                             "Maximum fraction of the current screen; natural content may remain smaller.")
-            value: root.settingsModel.snapshot.island.expandedWidthPercent
-            from: 0.6
-            to: 1
-            stepSize: 0.05
-            valueText: Math.round(value * 100) + "%"
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "expandedWidthPercent": value
-                                                                  }, continuous)
-        }
-
-        SettingSliderRow {
-            Layout.fillWidth: true
-            label: qsTr("Expanded height limit")
-            description: qsTr(
-                             "Maximum fraction of the current screen with existing content bounds preserved.")
-            value: root.settingsModel.snapshot.island.expandedHeightPercent
-            from: 0.6
-            to: 1
-            stepSize: 0.05
-            valueText: Math.round(value * 100) + "%"
-            writable: root.settingsModel.writable
-            onValueRequested: (value, continuous) => root.request({
-                                                                      "expandedHeightPercent": value
-                                                                  }, continuous)
-        }
-
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "islandFeedbackSection"
             text: qsTr("Feedback")
+
+            SettingToggleRow {
+                id: gamingPerformanceToggle
+                objectName: "gamingPerformanceToggle"
+
+                Layout.fillWidth: true
+                separatorVisible: false
+                label: qsTr("Gaming performance indicator")
+                description: !value ? qsTr("Observer, feedback, and badge are disabled.") :
+                                      root.gamingPerformanceAvailable ? qsTr(
+                                                                            "Show passive system-status feedback and a static badge while GameMode clients or the performance power profile are active.") :
+                                                                        qsTr("No supported Gaming Performance backend is currently available.")
+                value: root.settingsModel.snapshot.island.gamingIndicator
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "gamingIndicator": value
+                                                        }, false)
+            }
         }
 
-        SettingToggleRow {
-            id: gamingPerformanceToggle
-            objectName: "gamingPerformanceToggle"
-
-            Layout.fillWidth: true
-            label: qsTr("Gaming performance indicator")
-            description: !value ? qsTr("Observer, feedback, and badge are disabled.") :
-                                  root.gamingPerformanceAvailable ? qsTr(
-                                                                        "Show passive system-status feedback and a static badge while GameMode clients or the performance power profile are active.") :
-                                                                    qsTr("No supported Gaming Performance backend is currently available.")
-            value: root.settingsModel.snapshot.island.gamingIndicator
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "gamingIndicator": value
-                                                    }, false)
-        }
-        ControlCenterSectionHeading {
+        ControlCenterSectionPanel {
             objectName: "islandCompactContentSection"
             text: qsTr("Compact content")
-        }
 
-        IslandText {
-            Layout.fillWidth: true
-            text: qsTr(
-                      "Clock is always visible. Optional content keeps the fixed order Workspace → Gaming Performance → Clock → Weather → Media and collapses when unavailable.")
-            size: "body"
-            color: Theme.color.textSecondary
-            wrapMode: Text.Wrap
-        }
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: compactContentNote.implicitHeight + Theme.spacing.md * 2
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Workspace")
-            description: qsTr("Show the current two-digit workspace position before Clock.")
-            value: root.settingsModel.snapshot.island.showWorkspace
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "showWorkspace": value
-                                                    }, false)
-        }
+                IslandText {
+                    id: compactContentNote
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr(
+                              "Clock is always visible. Optional content keeps the fixed order Workspace → Gaming Performance → Weather → Clock → Media and collapses when unavailable.")
+                    size: "body"
+                    color: Theme.color.textSecondary
+                    wrapMode: Text.Wrap
+                }
 
-        SettingToggleRow {
-            Layout.fillWidth: true
-            label: qsTr("Weather")
-            description: qsTr(
-                             "Show compact weather when the Weather integration is configured and enabled.")
-            value: root.settingsModel.snapshot.island.showWeather
-            writable: root.settingsModel.writable
-            onValueRequested: value => root.request({
-                                                        "showWeather": value
-                                                    }, false)
-        }
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: Theme.color.surfaceBorder
+                    opacity: 0.72
+                }
+            }
 
-        IslandText {
-            Layout.fillWidth: true
-            visible: root.failureText !== ""
-            text: root.failureText
-            size: "caption"
-            color: Theme.color.danger
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: true
+                label: qsTr("Workspace")
+                description: qsTr("Show the current two-digit workspace position before Clock.")
+                value: root.settingsModel.snapshot.island.showWorkspace
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "showWorkspace": value
+                                                        }, false)
+            }
+
+            SettingToggleRow {
+                Layout.fillWidth: true
+                separatorVisible: compactContentFailure.visible
+                label: qsTr("Weather")
+                description: qsTr(
+                                 "Show compact weather when the Weather integration is configured and enabled.")
+                value: root.settingsModel.snapshot.island.showWeather
+                writable: root.settingsModel.writable
+                onValueRequested: value => root.request({
+                                                            "showWeather": value
+                                                        }, false)
+            }
+
+            Item {
+                id: compactContentFailure
+                Layout.fillWidth: true
+                visible: root.failureText !== ""
+                implicitHeight: compactContentFailureText.implicitHeight + Theme.spacing.md * 2
+
+                IslandText {
+                    id: compactContentFailureText
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.failureText
+                    size: "caption"
+                    color: Theme.color.danger
+                    wrapMode: Text.Wrap
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: text
+                }
+            }
         }
 
         SettingsResetActions {

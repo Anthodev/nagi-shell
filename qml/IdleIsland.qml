@@ -264,6 +264,7 @@ Item {
                 tone: "primary"
                 size: "body"
                 font.weight: Theme.type.weightMedium
+                color: Theme.snapshot.surfaceActiveForeground
             }
         }
 

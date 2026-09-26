@@ -126,37 +126,66 @@ Singleton {
                                                                      + 0.05);
     }
 
-    function ensureContrast(candidate, background, floor, toward) {
-        let result = typeof candidate === "string" ? rgb(candidate) : candidate;
-        if (contrast(result, background) >= floor) {
-            return result;
+    function contrastEndpoint(backgrounds) {
+        let blackFloor = Number.POSITIVE_INFINITY;
+        let whiteFloor = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < backgrounds.length; index += 1) {
+            blackFloor = Math.min(blackFloor, contrast("#000000", backgrounds[index]));
+            whiteFloor = Math.min(whiteFloor, contrast("#FFFFFF", backgrounds[index]));
         }
-        const target = typeof toward === "string" ? rgb(toward) : toward;
-        for (let step = 1; step <= 32; step += 1) {
-            const adjusted = mix(result, target, step / 32);
-            if (contrast(adjusted, background) >= floor) {
-                return adjusted;
-            }
-        }
-        return target;
+        return blackFloor >= whiteFloor ? "#000000" : "#FFFFFF";
     }
+
+    function ensureContrast(candidate, background, floor, toward) {
+        return ensureContrastAgainst(candidate, [background], floor, toward);
+    }
+
     function ensureContrastAgainst(candidate, backgrounds, floor, toward) {
-        const original = typeof candidate === "string" ? rgb(candidate) : candidate;
-        const target = typeof toward === "string" ? rgb(toward) : toward;
-        for (let step = 0; step <= 32; step += 1) {
-            const adjusted = step === 0 ? original : mix(original, target, step / 32);
-            let valid = true;
-            for (let index = 0; index < backgrounds.length; index += 1) {
-                if (contrast(adjusted, backgrounds[index]) < floor) {
-                    valid = false;
-                    break;
+        const original = rgb(hex(typeof candidate === "string" ? rgb(candidate) : candidate));
+        const preferred = rgb(hex(typeof toward === "string" ? rgb(toward) : toward));
+        const fallback = rgb(contrastEndpoint(backgrounds));
+        for (let directionIndex = 0; directionIndex < 2; directionIndex += 1) {
+            const target = directionIndex === 0 ? preferred : fallback;
+            if (directionIndex === 1 && hex(target) === hex(preferred)) {
+                continue;
+            }
+            for (let step = 0; step <= 32; step += 1) {
+                const adjusted = step === 0 ? original : rgb(hex(mix(original, target, step / 32)));
+                let valid = true;
+                for (let index = 0; index < backgrounds.length; index += 1) {
+                    if (contrast(adjusted, backgrounds[index]) < floor) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (valid) {
+                    return adjusted;
                 }
             }
-            if (valid) {
-                return adjusted;
+        }
+        return fallback;
+    }
+
+    function contrastingForeground(preferred, background, floor) {
+        return hex(ensureContrast(preferred, background, floor, contrastEndpoint([background])));
+    }
+
+    function textForeground(preferred, background) {
+        return contrastingForeground(preferred, background, 4.5);
+    }
+
+    function findContrastingSurface(origin, directions, comparison, differenceFloor, focus) {
+        for (let directionIndex = 0; directionIndex < directions.length; directionIndex += 1) {
+            for (let step = 1; step <= 32; step += 1) {
+                const candidate = hex(mix(origin, directions[directionIndex], step / 32));
+                if (contrast(candidate, comparison) >= differenceFloor && contrast(focus,
+                                                                                   candidate)
+                        >= 3) {
+                    return candidate;
+                }
             }
         }
-        return target;
+        return null;
     }
 
     function validWallpaperAccent() {
@@ -199,16 +228,20 @@ Singleton {
         }
         if (scheme === "system") {
             const base = systemAppearance.colorScheme === "dark" ? dark : light;
+            const surface = canonicalHex(systemAppearance.surface) ?? base.surface;
+            const text = canonicalHex(systemAppearance.text) ?? base.text;
+            if (contrast(text, surface) < UserConfig.minimumCustomPaletteContrast) {
+                return base;
+            }
             return Object.assign({}, base, {
-                                     "surface": canonicalHex(systemAppearance.surface)
-                                                ?? base.surface,
-                                     "text": canonicalHex(systemAppearance.text) ?? base.text
+                                     "surface": surface,
+                                     "text": text
                                  });
         }
         if (scheme === "custom") {
             const surface = configuration.customSurface;
             const text = configuration.customText;
-            const base = luminance(surface) > 0.45 ? light : dark;
+            const base = luminance(text) < luminance(surface) ? light : dark;
             return Object.assign({}, base, {
                                      "surface": surface,
                                      "surfaceBorder": hex(mix(surface, text, 0.24)),
@@ -268,15 +301,17 @@ Singleton {
     function deriveSnapshot(configuration, palette, selected, source, wallpaperAccent) {
         const surfaceBase = palette.surface;
         const textPrimary = palette.text;
-        if (contrast(textPrimary, surfaceBase) < 4.5) {
+        const requiredTextContrast = configuration.scheme === "custom"
+              ? UserConfig.minimumCustomPaletteContrast : 4.5;
+        if (contrast(textPrimary, surfaceBase) < requiredTextContrast) {
             return null;
         }
         const selectedRgb = rgb(selected, surfaceBase);
         if (selectedRgb === null) {
             return null;
         }
-        const toward = luminance(surfaceBase) > 0.45 ? "#000000" : "#FFFFFF";
-        const foreground = luminance(surfaceBase) > 0.45 ? "#F1F5FA" : "#080D16";
+        const toward = contrastEndpoint([surfaceBase]);
+        const foreground = toward === "#000000" ? "#F1F5FA" : "#080D16";
         const primaryRgb = ensureContrastAgainst(selectedRgb, [surfaceBase, foreground], 4.5,
                                                  toward);
         const primary = hex(primaryRgb);
@@ -293,35 +328,111 @@ Singleton {
                                                 1.08, primaryRgb));
         const surfaceActive = hex(ensureContrast(mix(surfaceBase, primaryRgb, 0.18), surfaceBase,
                                                  1.16, primaryRgb));
-        const controlFill = hex(mix(surfaceBase, textPrimary, 0.08));
+        const controlFillCandidate = hex(mix(surfaceBase, textPrimary, 0.08));
+        const controlFill = contrast(textPrimary, controlFillCandidate) >= 4.5
+              ? controlFillCandidate : surfaceBase;
         const controlFillHover = hex(mix(controlFill, primaryRgb, 0.12));
         const controlFillPressed = hex(mix(controlFill, primaryRgb, 0.20));
+        const textSecondary = hex(ensureContrastAgainst(mix(textPrimary, surfaceBase, 0.24),
+                                                        [surfaceBase, controlFill], 4.5,
+                                                        textPrimary));
+        const textMuted = hex(ensureContrastAgainst(mix(textPrimary, surfaceBase, 0.43),
+                                                    [surfaceBase, controlFill], 4.5, textPrimary));
+        const surfaceHoverForeground = textForeground(textPrimary, surfaceHover);
+        const surfaceActiveForeground = textForeground(textPrimary, surfaceActive);
+        const controlFillForeground = textForeground(textPrimary, controlFill);
+        const controlFillHoverForeground = textForeground(textPrimary, controlFillHover);
+        const controlFillPressedForeground = textForeground(textPrimary, controlFillPressed);
+        const controlFillAccent = contrastingForeground(primary, controlFill, 4.5);
+        const surfaceHoverAccent = contrastingForeground(primary, surfaceHover, 3);
+        const surfaceActiveAccent = contrastingForeground(primary, surfaceActive, 3);
+        const surfaceActiveAccentText = contrastingForeground(primary, surfaceActive, 4.5);
+        const railDarkEndpoint = "#02050A";
+        const railLightEndpoint = "#FAFCFE";
+        const railPreferredEndpoint = luminance(textPrimary) > luminance(surfaceBase)
+              ? railDarkEndpoint : railLightEndpoint;
+        const railFallbackEndpoint = railPreferredEndpoint === railDarkEndpoint ? railLightEndpoint :
+                                                                                  railDarkEndpoint;
+        const railDirections = [railPreferredEndpoint, railFallbackEndpoint];
+        let controlCenterRailSurface = findContrastingSurface(surfaceBase, railDirections,
+                                                              surfaceBase, 1.08, focusRing);
+        let controlCenterRailSelectedSurface = controlCenterRailSurface === null ? null :
+                                                                                   findContrastingSurface(
+                                                                                       controlCenterRailSurface,
+                                                                                       [textPrimary,
+                                                                                        toward], controlCenterRailSurface,
+                                                                                       1.16, focusRing);
+        if (controlCenterRailSelectedSurface === null) {
+            const fallbackRail = findContrastingSurface(surfaceBase, railDirections, surfaceBase,
+                                                        1.16, focusRing);
+            if (fallbackRail !== null) {
+                controlCenterRailSurface = fallbackRail;
+                controlCenterRailSelectedSurface = surfaceBase;
+            }
+        }
+        controlCenterRailSurface = controlCenterRailSurface ?? surfaceBase;
+        controlCenterRailSelectedSurface = controlCenterRailSelectedSurface
+                ?? controlCenterRailSurface;
+        const controlCenterRailForeground = textForeground(textPrimary, controlCenterRailSurface);
+        const controlCenterRailSelectedForeground = textForeground(textPrimary,
+                                                                   controlCenterRailSelectedSurface);
+        const controlCenterRailAccent = contrastingForeground(primary, controlCenterRailSurface, 3);
+        const controlCenterRailSelectedAccent = contrastingForeground(primary,
+                                                                      controlCenterRailSelectedSurface,
+                                                                      3);
         const borderHover = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.28),
                                                surfaceBase, 3, toward));
         const borderPressed = hex(ensureContrast(mix(palette.surfaceBorder, primaryRgb, 0.42),
                                                  surfaceBase, 3, toward));
-        const textSecondary = hex(ensureContrast(mix(textPrimary, surfaceBase, 0.24), surfaceBase,
-                                                 4.5, textPrimary));
-        const textMuted = hex(ensureContrast(mix(textPrimary, surfaceBase, 0.43), surfaceBase, 4.5,
-                                             textPrimary));
-        let dangerRgb = ensureContrast(palette.danger, surfaceBase, 4.5, toward);
-        let dangerFill = hex(mix(surfaceBase, dangerRgb, 0.06));
-        let dangerFillHover = hex(mix(surfaceBase, dangerRgb, 0.10));
-        let dangerFillPressed = hex(mix(surfaceBase, dangerRgb, 0.14));
-        dangerRgb = ensureContrastAgainst(dangerRgb, [surfaceBase, dangerFill, dangerFillHover,
-                                                      dangerFillPressed], 4.5, toward);
+        const statusBackgrounds = [surfaceBase, controlFill];
+        const dangerRgb = ensureContrastAgainst(palette.danger, statusBackgrounds, 4.5,
+                                                textPrimary);
         const danger = hex(dangerRgb);
-        dangerFill = hex(mix(surfaceBase, dangerRgb, 0.06));
-        dangerFillHover = hex(mix(surfaceBase, dangerRgb, 0.10));
-        dangerFillPressed = hex(mix(surfaceBase, dangerRgb, 0.14));
-        const warning = hex(ensureContrast(palette.warning, surfaceBase, 4.5, toward));
-        const success = hex(ensureContrast(palette.success, surfaceBase, 4.5, toward));
+        const dangerFillForegrounds = [danger, textPrimary, textSecondary];
+        const dangerFill = hex(ensureContrastAgainst(mix(surfaceBase, dangerRgb, 0.06),
+                                                     dangerFillForegrounds, 4.5, surfaceBase));
+        const dangerFillHover = hex(ensureContrastAgainst(mix(surfaceBase, dangerRgb, 0.10),
+                                                          dangerFillForegrounds, 4.5, surfaceBase));
+        const dangerFillPressed = hex(ensureContrastAgainst(mix(surfaceBase, dangerRgb, 0.14),
+                                                            dangerFillForegrounds, 4.5,
+                                                            surfaceBase));
+        const warning = hex(ensureContrastAgainst(palette.warning, statusBackgrounds, 4.5,
+                                                  textPrimary));
+        const surfaceHoverWarning = contrastingForeground(warning, surfaceHover, 3);
+        const surfaceActiveWarning = contrastingForeground(warning, surfaceActive, 3);
+        const success = hex(ensureContrastAgainst(palette.success, statusBackgrounds, 4.5,
+                                                  textPrimary));
         const ratios = Object.freeze({
                                          "accentOnSurface": contrast(primary, surfaceBase),
+                                         "accentOnSurfaceHover": contrast(surfaceHoverAccent,
+                                                                          surfaceHover),
+                                         "accentOnSurfaceActive": contrast(surfaceActiveAccent,
+                                                                           surfaceActive),
+                                         "accentTextOnSurfaceActive": contrast(
+                                                                          surfaceActiveAccentText,
+                                                                          surfaceActive),
+                                         "accentOnControlFill": contrast(controlFillAccent,
+                                                                         controlFill),
+                                         "accentOnControlCenterRail": contrast(
+                                                                          controlCenterRailAccent,
+                                                                          controlCenterRailSurface),
+                                         "accentOnControlCenterRailSelected": contrast(
+                                                                                  controlCenterRailSelectedAccent,
+                                                                                  controlCenterRailSelectedSurface),
                                          "accentForeground": Math.min(contrast(foreground, primary),
                                                                       contrast(foreground, hover),
                                                                       contrast(foreground, pressed)),
+                                         "controlCenterRailOnSurface": contrast(
+                                                                           controlCenterRailSurface,
+                                                                           surfaceBase),
+                                         "controlCenterRailSelectedOnRail": contrast(
+                                                                                controlCenterRailSelectedSurface,
+                                                                                controlCenterRailSurface),
                                          "focusRingOnSurface": contrast(focusRing, surfaceBase),
+                                         "focusRingOnControlCenterRail": contrast(focusRing,
+                                                                                  controlCenterRailSurface),
+                                         "focusRingOnControlCenterRailSelected": contrast(focusRing,
+                                                                                          controlCenterRailSelectedSurface),
                                          "progressOnTrack": contrast(progressFill,
                                                                      palette.progressTrack),
                                          "surfaceHoverOnBase": contrast(surfaceHover, surfaceBase),
@@ -329,21 +440,68 @@ Singleton {
                                          "statusOnSurface": Math.min(contrast(danger, surfaceBase),
                                                                      contrast(warning, surfaceBase),
                                                                      contrast(success, surfaceBase)),
+                                         "statusOnControlFill": Math.min(contrast(danger,
+                                                                                  controlFill),
+                                                                         contrast(warning,
+                                                                                  controlFill),
+                                                                         contrast(success,
+                                                                                  controlFill)),
+                                         "warningOnSurfaceHover": contrast(surfaceHoverWarning,
+                                                                           surfaceHover),
+                                         "warningOnSurfaceActive": contrast(surfaceActiveWarning,
+                                                                            surfaceActive),
                                          "dangerOnFills": Math.min(contrast(danger, dangerFill),
                                                                    contrast(danger, dangerFillHover),
                                                                    contrast(danger,
                                                                             dangerFillPressed)),
+                                         "textOnDangerFill": contrast(textPrimary, dangerFill),
+                                         "textOnControlCenterRail": contrast(
+                                                                        controlCenterRailForeground,
+                                                                        controlCenterRailSurface),
+                                         "textOnControlCenterRailSelected": contrast(
+                                                                                controlCenterRailSelectedForeground,
+                                                                                controlCenterRailSelectedSurface),
+                                         "textOnControlFill": contrast(controlFillForeground,
+                                                                       controlFill),
+                                         "textOnControlFillHover": contrast(
+                                                                       controlFillHoverForeground,
+                                                                       controlFillHover),
+                                         "textOnControlFillPressed": contrast(
+                                                                         controlFillPressedForeground,
+                                                                         controlFillPressed),
                                          "textOnSurface": contrast(textPrimary, surfaceBase),
+                                         "textOnSurfaceHover": contrast(surfaceHoverForeground,
+                                                                        surfaceHover),
+                                         "textOnSurfaceActive": contrast(surfaceActiveForeground,
+                                                                         surfaceActive),
                                          "textSecondaryOnSurface": contrast(textSecondary,
                                                                             surfaceBase),
-                                         "textMutedOnSurface": contrast(textMuted, surfaceBase)
+                                         "textSecondaryOnControlFill": contrast(textSecondary,
+                                                                                controlFill),
+                                         "textSecondaryOnDangerFill": contrast(textSecondary,
+                                                                               dangerFill),
+                                         "textMutedOnSurface": contrast(textMuted, surfaceBase),
+                                         "textMutedOnControlFill": contrast(textMuted, controlFill)
                                      });
-        if (ratios.accentOnSurface < 3 || ratios.accentForeground < 4.5
-                || ratios.focusRingOnSurface < 3 || ratios.progressOnTrack < 3
+        if (ratios.accentOnSurface < 3 || ratios.accentOnSurfaceHover < 3
+                || ratios.accentOnSurfaceActive < 3 || ratios.accentTextOnSurfaceActive < 4.5
+                || ratios.accentOnControlFill < 4.5 || ratios.accentOnControlCenterRail < 3
+                || ratios.accentOnControlCenterRailSelected < 3 || ratios.accentForeground < 4.5
+                || ratios.controlCenterRailOnSurface < 1.08 || ratios.controlCenterRailOnSurface
+                >= 2 || ratios.controlCenterRailSelectedOnRail < 1.16 || ratios.focusRingOnSurface
+                < 3 || ratios.focusRingOnControlCenterRail < 3
+                || ratios.focusRingOnControlCenterRailSelected < 3 || ratios.progressOnTrack < 3
                 || ratios.surfaceHoverOnBase < 1.08 || ratios.surfaceActiveOnBase < 1.16
-                || ratios.statusOnSurface < 4.5 || ratios.dangerOnFills < 4.5
-                || ratios.textOnSurface < 4.5 || ratios.textSecondaryOnSurface < 4.5
-                || ratios.textMutedOnSurface < 4.5) {
+                || ratios.warningOnSurfaceHover < 3 || ratios.warningOnSurfaceActive < 3
+                || ratios.statusOnSurface < 4.5 || ratios.statusOnControlFill < 4.5
+                || ratios.dangerOnFills < 4.5 || ratios.textOnDangerFill < 4.5
+                || ratios.textOnControlCenterRail < 4.5 || ratios.textOnControlCenterRailSelected
+                < 4.5 || ratios.textOnControlFill < 4.5 || ratios.textOnControlFillHover < 4.5
+                || ratios.textOnControlFillPressed < 4.5 || ratios.textOnSurface < 4.5
+                || ratios.textOnSurfaceHover < 4.5 || ratios.textOnSurfaceActive < 4.5
+                || ratios.textSecondaryOnControlFill < 4.5 || ratios.textSecondaryOnDangerFill
+                < 4.5 || ratios.textSecondaryOnSurface < 4.5 || ratios.textMutedOnSurface < 4.5
+                || ratios.textMutedOnControlFill < 4.5) {
             return null;
         }
         return Object.freeze({
@@ -351,13 +509,28 @@ Singleton {
                                  "accentForeground": foreground,
                                  "accentHover": hover,
                                  "accentPressed": pressed,
+                                 "surfaceHoverAccent": surfaceHoverAccent,
+                                 "surfaceActiveAccent": surfaceActiveAccent,
+                                 "surfaceActiveAccentText": surfaceActiveAccentText,
                                  "borderIntensity": configuration.borderIntensity,
                                  "blurEnabled": configuration.blurEnabled,
                                  "configuredAccent": configuration.customAccent,
                                  "contrast": ratios,
+                                 "controlFillAccent": controlFillAccent,
                                  "controlFill": controlFill,
                                  "controlFillHover": controlFillHover,
                                  "controlFillPressed": controlFillPressed,
+                                 "controlFillForeground": controlFillForeground,
+                                 "controlFillHoverForeground": controlFillHoverForeground,
+                                 "controlFillPressedForeground": controlFillPressedForeground,
+                                 "controlCenterRailSurface": controlCenterRailSurface,
+                                 "controlCenterRailSelectedSurface":
+                                 controlCenterRailSelectedSurface,
+                                 "controlCenterRailForeground": controlCenterRailForeground,
+                                 "controlCenterRailSelectedForeground":
+                                 controlCenterRailSelectedForeground,
+                                 "controlCenterRailAccent": controlCenterRailAccent,
+                                 "controlCenterRailSelectedAccent": controlCenterRailSelectedAccent,
                                  "danger": danger,
                                  "dangerFill": dangerFill,
                                  "dangerFillHover": dangerFillHover,
@@ -372,10 +545,14 @@ Singleton {
                                  "success": success,
                                  "surface": surfaceBase,
                                  "surfaceActive": surfaceActive,
+                                 "surfaceActiveForeground": surfaceActiveForeground,
+                                 "surfaceActiveWarning": surfaceActiveWarning,
                                  "surfaceBorder": palette.surfaceBorder,
                                  "surfaceBorderHover": borderHover,
                                  "surfaceBorderPressed": borderPressed,
                                  "surfaceHover": surfaceHover,
+                                 "surfaceHoverForeground": surfaceHoverForeground,
+                                 "surfaceHoverWarning": surfaceHoverWarning,
                                  "textMuted": textMuted,
                                  "textPrimary": textPrimary,
                                  "textSecondary": textSecondary,
@@ -464,6 +641,9 @@ Singleton {
         readonly property color surfaceOpaque: root.snapshot.surface
         readonly property color surfaceBorder: root.snapshot.surfaceBorder
         readonly property color controlFill: root.snapshot.controlFill
+        readonly property color controlCenterRailSurface: root.snapshot.controlCenterRailSurface
+        readonly property color controlCenterRailSelectedSurface:
+            root.snapshot.controlCenterRailSelectedSurface
         readonly property color textPrimary: root.snapshot.textPrimary
         readonly property color textSecondary: root.snapshot.textSecondary
         readonly property color textMuted: root.snapshot.textMuted
@@ -533,6 +713,9 @@ Singleton {
             if (role === "title" || role === "heading") {
                 return Math.max(1, Math.round(base * 15 / 13));
             }
+            if (role === "pageTitle") {
+                return Math.max(1, Math.round(base * 18 / 13));
+            }
             if (role === "display") {
                 return Math.max(1, Math.round(base * 48 / 13));
             }
@@ -583,10 +766,15 @@ Singleton {
         readonly property int controlCenterMinimumHeight: 480
         readonly property int controlCenterPreferredWidth: 920
         readonly property int controlCenterPreferredHeight: 660
-        readonly property int controlCenterResponsiveBreakpoint: 760
-        readonly property int controlCenterSidebarWidth: 196
+        readonly property int controlCenterResponsiveBreakpoint: 800
+        readonly property int controlCenterSidebarWidth: 240
         readonly property int controlCenterContentMaximumWidth: 880
-        readonly property int controlCenterRowStackBreakpoint: 720
+        readonly property int controlCenterRouteHeight: 44
+        readonly property int controlCenterRouteIconWellSize: 32
+        readonly property int controlCenterHeroIconWellSize: 56
+        readonly property int controlCenterHeroDescriptionMaximumWidth: 480
+        readonly property int controlCenterSettingRowMinimumHeight: 56
+        readonly property int controlCenterInlineLabelMinimumWidth: 288
         readonly property int controlHeightSm: 26
         readonly property int controlHeightMd: 32
         readonly property int controlHeightLg: 38

@@ -6,6 +6,8 @@ import QtQuick.Layouts
 ControlCenterSettingRow {
     id: root
 
+    controlPlacement: ControlCenterSettingRow.Auto
+
     required property string value
     required property var choices
     property bool writable: true

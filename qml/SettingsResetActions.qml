@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-ColumnLayout {
+ControlCenterSectionPanel {
     id: root
 
     required property string pageId
@@ -12,6 +12,11 @@ ColumnLayout {
 
     signal resetPageRequested(string pageId)
     signal resetAllRequested
+
+    objectName: "settingsResetSection"
+    text: qsTr("Reset")
+    separated: true
+
     function requestPageReset() {
         if (!writable) {
             return false;
@@ -22,7 +27,7 @@ ColumnLayout {
 
     function restoreResetFocus() {
         if (root.visible && resetAllButton.visible && resetAllButton.enabled) {
-            Qt.callLater(() => resetAllButton.forceActiveFocus(Qt.TabFocusReason));
+            resetAllButton.forceActiveFocus(Qt.TabFocusReason);
         }
     }
 
@@ -31,8 +36,8 @@ ColumnLayout {
             return false;
         }
         resetAllConfirmationVisible = true;
-        if (root.visible) {
-            Qt.callLater(() => confirmResetAllButton.forceActiveFocus(Qt.TabFocusReason));
+        if (root.visible && confirmResetAllButton.visible && confirmResetAllButton.enabled) {
+            confirmResetAllButton.forceActiveFocus(Qt.TabFocusReason);
         }
         return true;
     }
@@ -52,48 +57,90 @@ ColumnLayout {
         return true;
     }
 
-    spacing: Theme.spacing.sm
-    Accessible.role: Accessible.Grouping
-    Accessible.name: qsTr("Reset settings")
+    Item {
+        id: resetActionsEntry
 
-    RowLayout {
-        spacing: Theme.spacing.sm
+        Layout.fillWidth: true
+        implicitHeight: Math.max(Theme.size.controlCenterSettingRowMinimumHeight,
+                                 resetActionsLayout.implicitHeight + Theme.spacing.md * 2)
 
-        IslandButton {
-            label: qsTr("Reset page")
-            enabled: root.writable
-            reducedMotion: root.reducedMotion
-            Accessible.description: qsTr("Restore this page to its default settings")
-            onClicked: root.requestPageReset()
+        ColumnLayout {
+            id: resetActionsLayout
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.spacing.sm
+
+            RowLayout {
+                spacing: Theme.spacing.sm
+
+                IslandButton {
+                    label: qsTr("Reset page")
+                    enabled: root.writable
+                    reducedMotion: root.reducedMotion
+                    Accessible.description: qsTr("Restore this page to its default settings")
+                    onClicked: root.requestPageReset()
+                }
+
+                IslandButton {
+                    id: resetAllButton
+
+                    label: root.resetAllConfirmationVisible ? qsTr("Cancel reset all") : qsTr(
+                                                                  "Reset all settings")
+                    variant: root.resetAllConfirmationVisible ? "standard" : "danger"
+                    enabled: root.writable
+                    reducedMotion: root.reducedMotion
+                    Accessible.description: root.resetAllConfirmationVisible ? qsTr(
+                                                                                   "Cancel the reset confirmation") :
+                                                                               qsTr("Request confirmation before resetting every setting")
+                    onClicked: root.resetAllConfirmationVisible ? root.cancelResetAll() :
+                                                                  root.beginResetAll()
+                }
+            }
+
+            IslandText {
+                Layout.fillWidth: true
+                visible: root.errorText !== ""
+                text: root.errorText
+                size: "caption"
+                color: Theme.color.danger
+                wrapMode: Text.Wrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
         }
 
-        IslandButton {
-            id: resetAllButton
-            label: root.resetAllConfirmationVisible ? qsTr("Cancel reset all") : qsTr(
-                                                          "Reset all settings")
-            variant: root.resetAllConfirmationVisible ? "standard" : "danger"
-            enabled: root.writable
-            reducedMotion: root.reducedMotion
-            Accessible.description: root.resetAllConfirmationVisible ? qsTr(
-                                                                           "Cancel the reset confirmation") :
-                                                                       qsTr("Request confirmation before resetting every setting")
-            onClicked: root.resetAllConfirmationVisible ? root.cancelResetAll() : root.beginResetAll(
-                                                              )
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            visible: root.resetAllConfirmationVisible
+            height: Theme.size.hairlineWidth
+            color: Theme.color.surfaceBorder
+            opacity: 0.72
         }
     }
-    IslandPanel {
+
+    Rectangle {
+        id: confirmationEntry
+
         Layout.fillWidth: true
         visible: root.resetAllConfirmationVisible
         implicitHeight: confirmationLayout.implicitHeight + Theme.spacing.md * 2
+        radius: 0
         color: Theme.color.dangerFill
+        clip: true
+        border.width: 0
         Accessible.role: Accessible.AlertMessage
         Accessible.name: qsTr("Confirm reset all settings")
 
         RowLayout {
             id: confirmationLayout
 
-            anchors.fill: parent
-            anchors.margins: Theme.spacing.md
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.spacing.md
 
             IslandText {
@@ -106,22 +153,13 @@ ColumnLayout {
 
             IslandButton {
                 id: confirmResetAllButton
+
                 label: qsTr("Confirm reset all")
                 variant: "danger"
                 reducedMotion: root.reducedMotion
                 onClicked: root.confirmResetAll()
             }
         }
-    }
-    IslandText {
-        Layout.fillWidth: true
-        visible: root.errorText !== ""
-        text: root.errorText
-        size: "caption"
-        color: Theme.color.danger
-        wrapMode: Text.Wrap
-        Accessible.role: Accessible.AlertMessage
-        Accessible.name: text
     }
 
     Keys.onEscapePressed: event => {

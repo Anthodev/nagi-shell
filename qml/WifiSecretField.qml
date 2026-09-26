@@ -73,7 +73,7 @@ ColumnLayout {
             rightPadding: Theme.spacing.md
             enabled: !root.operationPending
             readOnly: root.operationPending
-            color: Theme.color.textPrimary
+            color: Theme.snapshot.controlFillForeground
             selectionColor: Theme.snapshot.accent
             selectedTextColor: Theme.snapshot.accentForeground
             font.pixelSize: Theme.type.sizeForItem(this, "body")
@@ -124,6 +124,7 @@ ColumnLayout {
 
     SettingToggleRow {
         Layout.fillWidth: true
+        separatorVisible: false
         label: root.revealLabel
         description: qsTr("Reveal only while this form remains open.")
         value: root.secretVisible

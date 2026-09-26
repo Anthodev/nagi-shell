@@ -1,8 +1,11 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 ControlCenterSettingRow {
     id: root
+
+    controlPlacement: ControlCenterSettingRow.Below
 
     required property real value
     required property real from
@@ -32,14 +35,15 @@ ControlCenterSettingRow {
         return true;
     }
 
-    Row {
+    RowLayout {
+        Layout.fillWidth: true
         spacing: Theme.spacing.sm
 
         Control {
             id: slider
 
-            width: Theme.spacing.xxl * 5
-            height: Theme.size.controlHeightMd
+            Layout.fillWidth: true
+            implicitHeight: Theme.size.controlHeightMd
             enabled: root.writable
             hoverEnabled: true
             opacity: enabled ? 1 : Theme.opacity.disabled
@@ -74,8 +78,7 @@ ControlCenterSettingRow {
                     anchors.verticalCenter: parent.verticalCenter
                     height: Theme.size.progressBarHeight
                     radius: height / 2
-                    color: slider.enabled && slider.hovered ? Theme.color.surfaceActive :
-                                                              Theme.snapshot.controlFillHover
+                    color: Theme.snapshot.progressTrack
                 }
 
                 Rectangle {
@@ -125,10 +128,10 @@ ControlCenterSettingRow {
         }
 
         IslandText {
-            anchors.verticalCenter: parent.verticalCenter
-            width: Theme.spacing.xxl
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             text: root.valueText
             size: "caption"
+            color: Theme.snapshot.controlFillForeground
             horizontalAlignment: Text.AlignRight
             Accessible.ignored: true
         }

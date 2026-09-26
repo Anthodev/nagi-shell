@@ -87,6 +87,10 @@ FocusScope {
                         anchors.centerIn: parent
                         meaning: "back"
                         size: "md"
+                        tint: backButton.pressed ? Theme.snapshot.controlFillPressedForeground :
+                                                   backButton.hovered
+                                                   ? Theme.snapshot.controlFillHoverForeground :
+                                                     semanticTint
                     }
                 }
 

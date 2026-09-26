@@ -7,7 +7,9 @@ ShellRoot {
 
     property real nowMs: 0
     property var surfaceToken: null
-
+    property var secondSurfaceToken: null
+    readonly property var workspaceOutputToken: ({})
+    readonly property var staleWorkspaceOutputToken: ({})
     function require(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -16,8 +18,12 @@ ShellRoot {
         }
     }
 
+    function snapshotFor(token) {
+        return coordinator.surfaceSnapshot(token);
+    }
+
     function snapshot() {
-        return coordinator.surfaceSnapshot(surfaceToken);
+        return snapshotFor(surfaceToken);
     }
 
     function requireWorkspaceGeometry(view, label) {
@@ -129,24 +135,57 @@ ShellRoot {
                 "missing notification application icon uses the established neutral fallback");
 
         surfaceToken = {};
-        require(coordinator.attachSurface(surfaceToken, 1), "transient surface attaches");
-        workspace.confirmedWorkspaceChanged("workspace-current", 1, 1);
+        secondSurfaceToken = {};
+        require(coordinator.attachSurface(surfaceToken, 1)
+                && coordinator.attachSurface(secondSurfaceToken, 1),
+                "two transient surfaces attach");
+        workspace.confirmedWorkspaceChanged("workspace-visible-stale", 1, 1,
+                                            workspaceOutputToken);
+        require(snapshot().ownerName === "workspace" && coordinator.pendingTransientCount === 1,
+                "a mapped workspace presentation enters the visible owner");
+        workspace.confirmedWorkspaceInvalidated("workspace-visible-stale", 1);
+        require(snapshot().ownerName === "idle" && coordinator.pendingTransientCount === 0,
+                "source invalidation removes a visible obsolete workspace presentation");
+        require(coordinator.setHover(surfaceToken, 1, true),
+                "Expanded blocks workspace presentation for stale pending coverage");
+        workspace.confirmedWorkspaceChanged("workspace-pending-stale", 1, 1,
+                                            workspaceOutputToken);
+        require(snapshot().ownerName === "expanded" && coordinator.pendingTransientCount === 1,
+                "a blocked workspace presentation remains pending on its mapped surface");
+        workspace.confirmedWorkspaceInvalidated("workspace-pending-stale", 1);
+        require(snapshot().ownerName === "expanded" && coordinator.pendingTransientCount === 0,
+                "source invalidation removes blocked obsolete workspace presentation");
+        require(coordinator.setHover(surfaceToken, 1, false) && snapshot().ownerName === "idle",
+                "invalidated workspace presentation cannot resume after Expanded");
+        workspace.confirmedWorkspaceChanged("workspace-source-a", 1, 1,
+                                            workspaceOutputToken);
         require(snapshot().ownerName === "workspace"
-                && snapshot().ownerSourceRevision === 1,
-                "confirmed workspace change routes to its action surface");
+                && snapshot().ownerSourceRevision === 1
+                && snapshotFor(secondSurfaceToken).ownerName === "idle"
+                && coordinator.pendingTransientCount === 1,
+                "confirmed workspace change routes to exactly its mapped output surface");
+        workspace.confirmedWorkspaceChanged("workspace-source-a", 1, 2,
+                                            staleWorkspaceOutputToken);
+        require(snapshot().ownerSourceRevision === 1
+                && snapshotFor(secondSurfaceToken).ownerName === "idle"
+                && coordinator.pendingTransientCount === 1,
+                "unknown opaque output tokens fail closed without fallback routing");
         const workspaceEpoch = snapshot().ownerEpoch;
         for (let revision = 2; revision <= 20; revision += 1) {
-            workspace.confirmedWorkspaceChanged("workspace-current", 1, revision);
+            workspace.confirmedWorkspaceChanged("workspace-source-a", 1, revision,
+                                                workspaceOutputToken);
         }
         require(snapshot().ownerName === "workspace" && snapshot().ownerEpoch === workspaceEpoch
                 && snapshot().ownerSourceRevision === 20
+                && snapshotFor(secondSurfaceToken).ownerName === "idle"
                 && coordinator.pendingTransientCount === 1,
-                "workspace burst coalesces in one global event record");
-
+                "workspace burst coalesces only on the mapped surface");
+        require(coordinator.detachSurface(secondSurfaceToken, 1),
+                "secondary routing surface detaches before shared transient coverage");
         brightness.confirmedBrightnessChanged("1:display0", 1, 1, surfaceToken);
         require(snapshot().ownerName === "brightness" && snapshot().restorationDepth === 1,
                 "targeted brightness preempts workspace");
-        workspace.confirmedWorkspaceInvalidated("workspace-current", 1);
+        workspace.confirmedWorkspaceInvalidated("workspace-source-a", 1);
         require(snapshot().restorationDepth === 0 && coordinator.pendingTransientCount === 1,
                 "workspace invalidation removes its suspended event globally");
         const brightnessEpoch = snapshot().ownerEpoch;
@@ -242,8 +281,9 @@ ShellRoot {
     QtObject {
         id: workspace
 
-        signal confirmedWorkspaceChanged(string sourceToken, int sourceGeneration, int revision)
-        signal confirmedWorkspaceInvalidated(string sourceToken, int sourceGeneration)
+        signal confirmedWorkspaceChanged(var sourceToken, int sourceGeneration, int revision,
+                                         var outputToken)
+        signal confirmedWorkspaceInvalidated(var sourceToken, int sourceGeneration)
     }
 
     QtObject {
@@ -277,6 +317,17 @@ ShellRoot {
         signal transientInvalidated(string sourceToken, int sourceGeneration)
     }
 
+    QtObject {
+        id: surfaceRouter
+
+        function surfaceTokenForOutput(outputToken) {
+            if (outputToken === test.workspaceOutputToken) {
+                return test.surfaceToken;
+            }
+            return null;
+        }
+    }
+
     IslandStateCoordinator {
         id: coordinator
 
@@ -285,6 +336,7 @@ ShellRoot {
 
     TransientCoordinatorBridge {
         coordinator: coordinator
+        surfaceHost: surfaceRouter
         workspaceSource: workspace
         brightnessSource: brightness
         audioSource: audio

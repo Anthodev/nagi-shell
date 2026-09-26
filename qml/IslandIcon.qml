@@ -21,7 +21,10 @@ Item {
     readonly property string accessibleName: resolved.accessibleName
     readonly property string resolvedKind: resolved.kind
     readonly property string resolvedSource: resolved.source
-    readonly property color tint: resolved.tint
+    readonly property color semanticTint: _loadFailed ? Theme.color.textPrimary : resolved.tint
+    // Derived-fill consumers override tint and attentionTint with matching Theme roles.
+    property color tint: semanticTint
+    property color attentionTint: IconResolver.tintFor("attention")
     readonly property bool tinted: resolved.tintable || _loadFailed
     readonly property bool showingFallback: _loadFailed || resolved.kind === "placeholder"
     readonly property bool attention: resolved.attention
@@ -37,6 +40,10 @@ Item {
     readonly property bool usesQuickshellIconProvider: !usesSvgMask && rawSource.startsWith(
                                                            "image://icon/")
     readonly property bool loadsAsynchronously: image.asynchronous
+    readonly property bool terminalReady: loadStatus === Image.Ready || (loadStatus === Image.Error
+                                                                         && _loadFailed && String(
+                                                                             displayedSource)
+                                                                         === String(renderedSource))
     property bool _loadFailed: false
     property string _svgTemplate: ""
     property bool _componentReady: false
@@ -148,7 +155,7 @@ Item {
             // cannot suppress the semantic tint.
             brightness: 1
             colorization: 1
-            colorizationColor: icon._loadFailed ? Theme.color.textPrimary : icon.tint
+            colorizationColor: icon.tint
             autoPaddingEnabled: false
         }
 
@@ -166,7 +173,7 @@ Item {
         width: 5
         height: 5
         radius: width / 2
-        color: IconResolver.tintFor("attention")
+        color: icon.attentionTint
         visible: icon.resolved.attention
     }
 }
